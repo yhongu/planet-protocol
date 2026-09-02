@@ -62,6 +62,16 @@ export interface ClimateBackend {
 }
 
 /** タイムラインに刻まれる出来事（docs/03-5.6） */
+/**
+ * 氷期の状態がこれだけ続いて初めて出来事にする [yr]。
+ *
+ * ★**ヒステリシスだけでは足りなかった**（`detectGlaciation` の説明）。
+ * 地質学でいう氷期は数千万年〜数億年続く（ヒューロニアン氷期は約 3 億年）。
+ * 20Myr なら、実測で見つかった 4Myr 周期の極限周期は刻まれず、
+ * 本物の氷期だけが残る。
+ */
+const GLACIATION_HOLD_YEARS = 20e6
+
 export interface WorldEvent {
   year: number
   kind: "tectonicMode" | "lip" | "supercontinent" | "impact" | "milestone"
@@ -541,28 +551,60 @@ export class World {
    * 閾値は実測の分布から決める（氷の P5 0.045 / 中央 0.245 / P95 0.453）。
    * ヒステリシスを付けて、閾値付近の振動で連発しないようにする。
    */
-  private glaciationState = 0   // 0=未判定 1=氷期 -1=温暖期
+  private glaciationState = 0
+  /** 変わろうとしている状態と、そうなった年（続いて初めて刻む） */
+  private glaciationPending = 0
+  private glaciationPendingSince = 0   // 0=未判定 1=氷期 -1=温暖期
   private detectGlaciation(): void {
     // 海が無ければ氷も無い（マグマオーシャン期）
-    if (this.globals.oceanWaterFraction < 0.05) { this.glaciationState = 0; return }
-    const ice = this.stats?.iceFraction ?? 0
-    if (this.glaciationState === 0) {
-      this.glaciationState = ice > 0.40 ? 1 : -1
+    if (this.globals.oceanWaterFraction < 0.05) {
+      this.glaciationState = 0
+      this.glaciationPending = 0
       return
     }
-    if (this.glaciationState < 0 && ice > 0.36) {
-      this.glaciationState = 1
-      this.events.push({
-        year: this.globals.yearsElapsed, kind: "milestone", code: "ev-icehouse",
-        text: `氷期に入った（氷 ${(ice * 100).toFixed(0)}%・平均 ${this.stats!.meanT.toFixed(1)}℃）`,
-      })
-    } else if (this.glaciationState > 0 && ice < 0.16) {
-      this.glaciationState = -1
-      this.events.push({
-        year: this.globals.yearsElapsed, kind: "milestone", code: "ev-greenhouse",
-        text: `氷期が明けた（氷 ${(ice * 100).toFixed(0)}%・平均 ${this.stats!.meanT.toFixed(1)}℃）`,
-      })
+    const ice = this.stats?.iceFraction ?? 0
+    // 閾値の判定（ヒステリシス: 0.36 で入り、0.16 で明ける）
+    let raw = this.glaciationState
+    if (this.glaciationState === 0) raw = ice > 0.40 ? 1 : -1
+    else if (this.glaciationState < 0 && ice > 0.36) raw = 1
+    else if (this.glaciationState > 0 && ice < 0.16) raw = -1
+    if (raw === this.glaciationState) { this.glaciationPending = 0; return }
+
+    // ★★**状態が続いて初めて出来事にする。**
+    //
+    // ヒステリシスだけでは足りなかった。実測（2026-09-02・seed audit・全史）で
+    // **1100〜1300Myr に閾値の跨ぎが 118 回**あり、全出来事 192 件のうち
+    // 133 件がこの区間に集中していた。中身は**約 4Myr 周期の極限周期**:
+    //
+    //   氷 0.358 / -3.8℃ → 0.4Myr 後に 氷 0.173 / +5.5℃ → また戻る
+    //   その間 CO2 は 17,400〜20,500（18%）しか動いていない
+    //
+    // ★**モデルとしては正しい。** 氷アルベドの分岐（`docs/01`）の双安定領域に
+    // 系が乗っていて、炭素循環がわずかに押すたびに枝を飛び移っている。
+    // ただし**毎ステップ平衡を解いている**ので、実際には数万年かけて進む
+    // 氷床の前進・後退が一瞬の切り替えに見える。
+    //
+    // ★**地質学でいう氷期は数千万年〜数億年続くもの**で、ヒューロニアン氷期は
+    // 約 3 億年、その中に何度も前進と後退がある。**数百万年の往復を
+    // 1 件ずつ報告するのが誤り**なので、状態が `GLACIATION_HOLD_YEARS`
+    // 続いて初めて刻む。
+    const now = this.globals.yearsElapsed
+    if (this.glaciationPending !== raw) {
+      this.glaciationPending = raw
+      this.glaciationPendingSince = now
+      return
     }
+    if (now - this.glaciationPendingSince < GLACIATION_HOLD_YEARS) return
+
+    this.glaciationState = raw
+    this.glaciationPending = 0
+    this.events.push(raw > 0 ? {
+      year: now, kind: "milestone", code: "ev-icehouse",
+      text: `氷期に入った（氷 ${(ice * 100).toFixed(0)}%・平均 ${this.stats!.meanT.toFixed(1)}℃）`,
+    } : {
+      year: now, kind: "milestone", code: "ev-greenhouse",
+      text: `氷期が明けた（氷 ${(ice * 100).toFixed(0)}%・平均 ${this.stats!.meanT.toFixed(1)}℃）`,
+    })
   }
 
   /**
