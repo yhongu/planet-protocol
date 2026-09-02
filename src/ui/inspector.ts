@@ -158,6 +158,10 @@ export class Inspector {
         + `</div>`
         // ★体制（`bodyPlan.ts`）。**これが「どんな姿か」そのもの**
         + `<div class="cl-plan">${esc(describePlan(Uint8Array.from(c.bodyPlan)))}</div>`
+        // ★遺伝子の中身はここには出さない。**名簿は毎ティック送るので、
+        // ゲノムまで載せると postMessage が重い**（`protocol.ts` の注記）。
+        // 遺伝子地図は系譜タブ（要求したときだけ送る）で読む
+        + `<div class="cl-genes">遺伝子 ${c.genes} 個　<span>系譜タブで内訳</span></div>`
         + (caps.length ? `<div class="cl-caps">${caps.join("")}</div>` : "")
         + `<div class="cl-traits">${traits}</div>`
         + `</div>`

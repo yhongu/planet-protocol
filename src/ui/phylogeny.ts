@@ -15,7 +15,8 @@ import { GENE_KINDS, FIRST_CAPABILITY } from "../sim/genome"
 import { cladeColor } from "../render/layers"
 import { earthAnalog } from "./earthAnalog"
 import { describePlan, AXES } from "../sim/bodyPlan"
-import { GENE_LABELS, geneJa } from "./geneLabels"
+import { GENE_LABELS } from "./geneLabels"
+import { geneMapHtml } from "./geneMap"
 
 const PLANET_AGE = 4.54e9
 
@@ -248,19 +249,10 @@ export class Phylogeny {
         + `<span class="num">${v.toFixed(2)}</span></div>`
     }
 
-    // 遺伝子。★由来 id が他系統と共有なら【相同】、単独なら【この系統の発明】
-    html += `<div class="section">遺伝子 <span class="hint">由来 id で相同と収斂を分ける</span></div>`
-    const genes = [...n.genes].sort((a, b) => a.kind - b.kind || b.value - a.value)
-    html += genes.map((g) => {
-      const shared = (counts.get(g.origin) ?? 0) > 1
-      return `<div class="ph-gene">`
-        + `<span class="g-kind" title="${esc(GENE_LABELS[GENE_KINDS[g.kind]]?.what ?? "")}">`
-        + `${esc(geneJa(GENE_KINDS[g.kind] ?? String(g.kind)))}</span>`
-        + `<span class="g-val">${g.value.toFixed(0)}</span>`
-        + `<span class="g-org ${shared ? "homo" : "novo"}" title="由来 id ${g.origin}">`
-        + `${shared ? `相同 #${g.origin}` : `発明 #${g.origin}`}</span>`
-        + `</div>`
-    }).join("")
+    // 遺伝子。★**二重らせんに ATCG を並べない**（このモデルに塩基は無い）。
+    // 実際に起きていること —— **重複**と、**相同か発明か** —— を出す
+    html += `<div class="section">遺伝子 <span class="hint">同じ色が並ぶ = 重複</span></div>`
+      + geneMapHtml(n.genes, counts)
     this.detailEl.innerHTML = html
   }
 }
