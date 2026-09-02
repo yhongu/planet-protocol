@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>地球史タイムラプス</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e; --acc:#58a6ff; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font:13px/1.6 system-ui,"Hiragino Sans","Noto Sans JP",sans-serif }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; gap:16px; flex-wrap:wrap }
+  h1 { font-size:15px; margin:0; font-weight:600 }
+  #wrap { display:flex; gap:12px; padding:12px 16px; align-items:flex-start; flex-wrap:wrap }
+  canvas { image-rendering:pixelated; border:1px solid var(--line); border-radius:4px;
+    background:#000; width:min(78vw,1100px); height:auto }
+  #side { min-width:230px; flex:1 }
+  .box { background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:10px 12px; margin-bottom:10px }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:2px 0 }
+  .row span:first-child { color:var(--dim) }
+  .row span:last-child { font-variant-numeric:tabular-nums; font-weight:600 }
+  #bar { padding:8px 16px; border-top:1px solid var(--line); display:flex;
+    gap:12px; align-items:center }
+  input[type=range] { flex:1; accent-color:var(--acc) }
+  select,button { background:var(--panel); color:var(--fg); border:1px solid var(--line);
+    border-radius:5px; padding:5px 10px; font:inherit; cursor:pointer }
+  button:hover,select:hover { border-color:var(--acc) }
+  #ev { color:var(--acc); font-size:12px; min-height:1.6em }
+  #load { padding:40px; text-align:center; color:var(--dim) }
+  h2 { font-size:12px; margin:0 0 6px; color:var(--dim); font-weight:600 }
+</style></head>
+<body>
+<div id="load">読み込み中…</div>
+<div id="app" hidden>
+  <header>
+    <h1>地球史タイムラプス</h1>
+    <select id="layer"></select>
+    <button id="play">▶ 再生</button>
+    <span id="ev"></span>
+  </header>
+  <div id="wrap">
+    <canvas id="cv"></canvas>
+    <div id="side">
+      <div class="box">
+        <h2>時代</h2>
+        <div class="row"><span>年代</span><span id="mGa"></span></div>
+        <div class="row"><span>エポック</span><span id="mEpoch"></span></div>
+        <div class="row"><span>テクトニクス様式</span><span id="mMode"></span></div>
+        <div class="row"><span>マントル温度</span><span id="mMantle"></span></div>
+      </div>
+      <div class="box">
+        <h2>地形</h2>
+        <div class="row"><span>陸地面積</span><span id="mLand"></span></div>
+        <div class="row"><span>陸の平均標高</span><span id="mLandElev"></span></div>
+        <div class="row"><span>最高標高</span><span id="mMaxElev"></span></div>
+        <div class="row"><span>海面</span><span id="mSea"></span></div>
+      </div>
+      <div class="box">
+        <h2>気候</h2>
+        <div class="row"><span>全球平均気温</span><span id="mT"></span></div>
+        <div class="row"><span>CO₂</span><span id="mCo2"></span></div>
+        <div class="row"><span>氷被覆率</span><span id="mIce"></span></div>
+      </div>
+    </div>
+  </div>
+  <div id="bar">
+    <span id="pos" style="min-width:5.5em;font-variant-numeric:tabular-nums"></span>
+    <input id="t" type="range" min="0" value="0">
+  </div>
+</div>
+<script type="module">
+import { Grid } from "/src/core/grid.ts"
+import { FieldStore } from "/src/core/fields.ts"
+import { WORLD_FIELDS } from "/src/sim/world.ts"
+import { LAYERS } from "/src/render/layers/index.ts"
+
+const $ = (id) => document.getElementById(id)
+const idx = await (await fetch("/timelapse.json")).json()
+// 数十 MB あるので進捗を出しながら読む
+const res = await fetch("/timelapse.bin")
+const total = Number(res.headers.get("content-length")) || idx.frames * idx.bytesPerFrame
+const chunks = []
+let got = 0
+const reader = res.body.getReader()
+for (;;) {
+  const { done, value } = await reader.read()
+  if (done) break
+  chunks.push(value); got += value.length
+  $("load").textContent = `読み込み中… ${(got/1048576).toFixed(0)} / ${(total/1048576).toFixed(0)} MB`
+}
+const bin = new Uint8Array(got)
+{ let o = 0; for (const c of chunks) { bin.set(c, o); o += c.length } }
+
+const grid = new Grid(idx.width, idx.height)
+// 1 フレーム分のバッファを用意し、表示のたびに中身を差し替える
+const buf = new ArrayBuffer(idx.bytesPerFrame)
+const store = FieldStore.attach(grid, WORLD_FIELDS, buf)
+const dst = new Uint8Array(buf)
+const src = bin
+
+// 縮小時にぼけないよう、セルより細かく描く（supersampling）
+const SS = idx.width <= 128 ? 4 : 2
+const cv = $("cv")
+cv.width = idx.width * SS
+cv.height = idx.height * SS
+const ctx = cv.getContext("2d")
+const img = ctx.createImageData(cv.width, cv.height)
+
+const sel = $("layer")
+for (const l of LAYERS) {
+  const o = document.createElement("option")
+  o.value = l.id; o.textContent = l.label
+  sel.appendChild(o)
+}
+sel.value = "elevation"
+
+const slider = $("t")
+slider.max = String(idx.frames - 1)
+
+function draw(f) {
+  dst.set(src.subarray(f * idx.bytesPerFrame, (f + 1) * idx.bytesPerFrame))
+  const layer = LAYERS.find((l) => l.id === sel.value) ?? LAYERS[0]
+  layer.render(grid, store, img.data, SS)
+  ctx.putImageData(img, 0, 0)
+
+  const m = idx.meta[f]
+  $("pos").textContent = m.ga.toFixed(2) + " Ga前"
+  $("mGa").textContent = m.ga.toFixed(3) + " Ga前"
+  $("mEpoch").textContent = m.epoch
+  $("mMode").textContent = m.mode
+  $("mMantle").textContent = m.mantleT.toFixed(0) + " ℃"
+  $("mLand").textContent = m.land.toFixed(1) + " %"
+  $("mLandElev").textContent = m.landElev.toFixed(0) + " m"
+  $("mMaxElev").textContent = m.maxElev.toFixed(0) + " m"
+  $("mSea").textContent = m.seaLevel.toFixed(0) + " m"
+  $("mT").textContent = m.meanT.toFixed(1) + " ℃"
+  $("mCo2").textContent = m.co2 >= 10000
+    ? (m.co2 / 10000).toFixed(2) + " %" : m.co2.toFixed(0) + " ppm"
+  $("mIce").textContent = m.ice.toFixed(3)
+  $("ev").textContent = m.events.length ? "◆ " + m.events.join(" / ") : ""
+}
+
+let timer = null
+$("play").onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "▶ 再生"; return }
+  $("play").textContent = "⏸ 停止"
+  timer = setInterval(() => {
+    const n = (Number(slider.value) + 1) % idx.frames
+    slider.value = String(n); draw(n)
+  }, 110)
+}
+slider.oninput = () => draw(Number(slider.value))
+sel.onchange = () => draw(Number(slider.value))
+addEventListener("keydown", (e) => {
+  const n = Number(slider.value)
+  if (e.key === "ArrowRight") { slider.value = String(Math.min(idx.frames - 1, n + 1)); draw(+slider.value) }
+  if (e.key === "ArrowLeft") { slider.value = String(Math.max(0, n - 1)); draw(+slider.value) }
+})
+
+$("load").hidden = true
+$("app").hidden = false
+draw(0)
+</script>
+</body></html>

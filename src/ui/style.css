@@ -1,0 +1,431 @@
+:root {
+  --bg: #0a0d12;
+  --panel: rgba(18, 22, 30, 0.88);
+  --line: rgba(255, 255, 255, 0.10);
+  --fg: #dfe4ec;
+  --dim: #8b95a6;
+  --accent: #6fb3d8;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+#app { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  cursor: grab; touch-action: none; }
+#view:active { cursor: grabbing; }
+
+#hud { position: absolute; top: 12px; left: 12px; width: 268px; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  backdrop-filter: blur(10px); }
+.panel .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.panel .row > span:first-child { color: var(--dim); min-width: 74px; }
+.panel .title { font-size: 13px; letter-spacing: 0.04em; color: var(--fg);
+  margin: 0 0 10px; font-weight: 600; }
+.panel .tag { color: var(--bg); background: var(--accent); border-radius: 3px;
+  padding: 0 5px; font-size: 10px; margin-left: 6px; }
+.panel hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+.panel .num { color: var(--accent); margin-left: auto; font-variant-numeric: tabular-nums; }
+.panel .stat > span:first-child { color: var(--dim); }
+input[type="text"], select { flex: 1; min-width: 0; background: #0f131a; color: var(--fg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; }
+input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.buttons { gap: 8px; }
+button { flex: 1; background: #182029; color: var(--fg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
+button:hover { background: #1f2935; border-color: rgba(255,255,255,0.2); }
+button:active { background: #141b23; }
+.hover { color: var(--dim); white-space: pre; min-height: 3em; }
+
+/* --- カーソル情報バー（画面の上中央）---
+   ★地図から視線を外さずに読めることが目的なので、右のパネルには置かない。
+   ホバーしていないときは薄いヒントだけにして、地図を隠さない。 */
+.hoverbar {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 30; pointer-events: none;
+  display: flex; gap: 18px; align-items: baseline;
+  padding: 7px 16px; border-radius: 999px;
+  background: rgba(10, 14, 20, 0.72); border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  font-variant-numeric: tabular-nums; font-size: 12px; color: var(--fg);
+  white-space: nowrap; transition: opacity 120ms ease;
+}
+.hoverbar[data-empty="1"] { opacity: 0.45; }
+.hb-hint { color: var(--dim); font-size: 11px; }
+.hb-item { display: flex; gap: 6px; align-items: baseline; }
+.hb-k { color: var(--dim); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.hb-v { color: var(--fg); }
+.hb-v.land { color: #d8c49a; }
+.hb-v.sea { color: #7fb6e8; }
+.hb-v.magma { color: #ff9a5a; }
+/* 表示中のレイヤの値。他と区別できるように色を変える */
+.hb-layer { color: #8fd6c4; border-left: 1px solid var(--line); padding-left: 14px; }
+/* 「次の出来事まで」。速度ボタンと区別する */
+.sp.skip { color: var(--accent); white-space: nowrap; }
+.sp.skip.waiting { background: #2a3a2a; border-color: #4a7a4a; }
+
+/* --- モデルの有効範囲を出たときのバナー ---
+   気候ソルバは温度を [-120, 500]℃ にクランプする。そこに張り付くと
+   「491.76℃ から動かない」という【物理ではない】状態になるので、
+   ★必ず画面に出すこと。無言だとバグに見える。 */
+.oor {
+  position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
+  z-index: 40; pointer-events: none; text-align: center;
+  padding: 10px 18px; border-radius: 8px;
+  background: rgba(60, 16, 10, 0.88); border: 1px solid #b4451f;
+  color: #ffd7b0; font-size: 12px; line-height: 1.6; max-width: 520px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+}
+.oor b { color: #ff9a5a; display: block; font-size: 13px; margin-bottom: 2px; }
+.oor .sub { color: #e0b9a0; font-size: 11px; }
+
+/* --- M1 追加分 --- */
+.panel { position: absolute; padding: 12px 14px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; backdrop-filter: blur(10px);
+  max-height: calc(100vh - 24px); overflow-y: auto; }
+#hud { top: 12px; left: 12px; width: 268px; }
+#dash { top: 12px; right: 12px; width: 300px; }
+.section { color: var(--fg); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  margin: 4px 0 8px; opacity: 0.75; }
+.hint { text-transform: none; letter-spacing: 0; color: var(--dim); font-size: 10px; }
+.cp-total { color: var(--fg); margin-bottom: 8px; font-size: 12px; }
+.cp-total b { color: var(--accent); font-size: 14px; }
+.cp-row { display: grid; grid-template-columns: 92px 1fr 52px; align-items: center;
+  gap: 6px; margin: 3px 0; }
+.cp-label { color: var(--dim); font-size: 10.5px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+.cp-bar { position: relative; height: 9px; background: rgba(255,255,255,0.05);
+  border-radius: 2px; overflow: hidden; }
+.cp-bar::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0;
+  width: 1px; background: rgba(255,255,255,0.18); }
+.cp-bar i { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.cp-bar i.pos { background: #c8552b; }
+.cp-bar i.neg { background: #3b7fc4; }
+.cp-val { text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+.cp-val.pos { color: #e0794f; } .cp-val.neg { color: #6fa8dc; }
+.cp-empty { color: var(--dim); font-size: 11px; }
+.warn { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+  background: #4a2418; border: 1px solid #8a4a2a; color: #f0c8a0;
+  padding: 8px 14px; border-radius: 6px; font-size: 11px; }
+
+/* --- M2 追加分: 時間制御バー --- */
+#timebar { bottom: 12px; left: 50%; transform: translateX(-50%); top: auto;
+  display: flex; align-items: center; gap: 14px; padding: 8px 16px; }
+#timebar .epoch { color: var(--fg); font-size: 12px; letter-spacing: 0.05em; }
+#timebar .num { color: var(--accent); font-variant-numeric: tabular-nums; }
+#timebar .rate { color: var(--dim); font-size: 10.5px; min-width: 110px; text-align: right; }
+.speeds { display: flex; gap: 4px; }
+.sp { flex: none; min-width: 34px; padding: 3px 6px; font-size: 11px; }
+.sp.active { background: var(--accent); color: #0a0d12; border-color: var(--accent); }
+
+/* --- タイムライン --- */
+#timeline { bottom: 12px; left: 12px; right: 12px; top: auto; padding: 6px 10px 8px;
+  max-height: none; overflow: visible; }
+#tlCanvas { display: block; width: 100%; height: 52px; cursor: crosshair; }
+.tlinfo { color: var(--dim); font-size: 10.5px; margin-top: 4px; min-height: 1.4em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.timebar { bottom: 96px !important; }
+.iv { font-size: 11px; }
+
+.evlog { font-size: 10.5px; line-height: 1.5; max-height: 108px; overflow-y: auto;
+  color: var(--dim); }
+.evlog .ev { display: flex; gap: 6px; margin: 1px 0; }
+.evlog .ev .yr { color: var(--accent); flex: none; font-variant-numeric: tabular-nums; }
+.evlog .ev.lip .tx { color: #e0885c; }
+.evlog .ev.impact .tx { color: #e07070; }
+.evlog .ev.tectonicMode .tx { color: #7fc0e0; }
+#timebar .mode { color: var(--dim); font-size: 10.5px; }
+
+.loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: var(--dim); font-size: 13px; letter-spacing: 0.08em;
+  padding: 14px 22px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); backdrop-filter: blur(10px); }
+.loading[hidden] { display: none; }
+
+/* 出来事ログとホバー表示は flex 行ではない */
+.evlog .ev { display: flex; }
+#timebar.timebar .row { display: inline-flex; }
+
+/* --- 出来事のポップアップ（docs/07-art-spec.md） -----------------------
+   ★中央上のホバーバーの【下】に置く。地図から視線を外さずに読めること。
+   左右のパネル（268px / 300px）とは重ならない幅に抑える。 */
+#eventPopup {
+  position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
+  z-index: 28; pointer-events: none;
+}
+.epop-card {
+  pointer-events: auto; cursor: pointer;
+  display: flex; gap: 12px; align-items: center;
+  /* ★**`display` を書いたら `[hidden]` を明示的に潰し返すこと。**
+     `[hidden] { display: none }` はブラウザ既定（UA）のスタイルなので、
+     作者スタイルの `display: flex` に負ける。これを書き忘れたせいで
+     カードが一度出たら二度と消えなかった（2026-09-01） */
+  max-width: 420px; padding: 10px 16px 10px 12px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: rgba(10, 14, 20, 0.86);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+.epop-card[hidden] { display: none; }
+.epop-card.in { animation: epop-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.4); }
+@keyframes epop-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+/* ★ドット絵は【整数倍】でしか綺麗に出ない。素材が 64px なので等倍で置く。
+   48px（0.75 倍）にすると画素がにじむ。ログの 16px は 1/4 で割り切れる */
+.epop-icon {
+  width: 64px; height: 64px; flex: 0 0 64px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+}
+.epop-body { min-width: 0; }
+.epop-kicker {
+  color: var(--dim); font-size: 10px; letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums; text-transform: uppercase;
+}
+.epop-title { color: var(--fg); font-size: 13.5px; font-weight: 600; margin-top: 1px; }
+.epop-detail { color: var(--dim); font-size: 11px; margin-top: 2px; }
+/* 出来事の種類で左の縁に色を差す（タイムラインのマーカーと同じ配色） */
+.epop-card[data-kind="lip"] { border-left: 3px solid #e0603c; }
+.epop-card[data-kind="impact"] { border-left: 3px solid #d84a4a; }
+.epop-card[data-kind="supercontinent"] { border-left: 3px solid #c9a227; }
+.epop-card[data-kind="tectonicMode"] { border-left: 3px solid #6fb3d8; }
+.epop-card[data-kind="milestone"] { border-left: 3px solid #8fd18f; }
+
+/* 出来事ログの小さいアイコン（.ev は上で既に flex 行になっている） */
+.evlog .ico {
+  width: 16px; height: 16px; flex: 0 0 16px; align-self: center;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+}
+
+/* --- 出来事の動く絵（docs/07-art-spec.md §7.5） ------------------------
+   横一列のストリップ（512x128 = 128px を 4 コマ）を、窓で切って
+   1 コマぶんずつずらす。8fps = 1 周 500ms。
+   ★steps(4) の刻み数はストリップのコマ数と一致させること。 */
+.epop-anim {
+  width: 128px; height: 128px; flex: 0 0 128px;
+  overflow: hidden; border-radius: 8px;
+}
+.epop-strip {
+  display: block; width: 512px; height: 128px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+  animation: epop-frames 500ms steps(4) infinite;
+}
+@keyframes epop-frames {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-512px); }
+}
+/* 動く絵は大きいので、カードの幅を少し広げる */
+.epop-card:has(.epop-anim:not([hidden])) { max-width: 500px; }
+/* ★動きを減らす設定の人には止めて見せる（1 コマ目で固定） */
+@media (prefers-reduced-motion: reduce) {
+  .epop-strip { animation: none; }
+  .epop-card.in { animation: none; }
+}
+
+/* ======================================================================
+   画面の作り直し（2026-09-01）。
+   ★**ゲームの動詞（介入）と、設定のつまみを分ける。**
+   常時見えているのが開発ツールだと、ゲームに見えない。
+   ====================================================================== */
+
+/* --- 左の操作列 --- */
+.rail {
+  position: absolute; top: 12px; left: 12px; z-index: 20;
+  display: flex; flex-direction: column; gap: 6px; width: 152px;
+}
+.rail-title {
+  color: var(--dim); font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding-left: 2px; margin-bottom: 2px;
+}
+.act {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border-radius: 8px; text-align: left;
+  background: rgba(18, 22, 30, 0.88); border: 1px solid var(--line);
+  backdrop-filter: blur(10px); font-size: 11.5px;
+}
+.act img {
+  width: 32px; height: 32px; flex: 0 0 32px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+}
+.act span { flex: 1; min-width: 0; }
+.act.ghost { opacity: 0.7; margin-top: 8px; }
+.act.ghost:hover { opacity: 1; }
+/* ★照準中の見え方。**押しただけでは何も起きない**ので、
+   「次に地図をクリックする」ことが分かる強さで光らせる */
+.act.armed {
+  border-color: #ffd678; box-shadow: 0 0 0 1px #ffd678 inset, 0 0 18px rgba(255,214,120,0.25);
+  background: rgba(58, 46, 22, 0.92);
+}
+.rail-hint {
+  color: var(--dim); font-size: 10px; line-height: 1.35; padding: 2px 2px 0;
+}
+.rail-hint.armed { color: #ffd678; }
+
+/* --- 左下: レイヤと凡例 --- */
+.legend {
+  left: 12px; bottom: 96px; top: auto; width: 276px; padding: 8px 10px 10px;
+  max-height: 46vh;
+}
+.legend-head select { font-size: 11.5px; }
+.legend-head { display: flex; gap: 6px; align-items: center; }
+.legend-head select { flex: 1; }
+.mini {
+  flex: none; width: 24px; padding: 2px 0; font-size: 11px; line-height: 1;
+}
+.legend-body { margin-top: 8px; }
+.legend[data-collapsed="1"] .legend-body { display: none; }
+.lg-bar { display: flex; height: 10px; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--line); }
+.lg-bar i { flex: 1; }
+.lg-ends { display: flex; justify-content: space-between; margin-top: 3px;
+  color: var(--dim); font-size: 10px; }
+.lg-note { color: var(--dim); font-size: 10px; line-height: 1.4; margin-top: 5px; }
+.lg-sw { display: flex; align-items: center; gap: 6px; margin: 3px 0;
+  color: var(--dim); font-size: 10.5px; }
+.lg-sw i { width: 12px; height: 12px; border-radius: 3px; flex: none;
+  border: 1px solid rgba(255,255,255,0.18); }
+
+/* 出来事ログは右パネルの中で伸びる。★ここが読めないと何が起きたか分からない */
+#dash .evlog { max-height: none; overflow: visible; }
+
+/* --- 右のパネル: 見出しの数字を大きく --- */
+#dash { top: 12px; right: 12px; width: 300px; bottom: 96px; max-height: none; }
+.dash-hero { margin: -2px 0 10px; }
+.hero-k { color: var(--dim); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; }
+.hero-v { font-size: 30px; line-height: 1.1; color: var(--fg);
+  font-variant-numeric: tabular-nums; }
+.hero-sub { color: var(--dim); font-size: 10.5px; }
+.hero-sub .num { margin-left: 4px; }
+#dash details { margin: 10px 0; border-top: 1px solid var(--line); padding-top: 8px; }
+#dash summary { color: var(--dim); font-size: 11px; cursor: pointer;
+  letter-spacing: 0.06em; text-transform: uppercase; }
+#dash details[open] summary { margin-bottom: 8px; }
+
+/* --- 設定ドロワー --- */
+.drawer {
+  top: 12px; left: 176px; width: 288px; z-index: 40;
+}
+.drawer[hidden] { display: none; }
+.drawer .title { display: flex; align-items: center; }
+.drawer .title .mini { margin-left: auto; }
+/* 惑星の名札。★どの惑星を見ているのかは常に見えていること */
+#timebar .seedtag {
+  color: var(--dim); font-size: 10.5px; letter-spacing: 0.04em;
+  padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px;
+}
+
+/* --- 虫眼鏡（そのマスの内訳）--------------------------------------- */
+#inspector { top: 12px; left: 176px; width: 300px; max-height: calc(100vh - 120px); }
+#inspector .section { margin-top: 12px; }
+.cl {
+  margin: 6px 0; padding: 6px 8px; border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line);
+}
+.cl-head { display: flex; align-items: center; gap: 7px; }
+.cl-head i { width: 11px; height: 11px; border-radius: 3px; flex: none;
+  border: 1px solid rgba(255,255,255,0.25); }
+.cl-id { color: var(--fg); font-size: 11.5px; }
+.cl-share { margin-left: auto; color: var(--accent);
+  font-variant-numeric: tabular-nums; font-size: 11.5px; }
+.cl-caps { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+.cl-caps .ico { width: 20px; height: 20px;
+  image-rendering: pixelated; image-rendering: crisp-edges; }
+.cl-traits { display: flex; flex-wrap: wrap; gap: 4px 9px; margin-top: 5px;
+  color: var(--dim); font-size: 10px; }
+.cl-traits .tr b { color: var(--dim); font-weight: 400; margin-right: 3px; opacity: 0.75; }
+
+/* --- 介入の説明（照準を構えたときに出る）--------------------------
+   ★押す前に「何が起こりうるか」が読めないと、介入は「とりあえず押す」になる */
+.rail-hint.armed {
+  background: rgba(58, 46, 22, 0.92); border: 1px solid #ffd678;
+  border-radius: 8px; padding: 8px 9px; width: 236px;
+  backdrop-filter: blur(10px); color: var(--fg);
+}
+.iv-k { color: #ffd678; font-size: 9.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-top: 6px; }
+.iv-k:first-child { margin-top: 0; }
+.iv-k.warnk { color: #e08a6a; }
+.iv-v { color: var(--fg); font-size: 10.5px; line-height: 1.45; opacity: 0.92; }
+.iv-go { color: var(--dim); font-size: 10px; margin-top: 8px;
+  border-top: 1px solid rgba(255,214,120,0.25); padding-top: 6px; }
+
+/* --- 生命の系譜タブ ------------------------------------------------
+   ★横軸は 45.4 億年。**下のタイムラインと同じ時間軸**に揃える */
+.phylo {
+  top: 12px; left: 176px; width: 520px; bottom: 96px; max-height: none;
+  z-index: 40; display: flex; flex-direction: column;
+}
+.phylo[hidden] { display: none; }
+.phylo .title { display: flex; align-items: center; gap: 6px; }
+.phylo .title .mini { margin-left: 0; }
+.phylo .title #phyloReload { margin-left: auto; }
+.phylo-tree {
+  position: relative; margin-top: 8px; padding-top: 16px;
+  max-height: 38%; overflow-y: auto; flex: none;
+  border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+.ph-axis { position: absolute; inset: 0 0 auto 0; height: 14px; }
+.ph-tick { position: absolute; top: 0; bottom: -10000px; width: 1px;
+  background: rgba(255,255,255,0.10); }
+.ph-tick b { position: absolute; top: 0; left: 3px; color: var(--dim);
+  font-size: 9px; font-weight: 400; }
+.ph-row { display: flex; align-items: center; gap: 6px; height: 15px; cursor: pointer; }
+.ph-row:hover { background: rgba(255,255,255,0.05); }
+.ph-row.sel { background: rgba(255,255,255,0.10); }
+.ph-id { width: 22px; text-align: right; font-size: 9.5px;
+  font-variant-numeric: tabular-nums; }
+.ph-track { position: relative; flex: 1; height: 9px; }
+.ph-bar { position: absolute; top: 1px; height: 7px; border-radius: 2px; opacity: 0.55; }
+/* ★生存中は縁を付ける。絶滅した帯と一目で分けるため */
+.ph-bar.alive { opacity: 1; box-shadow: 0 0 0 1px rgba(255,255,255,0.45); }
+.phylo-detail { margin-top: 8px; overflow-y: auto; flex: 1; }
+.ph-tr { display: grid; grid-template-columns: 128px 1fr 34px; gap: 6px;
+  align-items: center; margin: 2px 0; color: var(--dim); font-size: 10px; }
+.ph-tr i { display: block; height: 6px; background: rgba(255,255,255,0.06);
+  border-radius: 2px; overflow: hidden; }
+.ph-tr i b { display: block; height: 100%; background: var(--accent); }
+.ph-tr .num { margin: 0; text-align: right; font-size: 10px; }
+.ph-gene { display: flex; align-items: center; gap: 8px; margin: 2px 0; font-size: 10px; }
+.g-kind { color: var(--fg); min-width: 150px; }
+.g-val { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 26px;
+  text-align: right; }
+/* ★相同（他の系統と由来を共有）と、この系統だけの発明を色で分ける */
+.g-org { margin-left: auto; font-size: 9.5px; padding: 0 5px; border-radius: 999px; }
+.g-org.homo { color: #8fd18f; border: 1px solid rgba(143,209,143,0.35); }
+.g-org.novo { color: #e0b070; border: 1px solid rgba(224,176,112,0.35); }
+
+/* --- 左の列: 縦を詰める ---------------------------------------------
+   ★神の手を足して縦に伸び、凡例パネルと重なった（実測）。
+   アイコンだけの横並びにして高さを稼ぐ */
+.rail-strip { display: flex; gap: 6px; }
+.act.icon { flex: 1; justify-content: center; padding: 5px 4px; }
+/* ★4 つ並べても列の幅（152px）に収まる大きさにすること。
+   28px だと 4 つ目がはみ出して【見えなくなった】（実測） */
+.act.icon img { width: 24px; height: 24px; flex: 0 0 24px; }
+.act.icon span { flex: none; font-size: 10px; }
+.act.icon.wide { gap: 5px; }
+/* 万一それでも足りない画面では、列自体をスクロールさせて重ならないようにする */
+.rail { max-height: calc(100vh - 150px); overflow-y: auto; overflow-x: hidden;
+  padding-right: 2px; }
+/* 栄養段階の札。★「何の生物か」への一番直接の答え */
+.cl-role { font-size: 9.5px; padding: 0 6px; border-radius: 999px;
+  color: #8fd18f; border: 1px solid rgba(143,209,143,0.35); margin-left: 6px; }
+.cl-role.eat { color: #e08a6a; border-color: rgba(224,138,106,0.4); }
+/* 地球との対応ラベル。★同定ではなく【比較】であることが分かる見せ方にする */
+.cl-analog { margin-top: 5px; font-size: 11px; color: #d8c49a;
+  display: flex; align-items: baseline; gap: 8px; }
+.cl-analog.novel { color: #b48fd1; }
+.an-m { color: var(--dim); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.an-era { color: var(--dim); font-size: 9.5px; margin-left: auto; }
+/* 体制。★「どんな姿の生き物か」そのもの */
+.cl-plan { margin-top: 4px; font-size: 10px; color: var(--dim); line-height: 1.4; }
+/* 自動で落ちた段。押した段（.active）と区別できる色にする */
+.sp.auto { background: #6b5320; color: #ffd678; border-color: #ffd678; }
+/* 遺伝子と能力の日本語の説明。★英語の識別子のまま出さない */
+.cap-row { margin: 5px 0; font-size: 10.5px; }
+.cap-row b { color: var(--fg); font-weight: 600; }
+.cap-row .hard { color: #ffd678; font-size: 9px; margin-left: 6px; }
+.cap-row .cap-what { display: block; color: var(--dim); font-size: 9.5px; line-height: 1.4; }
+/* 効いていない形質は薄く出して「未使用」と書く（機構があると勘違いさせない） */
+.ph-tr.unused { opacity: 0.45; }

@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>GPU climate verify</title></head>
+<body><pre id="out">実行中…</pre>
+<script type="module">
+import { runGpuVerification } from "/src/gpu/verify.ts"
+
+const out = document.getElementById("out")
+try { out.textContent = await runGpuVerification() }
+catch (e) { out.textContent = "ERROR: " + (e && e.stack ? e.stack : e) }
+</script></body></html>

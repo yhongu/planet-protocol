@@ -1,0 +1,11 @@
+node_modules/
+dist/
+
+# ★スクリーンショットは【検査の出力】であって成果物ではない。
+# `npm run smoke` と `probe-look.ts` が毎回書き換えるので、
+# 差分がノイズになる。必要なときだけ手で追加する
+snapshots/
+
+# タイムラプスの生データ（39MB）。再生成できる
+public/timelapse.bin
+public/timelapse.json
