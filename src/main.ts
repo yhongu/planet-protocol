@@ -488,13 +488,25 @@ function setArmed(kind: IvKind | null, btn?: HTMLButtonElement): void {
     b.classList.toggle("armed", kind !== null && b === btn)
   }
   const hint = $("railHint")
-  hint.classList.toggle("armed", kind !== null)
+  // ★説明は列の外の独立したパネル。構えていないときは隠す
+  hint.hidden = kind === null
+  $("railHintIdle").hidden = kind !== null
   if (!kind) {
-    hint.innerHTML = "ボタンを押してから地図をクリック"
+    hint.innerHTML = ""
   } else {
+    // 構えている間は他のパネルを閉じる（重なって読めなくなる）
+    $("settings").hidden = true
+    $("phylogeny").hidden = true
+    inspector.close()
     const info = IV_INFO[kind]
     const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    const NAME: Record<IvKind, string> = {
+      volcano: "巨大噴火", impact: "隕石", plateNudge: "プレート", uplift: "造山",
+      nudgeTrait: "神の手: 傾向を押す", injectGene: "神の手: 遺伝子の投入",
+      transferGenes: "神の手: 水平伝播",
+    }
     hint.innerHTML =
+      `<div class="iv-title">${NAME[kind]}</div>` +
       `<div class="iv-k">即時</div><div class="iv-v">${esc(info.now)}</div>` +
       `<div class="iv-k">その場</div><div class="iv-v">${esc(info.local)}</div>` +
       `<div class="iv-k">起こりうること</div><div class="iv-v">${esc(info.may)}</div>` +

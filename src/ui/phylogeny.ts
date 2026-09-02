@@ -119,27 +119,66 @@ export class Phylogeny {
    */
   private renderTree(): void {
     if (this.nodes.length === 0) { this.treeEl.innerHTML = ""; return }
-    // 生まれた順に並べる（系統樹の読み順）
-    const sorted = [...this.nodes].sort((a, b) => a.bornYear - b.bornYear || a.id - b.id)
-    const rows = sorted.map((n) => {
+    // ★**親の下に子を並べる（深さ優先）。** 生まれた順に並べると
+    // 親子が離れてしまい、誰から分かれたのかが読めない
+    const kids = new Map<number, PhyloNode[]>()
+    for (const n of this.nodes) {
+      const a = kids.get(n.parent) ?? []
+      a.push(n)
+      kids.set(n.parent, a)
+    }
+    for (const a of kids.values()) a.sort((x, y) => x.bornYear - y.bornYear || x.id - y.id)
+    const order: { n: PhyloNode; depth: number }[] = []
+    const rowOf = new Map<number, number>()
+    const walk = (n: PhyloNode, depth: number): void => {
+      rowOf.set(n.id, order.length)
+      order.push({ n, depth })
+      for (const c of kids.get(n.id) ?? []) walk(c, depth + 1)
+    }
+    // 親が居ないもの（LUCA、および親が history から失われたもの）が根
+    const ids = new Set(this.nodes.map((n) => n.id))
+    for (const n of this.nodes) {
+      if (n.parent < 0 || !ids.has(n.parent)) walk(n, 0)
+    }
+
+    const rows = order.map(({ n, depth }) => {
       const x0 = 100 * n.bornYear / PLANET_AGE
       const end = n.extinctYear >= 0 ? n.extinctYear : PLANET_AGE
       const w = Math.max(0.6, 100 * (end - n.bornYear) / PLANET_AGE)
       const col = rgb(cladeColor(n.id))
       const alive = n.extinctYear < 0
       const sel = n.id === this.selected ? " sel" : ""
+      // 深さは字下げで示す（枝の入れ子が目で追える）
       return `<div class="ph-row${sel}" data-id="${n.id}" title="クレード ${n.id}">` +
-        `<span class="ph-id" style="color:${col}">${n.id}</span>` +
+        `<span class="ph-id" style="color:${col};padding-left:${Math.min(depth, 6) * 4}px">` +
+        `${n.id}</span>` +
         `<span class="ph-track">` +
         `<i class="ph-bar${alive ? " alive" : ""}" style="left:${x0}%;width:${w}%;background:${col}"></i>` +
         `</span></div>`
     }).join("")
+
+    // ★**分岐の線**。親の帯から、子が生まれた時刻で真下へ降ろす。
+    // これが無いと「帯の一覧」であって系統樹ではない
+    const H = 15                                   // 1 行の高さ（`.ph-row` と対）
+    const links = order.map(({ n }) => {
+      if (n.parent < 0) return ""
+      const pr = rowOf.get(n.parent)
+      const cr = rowOf.get(n.id)
+      if (pr === undefined || cr === undefined) return ""
+      const x = 100 * n.bornYear / PLANET_AGE
+      const top = Math.min(pr, cr) * H + H / 2
+      const h = Math.abs(cr - pr) * H
+      return `<i class="ph-link" style="left:${x}%;top:${top}px;height:${h}px;` +
+        `background:${rgb(cladeColor(n.id))}"></i>`
+    }).join("")
+
     // 時代の目盛り（下のタイムラインと同じ 4/3/2/1 Ga）
     const ticks = [4, 3, 2, 1].map((ga) => {
       const x = 100 * (PLANET_AGE - ga * 1e9) / PLANET_AGE
       return `<i class="ph-tick" style="left:${x}%"><b>${ga}Ga</b></i>`
     }).join("")
-    this.treeEl.innerHTML = `<div class="ph-axis">${ticks}</div>${rows}`
+    this.treeEl.innerHTML = `<div class="ph-axis">${ticks}</div>` +
+      `<div class="ph-rows">${rows}<div class="ph-links">${links}</div></div>`
   }
 
   private renderDetail(): void {

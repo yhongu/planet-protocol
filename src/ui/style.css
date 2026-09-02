@@ -339,11 +339,17 @@ button:active { background: #141b23; }
 
 /* --- 介入の説明（照準を構えたときに出る）--------------------------
    ★押す前に「何が起こりうるか」が読めないと、介入は「とりあえず押す」になる */
-.rail-hint.armed {
-  background: rgba(58, 46, 22, 0.92); border: 1px solid #ffd678;
-  border-radius: 8px; padding: 8px 9px; width: 236px;
+/* ★列の外に置く独立したパネル。列は 152px 幅なので中には入らない */
+.ivhint {
+  position: absolute; left: 176px; top: 12px; width: 320px; z-index: 45;
+  background: rgba(58, 46, 22, 0.94); border: 1px solid #ffd678;
+  border-radius: 10px; padding: 10px 12px;
   backdrop-filter: blur(10px); color: var(--fg);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  max-height: calc(100vh - 120px); overflow-y: auto;
 }
+.ivhint[hidden] { display: none; }
+.ivhint .iv-title { color: #ffd678; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
 .iv-k { color: #ffd678; font-size: 9.5px; letter-spacing: 0.08em;
   text-transform: uppercase; margin-top: 6px; }
 .iv-k:first-child { margin-top: 0; }
@@ -435,3 +441,7 @@ button:active { background: #141b23; }
    対話中は Newton を打ち切っているので残差が残るのが正常 */
 #timebar .laggy { color: var(--dim); font-size: 10px; opacity: 0.85; }
 #timebar .warnish { color: #ffd678; font-size: 10px; }
+/* 系統樹の分岐の線。★これが無いと「帯の一覧」であって系統樹ではない */
+.ph-rows { position: relative; }
+.ph-links { position: absolute; inset: 0 0 0 28px; pointer-events: none; }
+.ph-link { position: absolute; width: 2px; opacity: 0.5; border-radius: 1px; }

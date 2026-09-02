@@ -46,7 +46,7 @@
             title="水平伝播（同じマスの 2 系統で遺伝子を渡す）">
             <img src="icons/ev-speciation.png" alt="" /></button>
         </div>
-        <div class="rail-hint" id="railHint">ボタンを押してから地図をクリック</div>
+        <div class="rail-hint" id="railHintIdle">ボタンを押してから地図をクリック</div>
         <div class="rail-strip">
           <button id="phyloBtn" class="act icon wide" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
             <img src="icons/ev-speciation.png" alt="" /><span>系譜</span></button>
@@ -155,6 +155,10 @@
            虫眼鏡。**そのマスの中身**（1 マスに 1 種族ではない）。
            地図をクリックすると開く
            ============================================================ -->
+      <!-- ★介入の説明は【列の外】に置く。列は 152px 幅で overflow-x: hidden なので、
+           中に置くと横にはみ出た分が黙って切れる（実際に切れた） -->
+      <div id="railHint" class="ivhint" hidden></div>
+
       <div id="inspector" class="panel drawer" hidden></div>
 
       <!-- ============================================================

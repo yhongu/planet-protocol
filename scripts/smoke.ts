@@ -176,10 +176,16 @@ async function main() {
     expression: `document.querySelector('.iv[data-kind="volcano"]').click()`,
   })
   await sleep(200)
-  const armed = (await send("Runtime.evaluate", {
+  // ★構えた【直後】に読む。地図をクリックすると解除されるので、あとでは読めない
+  const armedState = (await send("Runtime.evaluate", {
     returnByValue: true,
-    expression: `document.querySelector('.iv[data-kind="volcano"]').classList.contains("armed")`,
-  })).result.value as boolean
+    expression: `({
+      armed: document.querySelector('.iv[data-kind="volcano"]').classList.contains("armed"),
+      hintShown: !document.getElementById("railHint").hidden,
+      hint: document.getElementById("railHint").textContent.replace(/\\s+/g," ").slice(0,70),
+    })`,
+  })).result.value as { armed: boolean; hintShown: boolean; hint: string }
+  const armed = armedState.armed && armedState.hintShown
   // 地図の中央をクリックする（ドラッグと区別するため、動かさずに押して離す）
   await send("Runtime.evaluate", {
     expression: `(() => {
@@ -199,7 +205,7 @@ async function main() {
       aero: document.getElementById("dAero").textContent,
       events: document.getElementById("eventLog").textContent.replace(/\\s+/g," ").slice(0,120),
       legend: document.getElementById("legendBody").textContent.replace(/\\s+/g," ").slice(0,80),
-      armedHint: document.getElementById("railHint").textContent.replace(/\\s+/g," ").slice(0,60),
+
       life: document.getElementById("dLife").textContent,
     })`,
   })).result.value as Record<string, string>
@@ -254,6 +260,7 @@ async function main() {
   console.log(`  出来事   ${after.events || "（まだ無し）"}`)
   console.log("\n--- 介入: 巨大噴火（照準 -> 地図をクリック）---")
   console.log(`  照準モード ${armed}`)
+  console.log(`  説明パネル ${armedState.hintShown ? "出た" : "★出ない"}  ${armedState.hint}`)
   console.log(`  CO₂ ${co2Before} -> ${iv.co2}   エアロゾル ${iv.aero}`)
   console.log(`  出来事 ${iv.events}`)
   console.log("\n--- 新しい UI ---")
@@ -279,7 +286,7 @@ async function main() {
   if (!advanced) console.log("  ! 時間が進んでいない")
   if (!erupted) console.log("  ! 介入が効いていない")
   if (!skipped) console.log("  ! 「次の出来事まで」が進まない/待機が解除されない")
-  if (!armed) console.log("  ! 介入のボタンが照準モードにならない")
+  if (!armed) console.log("  ! 照準モードにならない、または説明パネルが出ない")
   if (!legendOk) console.log("  ! 凡例が出ていない")
   if (!phyloOk) console.log("  ! 系譜タブが開かない/描けない")
   if (!globeOk) console.log("  ! 球体表示が真っ黒")
