@@ -311,21 +311,49 @@ export interface LifeParams {
    */
   symbolicTolerance: number
   /**
-   * 生物起源の雲凝結核が動かせる雲アルベドの幅。
+   * 生物起源の雲凝結核が動かせる雲アルベドの幅。**★既定 0。入れてはいけない。**
    *
-   * ★**生命が惑星の反射率を変える唯一の経路**（CLAW。Charlson 1987、
-   * Rosing 2010）。生物圏が小さく `ccnProduction` の低い時代は
-   * **核が少なく雲が暗い** = 惑星が暖かい。
-   * 現代の地球（生物圏 1・CCN の形質が育った状態）で**ずれ 0** になるよう、
-   * 「指数 − 1」の形で入れる。較正は動かない。
+   * 生命が惑星の反射率を変える経路（CLAW。Charlson 1987、Rosing 2010）。
+   * 生物圏が小さい時代は核が少なく雲が暗い = 惑星が暖かい。
+   * 太古代を +3〜5℃ 暖める効果があり、**暗い太陽のパラドクスに効く**。
    *
-   * 0.03 は「太古代（生物圏 0.3）で −0.021 = 約 +7 W/m²」に相当。
-   * ★駆動するのは**生物圏の大きさ**であって `ccnProduction` の形質ではない
-   * （`publishCcn` の説明を読むこと）。
-   * ★**Rosing の説は係争中**（Goldblatt & Zahnle 2011 の反論がある）ので、
-   * これを暗い太陽のパラドクスの答えだと言い切ってはいけない。
+   * ★**それでも既定 0 にする理由: 収支が閉じない。**
+   *
+   * 実測（2026-09-02・64x32・全史・ブラウザと同じ打ち切り `maxOuter: 8`。
+   * 放射の不平衡の中央値 [W/m²]）:
+   *
+   * | 太古代 | ヘイズ on | ヘイズ off |
+   * |---|---|---|
+   * | **CCN on** | **1.6** | **0.56** |
+   * | CCN off | 5.6e-3 | 7.6e-4 |
+   *
+   * **CCN が主因**（同じ列で 300〜700 倍）、**ヘイズは増幅器**（同じ行で 3 倍）。
+   *
+   * 【なぜ閉じないか】生物圏 → CCN → アルベド → 気温 → 生物圏 という輪が
+   * **Newton ソルバの外**で回っている。気候ソルバは `biosphereProxy` を
+   * 知らないので、アルベドが外から動かされたぶんを残差として抱えたままになる。
+   * ★**階段を均しても効かない**（`ccnRelaxYears` を 1/5/20 Myr で振っても
+   * 1.6/1.5/1.8 のまま）。輪が外側にあることが原因なので、平滑化では消せない。
+   *
+   * 【入れるとしたら】`ClimateParams` に生物量を渡し、**Newton の内側で解く**。
+   * `dAlphaDT` に相当する項も要る。CPU と GPU の両方。M5 と気候の本格的な結合で、
+   * 半日仕事（`WORK-IN-PROGRESS.md` のアイデア置き場）。
+   *
+   * ★**Rosing の説は係争中**（Goldblatt & Zahnle 2011 の反論）でもあるので、
+   * 暗い太陽のパラドクスの答えだと言い切ってはいけない。
+   *
+   * ★**見落とした経緯**: 監査の「エネルギー収支」は**全史の中央値**で見るので、
+   * CCN がゼロでないのが太古代だけだと**中央値に埋もれて PASS する**（2.2e-4）。
+   * `CLAUDE.md` の 2 を時代分解でやるべきところで怠った。
    */
   ccnAlbedoMax: number
+  /**
+   * CCN のずれが目標へ近づく時定数 [yr]。
+   * ★**生命の刻み（100 万年）と揃える。** 目標は生命の刻みで更新されるので、
+   * この時定数で緩和すると、その階段を滑らかに繋いだ形になる。
+   * 気候の結合が 20 万年なら 1 刻みで 18% 進み、打ち切った Newton でも吸収できる。
+   */
+  ccnRelaxYears: number
   /**
    * 窒素の要求。`nutrientN` の形質が上げる。
    * ★リンと同じく**制限であって増幅ではない**（リービッヒの最小律）。
@@ -412,7 +440,8 @@ export const EARTH_LIFE: LifeParams = {
   brainTolerance: 0.8,
   symbolicCost: 0.1,
   symbolicTolerance: 0.35,
-  ccnAlbedoMax: 0.03,
+  ccnAlbedoMax: 0,
+  ccnRelaxYears: 1_000_000,
   nitrogenNeedMax: 1.6,
   abioticNitrogen: 0.45,
   nitrogenFromFixers: 12,
@@ -1130,7 +1159,10 @@ export class Life implements Subsystem {
    */
   private publishCcn(world: World): void {
     const index = Math.min(1, world.globals.biosphereProxy)
-    world.globals.ccnAlbedoShift = this.params.ccnAlbedoMax * (index - 1)
+    // ★**目標だけを置く。実際のずれは気候の刻みで緩和する**
+    // （`world.relaxCcn`）。ここで直接書くと、生命の刻み（100 万年）ごとに
+    // 階段状に飛んで、打ち切った Newton が吸収できずに残差が残る。
+    world.globals.ccnAlbedoTarget = this.params.ccnAlbedoMax * (index - 1)
   }
 
   private publishBiosphere(world: World): void {

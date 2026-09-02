@@ -266,6 +266,16 @@ export interface PlanetGlobals {
    */
   ccnAlbedoShift: number
   /**
+   * CCN のずれの**目標値**。`life.ts` が生物圏の大きさから決める。
+   *
+   * ★**目標と実際を分けること。** 生命の刻みは 100 万年、気候の結合は
+   * 20 万年（×20）なので、生命が動くたびにずれを**階段状に飛ばす**と、
+   * 打ち切った Newton が吸収しきれず**残差が 4.3 W/m² 残った**
+   * （2026-09-02 の実測。太古代だけ他の時代の 770 倍）。
+   * 気候の刻みごとに `ccnRelaxYears` の時定数でここへ緩和する。
+   */
+  ccnAlbedoTarget: number
+  /**
    * 生物圏の大きさ（現代の地球を 1）。**メタン生成の供給**に使う。
    *
    * 現在の地球から始める世界は 1（現代の生物圏がある）。
@@ -330,6 +340,7 @@ export function earthGlobals(): PlanetGlobals {
     ch4: 0.7,
     o2: 20.9,
     ccnAlbedoShift: 0,
+    ccnAlbedoTarget: 0,
     biosphereProxy: 1,
     n2Pressure: 1.0,
     seaLevel: 0,

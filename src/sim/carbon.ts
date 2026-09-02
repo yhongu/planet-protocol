@@ -417,6 +417,8 @@ export class CarbonCycle implements Subsystem {
     // ★生物起源の CCN は【現在の地球で 0】。0 でないと較正が動く
     if (!near(g.ccnAlbedoShift, 0, 1e-9))
       bad.push(`CCN のアルベドずれ ${g.ccnAlbedoShift}（0 のはず。生命が雲を変えている）`)
+    if (!near(g.ccnAlbedoTarget, 0, 1e-9))
+      bad.push(`CCN の目標 ${g.ccnAlbedoTarget}（0 のはず）`)
     if (!near(g.n2Pressure, 1, 1e-9))
       bad.push(`N2 ${g.n2Pressure}気圧（1 のはず。圧力広がりが強制に入る）`)
     if (!near(g.oceanWaterFraction, 1, 1e-9))

@@ -458,6 +458,7 @@ export class World {
       throttled = throttled || r.throttled
       for (const k of Object.keys(r.fired)) fired[k] = (fired[k] ?? 0) + r.fired[k]
       if (this.evolvingSun) this.applySun()
+      this.relaxCcn(q)
       this.solveClimate(opts)
       if (r.yearsAdvanced <= 0) break
       remaining -= r.yearsAdvanced
@@ -466,6 +467,7 @@ export class World {
       // 要求が小さすぎて何も進まなかった場合も気候だけは更新する
       this.decayAerosol(years)
       if (this.evolvingSun) this.applySun()
+      this.relaxCcn(years)
       this.solveClimate(opts)
     }
     return { yearsAdvanced: advanced, yearsRequested: years, substeps, throttled, fired }
@@ -481,6 +483,7 @@ export class World {
     const report = this.loop.advance(this, years)
     this.lastStep = report
     if (this.evolvingSun) this.applySun()
+    this.relaxCcn(years)
     await this.solveClimateAsync(opts)
     this.finishTick(co2Before)
     return report
@@ -506,6 +509,25 @@ export class World {
       this.globals.ch4 = ch4FromOxygen(this.params, this.globals.o2,
         this.globals.biosphereProxy, this.globals.co2)
     }
+  }
+
+  /**
+   * 生物起源の CCN によるアルベドのずれを、目標へ緩和する。
+   *
+   * ★**気候の刻みごとに呼ぶこと。** 目標（`ccnAlbedoTarget`）は生命が
+   * 100 万年ごとに更新するので、そのまま使うと**階段状に飛ぶ**。
+   * 対話中の気候ソルバは Newton を 8 回で打ち切っているので飛びを吸収できず、
+   * **太古代の残差が 4.3 W/m² になった**（他の時代の 770 倍。2026-09-02 の実測）。
+   *
+   * 物理的にもこちらが正しい ——
+   * 生物圏が 100 万年で瞬間的に入れ替わるわけではない。
+   */
+  relaxCcn(years: number): void {
+    const g = this.globals
+    const tau = this.life.params.ccnRelaxYears
+    if (!(tau > 0)) { g.ccnAlbedoShift = g.ccnAlbedoTarget; return }
+    const k = 1 - Math.exp(-years / tau)
+    g.ccnAlbedoShift += (g.ccnAlbedoTarget - g.ccnAlbedoShift) * k
   }
 
   /**
