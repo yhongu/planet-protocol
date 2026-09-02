@@ -103,6 +103,22 @@ npx vite-node scripts/probes/probe-life.ts    # 生命の獲得の鎖がどこ�
 
 `proto/` は TypeScript を書く前の数値検証（Python）。[proto/RESULTS.md](proto/RESULTS.md) 参照。
 
+## ライセンス
+
+**Copyright (c) 2026 Nilklops Inc. All rights reserved.**
+
+権利者の書面による事前の許諾なく、複製・改変・頒布・商用利用はできません。
+詳細は [LICENSE](LICENSE)。
+
+- **実行時依存はゼロ**（`dependencies` が空）。配布物に他者のコードは含まれません
+- ビルドツールは MIT 43 / Apache-2.0 2 / ISC 2 / BSD-3-Clause 2 で、
+  いずれも本ソフトウェアのライセンスに制約を課しません
+- 引用している論文は**方程式を実装している**だけで、本文・図表・付属コードの
+  転載や流用はしていません（`docs/06-science-basis.md` に出典）
+
+> あとから緩める（MIT 等にする）ことはいつでもできますが、一度緩めたものを
+> 閉じ直すことはできません。**選択肢を残すために閉じてあります。**
+
 ## 技術スタック
 
 TypeScript + Vite + Canvas。シミュレーションは Web Worker、決定論的。
