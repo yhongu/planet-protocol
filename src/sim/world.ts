@@ -551,10 +551,30 @@ export class World {
    * 閾値は実測の分布から決める（氷の P5 0.045 / 中央 0.245 / P95 0.453）。
    * ヒステリシスを付けて、閾値付近の振動で連発しないようにする。
    */
+  private lastEpochId = ""
   private glaciationState = 0
   /** 変わろうとしている状態と、そうなった年（続いて初めて刻む） */
   private glaciationPending = 0
   private glaciationPendingSince = 0   // 0=未判定 1=氷期 -1=温暖期
+  /**
+   * 時代の変わり目をタイムラインに刻む。
+   *
+   * ★**地質年代の境界そのものが出来事**。出来事が薄いことへの答えの 1 つで、
+   * しかも**必ず 4 回起きる**ので、どの惑星でも骨組みになる。
+   */
+  private detectEpoch(): void {
+    const now = this.epoch.id
+    if (this.lastEpochId === "") { this.lastEpochId = now; return }
+    if (now === this.lastEpochId) return
+    this.lastEpochId = now
+    this.events.push({
+      year: this.globals.yearsElapsed, kind: "milestone",
+      code: `epoch-${now}`,
+      text: `${this.epoch.label}に入った（平均 ${this.stats!.meanT.toFixed(1)}℃・` +
+        `CO₂ ${this.globals.co2.toFixed(0)}ppm）`,
+    })
+  }
+
   private detectGlaciation(): void {
     // 海が無ければ氷も無い（マグマオーシャン期）
     if (this.globals.oceanWaterFraction < 0.05) {
@@ -639,6 +659,7 @@ export class World {
   }
 
   private finishTick(co2Before: number): void {
+    this.detectEpoch()
     this.detectGlaciation()
     this.detectSeaLevel()
     this.ledger.observed("co2", this.globals.co2 - co2Before)

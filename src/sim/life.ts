@@ -59,12 +59,29 @@ import {
   type Genome, type Phenotype, type MutationParams, EARTH_MUTATION,
   GENE_KINDS, OriginCounter, cloneGenome, createPhenotype, decodeGenome,
   seedGenome, mutate, hasCapability, addGene, spliceFrom, removeGene,
+  FIRST_CAPABILITY,
 } from "./genome"
 
 /**
  * 同時に追跡するクレードの上限（§1.6「計算量への答え」）。
  * 場のレーン数になるので、増やすときはメモリも見ること。
  */
+/**
+ * 「初めて◯◯が現れた」の文言と絵。
+ * ★能力の識別子をそのまま出さない（`geneLabels.ts` と同じ方針）。
+ */
+const FIRST_LABEL: Record<string, { ja: string; icon: string }> = {
+  capMotility: { ja: "泳ぐ生き物", icon: "cap-motility" },
+  capPredation: { ja: "他の生き物を食べるもの", icon: "cap-predation" },
+  capSkeleton: { ja: "骨格を持つもの", icon: "cap-skeleton" },
+  capMulticellular: { ja: "多細胞生物", icon: "cap-multicellular" },
+  capOxygenicPhotosynthesis: { ja: "酸素を出す光合成", icon: "cap-oxygenic-photo" },
+  capEukaryotic: { ja: "真核生物", icon: "cap-eukaryotic" },
+  capNitrogenFixation: { ja: "窒素を固定するもの", icon: "cap-nitrogen-fixation" },
+  capLandTolerance: { ja: "陸に上がったもの", icon: "cap-land-tolerance" },
+  capSymbolic: { ja: "言語を持つもの", icon: "cap-symbolic" },
+}
+
 export const MAX_CLADES = 16
 
 export const LIFE_FIELDS: readonly FieldSpec[] = [
@@ -283,6 +300,10 @@ export interface LifeParams {
    * ★**体制は簡単には変わらない**（§2.0b）。0.35 なら 3 回の分岐に 1 回。
    */
   bodyPlanChange: number
+  /** 大量絶滅の判定: この期間内に */
+  massExtinctionWindow: number
+  /** これだけの系統が消えたら大量絶滅 */
+  massExtinctionCount: number
   /**
    * 体サイズの効き方。**大きいほど餌を捕まえられるが、必要な資源も増える。**
    *
@@ -450,6 +471,8 @@ export const EARTH_LIFE: LifeParams = {
   captureMulticellular: 0.2,
   skeletonDefence: 0.6,
   bodyPlanChange: 0.35,
+  massExtinctionWindow: 100e6,
+  massExtinctionCount: 3,
   bodyCapture: 0.3,
   bodyNeed: 0.5,
   brainCost: 0.12,
@@ -534,6 +557,18 @@ export class Life implements Subsystem {
   private preyBuf: Float32Array | null = null
   /** 全球の固定窒素の在庫（`update` が毎ティック作る）。診断にも出す */
   nitrogen = 1
+  /**
+   * ★**その惑星で初めてその能力が現れた年**（能力の添字 → 年）。
+   *
+   * 出来事が薄いことへの答え（`WORK-IN-PROGRESS.md` の 0a）。
+   * **惑星ごとに 1 回しか起きず、起きない惑星がある**（真核 4/8・捕食者 6/8）ので、
+   * **その惑星の個性がそのまま出来事になる**。
+   */
+  readonly firstSeen = new Map<number, number>()
+  /** 直近の絶滅の年（大量絶滅の判定に使う） */
+  private recentExtinctions: number[] = []
+  /** 最後に大量絶滅を刻んだ年。同じ episode を二重に刻まないため */
+  private lastMassExtinction = -Infinity
   /** 捕食者どうしの競争（生産者とは別の土俵） */
   private sumBufC: Float32Array | null = null
   private maxBufC: Float32Array | null = null
@@ -666,7 +701,12 @@ export class Life implements Subsystem {
         year: c.extinctYear, kind: "milestone", code: "ev-extinction",
         text: `絶滅: クレード ${c.id}（${((c.extinctYear - c.bornYear) / 1e6).toFixed(0)}Myr 続いた）`,
       })
+      this.recentExtinctions.push(c.extinctYear)
     }
+
+    // ★**初めて現れた能力を刻む。** 添字順に回すこと（決定論）
+    this.detectFirsts(world)
+    this.detectMassExtinction(world)
 
     // --- 変異と分岐 ---（**添字順に回すこと。決定論のため。docs/04-6**）
     const pSpec = 1 - fastExp(-this.params.speciationRate * dtYears)
@@ -1161,6 +1201,57 @@ export class Life implements Subsystem {
    * **メタン生成の供給**になるので、生物圏が育つと CH4 が増える。
    * 現代の地球を 1 とするので、モデルの総バイオマスを基準値で割る。
    */
+  /**
+   * ★**「初めて◯◯が現れた」を刻む。**
+   *
+   * 出来事が薄いことへの答え。能力は**惑星ごとに 1 回しか初出せず、
+   * 起きない惑星がある**ので、これがそのまま「この惑星がどこまで行ったか」になる。
+   * 絵は `public/icons/cap-*.png` がそのまま使える。
+   */
+  private detectFirsts(world: World): void {
+    for (const c of this.clades) {
+      for (let k = FIRST_CAPABILITY; k < GENE_KINDS.length; k++) {
+        if (!hasCapability(c.phenotype, k)) continue
+        if (this.firstSeen.has(k)) continue
+        this.firstSeen.set(k, world.globals.yearsElapsed)
+        const meta = FIRST_LABEL[GENE_KINDS[k]]
+        if (!meta) continue
+        world.events.push({
+          year: world.globals.yearsElapsed, kind: "milestone", code: meta.icon,
+          text: `初めて${meta.ja}が現れた（クレード ${c.id}）`,
+        })
+      }
+    }
+  }
+
+  /**
+   * ★**大量絶滅を刻む。**
+   *
+   * 個別の絶滅より意味がある。地球の五大絶滅にあたるもので、
+   * **原因（氷期・隕石・GOE）と時期が一致するかを目で確認できる**ようになる。
+   */
+  private detectMassExtinction(world: World): void {
+    const now = world.globals.yearsElapsed
+    const p = this.params
+    // 窓の外に出たものは捨てる
+    this.recentExtinctions = this.recentExtinctions.filter(
+      (y) => now - y <= p.massExtinctionWindow)
+    if (this.recentExtinctions.length < p.massExtinctionCount) return
+    // 同じ episode を二重に刻まない
+    if (now - this.lastMassExtinction < p.massExtinctionWindow) return
+    this.lastMassExtinction = now
+    const n = this.recentExtinctions.length
+    const span = (now - Math.min(...this.recentExtinctions)) / 1e6
+    this.recentExtinctions = []
+    world.events.push({
+      year: now, kind: "milestone", code: "ev-extinction",
+      // 同じステップで消えた場合は期間を書かない（「0Myr のうちに」は読めない）
+      text: `★大量絶滅: ${n} 系統が` +
+        (span >= 1 ? `${span.toFixed(0)}Myr のうちに消えた` : `同時に消えた`) +
+        `（残り ${this.clades.length} 系統）`,
+    })
+  }
+
   /**
    * 生物起源の雲凝結核。**生命が惑星の反射率を変える経路**（CLAW）。
    *
