@@ -370,10 +370,12 @@ button:active { background: #141b23; }
 .phylo .title #phyloReload { margin-left: auto; }
 .phylo-tree {
   position: relative; margin-top: 8px; padding-top: 16px;
-  max-height: 38%; overflow-y: auto; flex: none;
+  /* ★樹が主役。詳細に場所を取られると系統樹として読めない（実測で 35% しか無かった） */
+  flex: 1 1 58%; min-height: 0; overflow-y: auto;
   border-bottom: 1px solid var(--line); padding-bottom: 6px;
 }
-.ph-axis { position: absolute; inset: 0 0 auto 0; height: 14px; }
+/* 目盛りは帯と同じ範囲に置く（左 28px は id、右 132px は名前） */
+.ph-axis { position: absolute; inset: 0 132px auto 28px; height: 14px; }
 .ph-tick { position: absolute; top: 0; bottom: -10000px; width: 1px;
   background: rgba(255,255,255,0.10); }
 .ph-tick b { position: absolute; top: 0; left: 3px; color: var(--dim);
@@ -384,10 +386,18 @@ button:active { background: #141b23; }
 .ph-id { width: 22px; text-align: right; font-size: 9.5px;
   font-variant-numeric: tabular-nums; }
 .ph-track { position: relative; flex: 1; height: 9px; }
+/* 末端の名前。教科書の系統樹で右に並ぶ系統名にあたる */
+.ph-name { flex: none; width: 132px; font-size: 9.5px; color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px; }
+.ph-name.novel { color: #b48fd1; }
+.ph-name.eat { color: #e08a6a; }
 .ph-bar { position: absolute; top: 1px; height: 7px; border-radius: 2px; opacity: 0.55; }
 /* ★生存中は縁を付ける。絶滅した帯と一目で分けるため */
 .ph-bar.alive { opacity: 1; box-shadow: 0 0 0 1px rgba(255,255,255,0.45); }
-.phylo-detail { margin-top: 8px; overflow-y: auto; flex: 1; }
+/* ★右端が切れないよう余白を取る（スクロールバーに値が食われていた） */
+.phylo-detail { margin-top: 8px; overflow-y: auto; flex: 1 1 42%; min-height: 0;
+  padding-right: 8px; }
+.phylo-detail .row.stat > span:last-child { padding-left: 8px; }
 .ph-tr { display: grid; grid-template-columns: 128px 1fr 34px; gap: 6px;
   align-items: center; margin: 2px 0; color: var(--dim); font-size: 10px; }
 .ph-tr i { display: block; height: 6px; background: rgba(255,255,255,0.06);
@@ -443,7 +453,8 @@ button:active { background: #141b23; }
 #timebar .warnish { color: #ffd678; font-size: 10px; }
 /* 系統樹の分岐の線。★これが無いと「帯の一覧」であって系統樹ではない */
 .ph-rows { position: relative; }
-.ph-links { position: absolute; inset: 0 0 0 28px; pointer-events: none; }
+/* 名前の幅（132px）を除いた範囲が時間軸。線もそこに合わせる */
+.ph-links { position: absolute; inset: 0 132px 0 28px; pointer-events: none; }
 .ph-link { position: absolute; width: 2px; opacity: 0.5; border-radius: 1px; }
 
 /* --- 遺伝子地図 -----------------------------------------------------

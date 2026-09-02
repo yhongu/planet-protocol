@@ -17,6 +17,7 @@ import { earthAnalog } from "./earthAnalog"
 import { describePlan, AXES } from "../sim/bodyPlan"
 import { GENE_LABELS } from "./geneLabels"
 import { geneMapHtml } from "./geneMap"
+import { earthAnalog as analogOf } from "./earthAnalog"
 
 const PLANET_AGE = 4.54e9
 
@@ -149,13 +150,20 @@ export class Phylogeny {
       const col = rgb(cladeColor(n.id))
       const alive = n.extinctYear < 0
       const sel = n.id === this.selected ? " sel" : ""
+      // ★**末端に名前を出す。** クリックしないと何の系統か分からないのでは、
+      // 参考にした教科書の系統樹（右に系統名が並ぶ）にならない
+      const an = analogOf(n.capabilities, n.traits)
+      const pred = (n.capabilities
+        & (1 << (GENE_KINDS.indexOf("capPredation") - FIRST_CAPABILITY))) !== 0
       // 深さは字下げで示す（枝の入れ子が目で追える）
       return `<div class="ph-row${sel}" data-id="${n.id}" title="クレード ${n.id}">` +
         `<span class="ph-id" style="color:${col};padding-left:${Math.min(depth, 6) * 4}px">` +
         `${n.id}</span>` +
         `<span class="ph-track">` +
         `<i class="ph-bar${alive ? " alive" : ""}" style="left:${x0}%;width:${w}%;background:${col}"></i>` +
-        `</span></div>`
+        `</span>` +
+        `<span class="ph-name${an.novel ? " novel" : ""}${pred ? " eat" : ""}">` +
+        `${esc(an.name)}</span></div>`
     }).join("")
 
     // ★**分岐の線**。親の帯から、子が生まれた時刻で真下へ降ろす。

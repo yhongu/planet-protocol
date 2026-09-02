@@ -9,3 +9,6 @@ snapshots/
 # タイムラプスの生データ（39MB）。再生成できる
 public/timelapse.bin
 public/timelapse.json
+
+# 系統樹の確認用データ（probe-phylo.ts が生成する）
+public/phylo.json

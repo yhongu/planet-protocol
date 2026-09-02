@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <title>系統樹の見た目の確認</title>
+    <link rel="stylesheet" href="/src/ui/style.css" />
+    <style>
+      /* 単体で見るのでパネルを画面いっぱいに */
+      body { margin: 0; background: #0a0d12; }
+      #phylogeny { position: fixed; inset: 12px; width: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="phylogeny" class="panel phylo"></div>
+    <script type="module">
+      import { Phylogeny } from "/src/ui/phylogeny.ts"
+      const p = new Phylogeny(document.getElementById("phylogeny"))
+      document.getElementById("phylogeny").hidden = false
+      const d = await (await fetch("/phylo.json")).json()
+      p.setData(d.nodes, d.originYear, d.originSite)
+      window.__ready = true
+    </script>
+  </body>
+</html>
