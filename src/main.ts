@@ -188,10 +188,22 @@ function boot(): void {
       // 赤いバナーで「速度を落としてください」と頼むより、
       // こちらで落として、落としたことを時間バーに出す方がよい。
       // 黙って落とすのは「解けなかったことは必ず外へ出す」に反する
-      $("tRate").textContent = speed === 0 ? "一時停止"
+      // ★**「解が遅れている」は赤いバナーではなく、ここに小さく出す。**
+      //
+      // 対話中は Newton を打ち切っているので**残差が残るのが正常**（`showOutOfRange`
+      // の説明）。物理が壊れているわけではないので、赤で警告してはいけない。
+      // ただし**黙るのも違う** —— いま見ている気温が平衡値から少し遅れている
+      // ことは、読む人が知っておくべき情報（「解けなかったことは必ず外へ出す」）。
+      //
+      // 許容は強制項の大きさで決める。冥王代は内部熱流 285 W/m² あり、
+      // **惑星が物理的に冷えている最中**なので数 W/m² の残差は異常ではない
+      const lagTol = Math.max(1, 0.05 * (m.globals.internalHeatFlux ?? 0.087))
+      const lagging = Math.abs(s.imbalance) >= lagTol && s.clampedCells === 0
+      $("tRate").innerHTML = speed === 0 ? "一時停止"
         : `${fmtYears(m.yearsPerSecond)}/秒`
-          + (m.autoSlowed ? ` ⚠×${m.effectiveSpeed} に自動で減速（気候が解けないため）` : "")
-          + (m.step?.throttled ? " ⚠追いつけず" : "")
+          + (m.autoSlowed ? ` <span class="warnish">⚠×${m.effectiveSpeed} に自動で減速</span>` : "")
+          + (m.step?.throttled ? ` <span class="warnish">⚠追いつけず</span>` : "")
+          + (lagging ? ` <span class="laggy" title="気候ソルバは対話中に反復を打ち切っています（物理は壊れていません）。速度を落とすと追いつきます">≈ 気候が追従中</span>` : "")
       // 速度ボタンの見た目も実際の段に合わせる（押した段と違うことがある）
       for (const b of document.querySelectorAll<HTMLButtonElement>(".sp:not(.skip)")) {
         b.classList.toggle("auto", m.autoSlowed && Number(b.dataset.speed) === m.effectiveSpeed)
@@ -300,34 +312,51 @@ function showOutOfRange(s: {
   const el = $("outOfRange")
   // 自動減速が対処中なら黙っている（時間バーには出ている）
   if (handling) { el.hidden = true; return }
+
+  // ★★**バナーは「本当に壊れている」ときだけ出す。**
+  //
+  // 【なぜ不平衡で判定してはいけないか】
+  // ブラウザは**わざと Newton 反復を打ち切って**動いている
+  // （`simWorker.ts` の `INTERACTIVE` の `maxOuter: 8`）。打ち切らないと
+  // 地形が動いた直後のフレームが 700ms かかる。
+  // つまり**対話中は残差が残るのが正常**で、それをバナーにすると出続ける。
+  //
+  // 実測（2026-09-02・128x64・ブラウザと同じ設定で全史）:
+  //
+  // | 時代 | 不平衡の中央値 | 旧・許容 | 旧・バナーが出た割合 | 範囲外のセル |
+  // |---|---|---|---|---|
+  // | 冥王代 | 1.0e-3 | 14〜1.0 | 33% | **0** |
+  // | 太古代 | **3.1** | 1.0 | **90%** | **0** |
+  // | 原生代 | 5.3e-1 | 1.0 | 34% | **0** |
+  // | 顕生代 | 9.6e-4 | 1.0 | 0% | **0** |
+  //
+  // **範囲外のセルは全史で 0 件** —— 壊れてはいなかった。
+  // 太古代だけ大きいのは氷が 20〜27% あって氷アルベドフィードバックが強く、
+  // Newton が 8 反復では収束しきらないため。**物理は正しく、解が遅れているだけ。**
+  //
+  // 旧実装は `tol = max(1, 0.05 * 内部熱流)` で、冥王代は内部熱流 285 のおかげで
+  // 隠れていたが、**冷えて下限 1 に張り付いた瞬間から出続けた**
+  // （「冥王代の後期からずっと出る」という報告と一致）。
+  //
+  // ★温度が [-120, 500]℃ の外に出ようとしていること（`clampedCells > 0`）だけが、
+  // 打ち切りとは無関係な**本当に壊れている**信号。自動減速の引き金と同じにしてある
+  // ——条件が違うと「減速したのにバナーが出る」ことになる。
+  if (s.clampedCells === 0) { el.hidden = true; return }
+  el.hidden = false
   const hot = s.meanT > 400
   const cold = s.meanT < -100
-  const stuck = s.clampedCells > 0
-  // ★**不平衡の許容は強制項の大きさで決める。**
-  //
-  // 冥王代は内部熱流が 285 W/m²（太陽の吸収 ~170 より大きい）あり、
-  // **惑星は物理的に冷えている最中**なので、数 W/m² の不平衡は異常ではない。
-  // 現在の地球（0.087 W/m²）と同じ基準で測ると**マグマオーシャン期に
-  // 出っぱなしになる**（2026-09-01 にスクリーンショットで気づいた）。
-  const flux = lastGlobals?.internalHeatFlux ?? 0.087
-  const tol = Math.max(1, 0.05 * flux)
-  if (!stuck && Math.abs(s.imbalance) < tol) { el.hidden = true; return }
-  el.hidden = false
-  if (stuck && hot) {
+  if (hot) {
     el.innerHTML = `<b>⚠ モデルの有効範囲を出ました（暴走温室）</b>` +
       `<span class="sub">温度が上限の 500℃ に張り付いています。` +
       `表示されている気温・CO₂・風化はもう物理的な意味を持ちません。` +
-      `速度を落として作り直すか、seed を変えてください。</span>`
-  } else if (stuck && cold) {
+      `速度を落とすと収束することがあります（自動でも落ちます）。` +
+      `seed を変えると別の惑星になります。</span>`
+  } else if (cold) {
     el.innerHTML = `<b>⚠ モデルの有効範囲を出ました（全球凍結の底）</b>` +
       `<span class="sub">温度が下限の −120℃ に張り付いています。</span>`
-  } else if (stuck) {
+  } else {
     el.innerHTML = `<b>⚠ 範囲外のセルがあります（${s.clampedCells}）</b>` +
       `<span class="sub">温度が [−120, 500]℃ の外に出ようとしています。</span>`
-  } else {
-    el.innerHTML = `<b>⚠ 気候が解けていません</b>` +
-      `<span class="sub">放射の不平衡が ${s.imbalance.toExponential(1)} W/m² あります` +
-      `（この時代の許容は ${tol.toFixed(1)}）。速度を落とすと収束することがあります。</span>`
   }
 }
 

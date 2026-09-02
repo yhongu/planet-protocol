@@ -112,7 +112,9 @@ button:active { background: #141b23; }
   display: flex; align-items: center; gap: 14px; padding: 8px 16px; }
 #timebar .epoch { color: var(--fg); font-size: 12px; letter-spacing: 0.05em; }
 #timebar .num { color: var(--accent); font-variant-numeric: tabular-nums; }
-#timebar .rate { color: var(--dim); font-size: 10.5px; min-width: 110px; text-align: right; }
+/* 「追従中」などの注記が入るので幅を広げる。折り返すと時間バーが崩れる */
+#timebar .rate { color: var(--dim); font-size: 10.5px; min-width: 110px; text-align: right;
+  white-space: nowrap; }
 .speeds { display: flex; gap: 4px; }
 .sp { flex: none; min-width: 34px; padding: 3px 6px; font-size: 11px; }
 .sp.active { background: var(--accent); color: #0a0d12; border-color: var(--accent); }
@@ -429,3 +431,7 @@ button:active { background: #141b23; }
 .cap-row .cap-what { display: block; color: var(--dim); font-size: 9.5px; line-height: 1.4; }
 /* 効いていない形質は薄く出して「未使用」と書く（機構があると勘違いさせない） */
 .ph-tr.unused { opacity: 0.45; }
+/* 「気候が追従中」。★赤くしない —— 物理は壊れていない。
+   対話中は Newton を打ち切っているので残差が残るのが正常 */
+#timebar .laggy { color: var(--dim); font-size: 10px; opacity: 0.85; }
+#timebar .warnish { color: #ffd678; font-size: 10px; }
