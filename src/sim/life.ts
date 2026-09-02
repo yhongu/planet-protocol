@@ -233,17 +233,33 @@ export interface LifeParams {
    */
   aridityCost: number
   /**
-   * 生態効率。**捕食者が使える資源 = これ × 餌のバイオマス**。
+   * 生態効率。**エネルギーの流れ**の比（Lindeman 1942 の「10% 則」）。
    *
-   * ★**0.1 は Lindeman (1942) の「10% 則」**。1 つ上の栄養段階は
-   * 下の段階の 1 割程度しか支えられない。これがピラミッドを作る。
+   * ★**これは「流れ」の数字であって「現存量」の比ではない。**
+   * 2026-09-02 にそこを取り違えて、現存量の配分にそのまま使っていた。
+   * 実際の海では**動物プランクトンの現存量は植物プランクトンと同程度**
+   * （逆ピラミッド）—— 流れが 1/10 でも、回転が遅いぶん現存量は近くなる。
    *
-   * これを入れるまで、**全クレードが例外なく光合成生物**だった
-   * （`photosynthesis` の平均 1.000・クレード間 SD 0.000）。
-   * 生態的な役割が 1 種類しかないので、名前や絵を付けても
-   * 「何の生物か」は分からない —— 中身が本当に同じだから。
+   * 現存量の比は `trophicEfficiency × trophicTurnover`。
+   *
+   * 【取り違えたときに何が起きたか】捕食者が有利になる条件は
+   * `系統数 > 10 × (生産者の適応度 / 捕食者の適応度)` で、右辺がおよそ 17。
+   * `MAX_CLADES` が 16 なので**構造的に一度も満たされず**、
+   * 捕食者は 8 惑星に 3 つしか出なかった（知能はその帰結で 1/8）。
    */
   trophicEfficiency: number
+  /**
+   * 捕食者と餌の**回転の比**。現存量 = エネルギーの流れ × 寿命の比。
+   *
+   * 植物プランクトンの回転は 1 日、動物プランクトンは数週間。
+   * 4 なら現存量の比は 0.1 × 4 = 0.4 で、観測される
+   * 現存量ピラミッドの比（0.2〜1）の中に入る。
+   *
+   * ★**捕獲効率（`captureBase`）を上げて捕食者を増やしてはいけない。**
+   * それは「二重の罰」の逆で、今度は捕食者ばかりになる。
+   * 直すべきは**量の意味**であって、効率ではない。
+   */
+  trophicTurnover: number
   /**
    * 捕食の基礎効率（能力を得ただけの捕食者が餌を捕まえられる割合）。
    *
@@ -428,6 +444,7 @@ export const EARTH_LIFE: LifeParams = {
   aerobicHalfO2: 1,
   aridityCost: 0,
   trophicEfficiency: 0.1,
+  trophicTurnover: 4,
   captureBase: 0.6,
   captureMotility: 0.2,
   captureMulticellular: 0.2,
@@ -594,7 +611,9 @@ export class Life implements Subsystem {
     if (consumers.length > 0) {
       if (!this.resBuf || this.resBuf.length !== n) this.resBuf = new Float32Array(n)
       const res = this.resBuf
-      for (let i = 0; i < n; i++) res[i] = this.params.trophicEfficiency * prey[i]
+      // ★現存量の比 = エネルギーの流れ × 回転の比（上の説明を読むこと）
+      const standing = this.params.trophicEfficiency * this.params.trophicTurnover
+      for (let i = 0; i < n; i++) res[i] = standing * prey[i]
       for (const c of consumers) {
         this.fitness(world, c.phenotype, fit, c.lane * n, K, 1, null, null, prey,
           null, null, this.nitrogen)
@@ -1046,7 +1065,8 @@ export class Life implements Subsystem {
           // ★資源も競争相手も栄養段階で違う。
           // 捕食者は「餌 × 生態効率」を、**他の捕食者とだけ**分け合う。
           // 生産者の強さを分母に入れると、最初の捕食者が必ず落ちる
-          const res = consumer ? p.trophicEfficiency * prey![i] : K[i]
+          const res = consumer
+            ? p.trophicEfficiency * p.trophicTurnover * prey![i] : K[i]
           const oSum = consumer ? (sumOthersC ? sumOthersC[i] : 0) : sumOthers[i]
           const oMax = consumer ? (maxOthersC ? maxOthersC[i] : 0) : maxOthers![i]
           const fill = res * (v > oMax ? v : oMax)
@@ -1054,7 +1074,8 @@ export class Life implements Subsystem {
           score += denom > 0 ? fill * (pw / denom) * aw : 0
           wsum += aw
         } else {
-          const res = consumer ? p.trophicEfficiency * prey![i] : (K ? K[i] : 1)
+          const res = consumer
+            ? p.trophicEfficiency * p.trophicTurnover * prey![i] : (K ? K[i] : 1)
           const w = aw * res
           score += v * w
           wsum += w

@@ -1,52 +1,29 @@
-Copyright (c) 2026 Nilklops Inc. All rights reserved.
+MIT License
 
-このソフトウェア及び関連する文書・画像・データ（以下「本ソフトウェア」）の
-著作権は Nilklops Inc. に帰属します。
+Copyright (c) 2026 Nilklops Inc.
 
-権利者の書面による事前の許諾なく、本ソフトウェアの全部または一部について、
-複製・改変・翻案・頒布・公衆送信・貸与・再ライセンス・商用利用を行うことを
-禁じます。
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-本ソフトウェアは現状有姿で提供され、明示黙示を問わず、商品性・特定目的への
-適合性・非侵害性を含むいかなる保証も行いません。権利者は本ソフトウェアの
-使用に起因するいかなる損害についても責任を負いません。
-
----
-
-Copyright (c) 2026 Nilklops Inc. All rights reserved.
-
-This software and its associated documentation, images and data
-(the "Software") are the property of Nilklops Inc.
-
-No part of the Software may be copied, modified, adapted, distributed,
-publicly transmitted, lent, sublicensed or used commercially without the
-prior written permission of the copyright holder.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
-FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
-IN THE SOFTWARE.
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ---
 
-## サードパーティ
+## 画像素材は別ライセンス
 
-実行時依存はありません（`package.json` の `dependencies` は空）。
-ビルド時にのみ次のツール群を使用します。いずれも緩いライセンスで、
-本ソフトウェアのライセンスに制約を課しません。
-
-  MIT           43 パッケージ（Vite, Vitest ほか）
-  Apache-2.0     2 パッケージ（TypeScript ほか）
-  ISC            2 パッケージ
-  BSD-3-Clause   2 パッケージ
-
-配布物（`dist/`）にこれらのコードは含まれません。
-
-## 引用している研究について
-
-本ソフトウェアは公表された論文の方程式を実装しています（`docs/06-science-basis.md`
-に出典）。方程式と事実に著作権はなく、論文本文・図表・付属コードの転載や流用は
-行っていないため、それらのライセンスは本ソフトウェアに及びません。
-引用は出典の明示であり、ライセンス上の義務ではありません。
+`public/` 以下の画像（`art/` のイラスト、`icons/` のドット絵、`.aseprite`）は
+**CC BY-NC-SA 4.0**（表示・非営利・継承）です。`public/LICENSE` を参照してください。
+上記の MIT License はコード・ドキュメント・設定ファイルに適用されます。

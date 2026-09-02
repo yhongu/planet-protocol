@@ -1,0 +1,33 @@
+# 画像素材のライセンス
+
+このディレクトリの画像（`art/` の時代別イラスト、`icons/` のドット絵アイコンと
+アニメーション、および対応する `.aseprite` ファイル）は、リポジトリ本体の
+MIT License ではなく、次のライセンスで提供されます。
+
+## CC BY-NC-SA 4.0
+Creative Commons 表示 - 非営利 - 継承 4.0 国際
+
+Copyright (c) 2026 Nilklops Inc.
+
+- **表示** — 著作権表示と、変更した場合はその旨を示してください
+- **非営利** — 営利目的で利用することはできません
+- **継承** — 改変した素材は同じライセンスで頒布してください
+
+全文: https://creativecommons.org/licenses/by-nc-sa/4.0/deed.ja
+
+---
+
+The images in this directory (illustrations in `art/`, pixel-art icons and
+animations in `icons/`, and the corresponding `.aseprite` sources) are licensed
+under **CC BY-NC-SA 4.0**, not the MIT License that covers the rest of this
+repository.
+
+Copyright (c) 2026 Nilklops Inc.
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+---
+
+## 例外
+
+`timelapse.bin` / `timelapse.json` / `phylo.json` はシミュレータが生成する
+データであり、素材ではありません（リポジトリには含めていません）。

@@ -1,8 +1,8 @@
 {
   "name": "gaia-protocol",
   "version": "0.0.0",
-  "private": true,
-  "license": "UNLICENSED",
+  "private": false,
+  "license": "MIT",
   "author": "Nilklops Inc.",
   "description": "45.4 億年の惑星シミュレータ。気候・炭素循環・水循環・プレートテクトニクス・海洋・生命を結合して回す",
   "type": "module",
