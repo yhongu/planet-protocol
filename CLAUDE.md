@@ -48,6 +48,8 @@ npx vite-node scripts/probes/probe-relief.ts --seed audit   # ★起伏の収支
 npx vite-node scripts/probes/probe-crustflux.ts --width 96   # ★地殻の生成/消費 [km³/yr]（数秒）
 npx vite-node scripts/probes/probe-events.ts --seed audit    # 出来事の頻度（ゲーム性の判断材料）
 npx vite-node scripts/probes/probe-look.ts                   # 時代ごとの見た目を PNG に
+npx vite-node scripts/probes/probe-pixel.ts                  # ★ドット絵の見た目と【色数】（3.5 秒）
+npx vite-node scripts/probes/probe-pixel.ts --years 3e8      # 氷のある惑星で見る（5 分）
 npm run smoke                         # ブラウザ通し確認（要 npm run dev）
 npx vite-node scripts/probes/probe-thc.ts        # 熱塩循環の較正とヒステリシス
 npx vite-node scripts/probes/probe-gyre.ts       # 湧昇・西岸境界流（数十秒）
@@ -342,6 +344,20 @@ wait
    **時代分解で見ること**（トラップ 17 の再発）。
    そして**私は「打ち切りのせい」と 2 度説明して 2 度とも外した。**
    1 変数ずつ切り分けるまで、原因を語らないこと
+
+60. ★**ディザは「境目」に掛けるもの。「なだらかな傾き」に掛けると全面が砂嵐になる。**
+   混色を段に落として（18049 色 → 122 色）ドット絵にしたとき、端数を全部
+   Bayer でディザしたら**海と極が一面の点々**になった。海の深さも氷の割合も
+   **どこでも段の途中**なので、画面のすべてがディザの対象になる。
+   氷は割合 0.1 の海面（＝ほぼ全部の海）に白い点が撒かれて最悪だった。
+   ★**傾きはベタの段、ディザは二値のマスク（汀線）だけ。**
+   ついでに、**陸海の重みだけは補間しない** —— `ss = 4` なら 1 セルが
+   ちょうど 4x4 の Bayer に重なるので、陸の割合が**16 段のドットの密度**に
+   なって面積が厳密に保たれる（補間すると汀線が 10px の砂粒の帯になった）
+61. ★**「拡大するとぼやける」の原因は補間とは限らない。** `imageSmoothingEnabled`
+   は最初から切ってあった。犯人は**場ではなく色の側**で、連続の混色が
+   1 枚に 18049 色を作っていた。**まず色数を数えること**（`probe-pixel.ts`）。
+   3.5 秒で測れて、ぼやけの有無が 1 つの数字になる
 
 詳しい実測値と経緯は `WORK-IN-PROGRESS.md` と `docs/01-6.5c`。
 

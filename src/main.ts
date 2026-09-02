@@ -528,8 +528,38 @@ for (const b of document.querySelectorAll<HTMLButtonElement>(".iv")) {
     setArmed(same ? null : kind, b)
   })
 }
+/**
+ * ★**ショートカット。** ゲームの動詞に手が届く距離を短くする。
+ *
+ * 押すたびに列へマウスを往復させると、介入は「たまに使うもの」になる。
+ * 番号は列の並び順そのもの（`.rail` の 4 つ）で、ボタンにも同じ数字を出す。
+ * ★入力欄（seed・スライダ）に入っている間は無視すること
+ */
+const HOTKEYS = ["1", "2", "3", "4"]
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") setArmed(null)
+  const t = e.target as HTMLElement | null
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable)) return
+  if (e.key === "Escape") { setArmed(null); return }
+  if (e.metaKey || e.ctrlKey || e.altKey) return
+  const iv = document.querySelectorAll<HTMLButtonElement>(".rail > .iv")
+  const k = HOTKEYS.indexOf(e.key)
+  if (k >= 0 && iv[k]) { e.preventDefault(); iv[k].click(); return }
+  // 空白で一時停止 ⇄ 直前の速度に戻す
+  if (e.key === " ") {
+    e.preventDefault()
+    const target = speed === 0 ? (lastSpeed || 1) : 0
+    const b = document.querySelector<HTMLButtonElement>(`.sp[data-speed="${target}"]`)
+    b?.click()
+    return
+  }
+  // 速度の段を 1 つずつ動かす
+  if (e.key === "," || e.key === ".") {
+    e.preventDefault()
+    const steps = [...document.querySelectorAll<HTMLButtonElement>(".sp:not(.skip)")]
+    const i = steps.findIndex((b) => Number(b.dataset.speed) === speed)
+    const j = Math.max(0, Math.min(steps.length - 1, i + (e.key === "." ? 1 : -1)))
+    steps[j]?.click()
+  }
 })
 
 /**
@@ -565,10 +595,13 @@ $("settingsClose").addEventListener("click", () => { $("settings").hidden = true
 
 // --- 時間制御 ---
 let speed = 0
+/** 空白で戻る先。★0 に戻すと「一時停止 → 空白 → また止まる」になる */
+let lastSpeed = 0
 for (const b of document.querySelectorAll<HTMLButtonElement>(".sp")) {
   b.addEventListener("click", () => {
     for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
     b.classList.add("active")
+    if (speed > 0) lastSpeed = speed
     speed = Number(b.dataset.speed)
     post({ type: "run", speedMultiplier: speed })
   })

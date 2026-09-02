@@ -475,3 +475,179 @@ button:active { background: #141b23; }
 .gm-org { margin-left: auto; display: flex; gap: 3px; flex-wrap: wrap; }
 .cl-genes { margin-top: 4px; font-size: 10px; color: var(--dim); }
 .cl-genes span { opacity: 0.7; }
+
+/* ======================================================================
+   ★ピクセル・ファーストの外装（2026-09-03）
+   ======================================================================
+
+   それまでの画面は「角丸 8px・backdrop-filter で背景をぼかす・細い半透明の
+   枠」という **2016 年頃の SaaS のダッシュボード**の作りだった。
+   地図をドット絵にした（`natural.ts` の `BANDS`）ので、UI がそのままだと
+   **地図だけがゲームで、周りが開発ツール**という食い違いが残る。
+
+   直すのは 4 つだけ。どれも「ぼかさない・にじませない」に集約される:
+
+   1. **角丸を落とす**。ドットの絵に角丸は乗らない
+   2. **`backdrop-filter: blur` を外す**。ぼかしはピクセルの逆であり、
+      しかも全画面の合成が毎フレーム走るので**素直に重い**
+   3. **ベベルを入れる**。左上に明・右下に暗の 1px を内側へ入れると、
+      平らな矩形が「押せる板」になる。ドット絵の UI はこれで立体を出す
+   4. **押したら沈む**。ベベルを反転して 1px 下げる。
+      介入は「押してから地図をクリック」の 2 段なので、
+      **押された状態が見えること**がそのまま操作の分かりやすさになる
+
+   ★色は地図のパレットから採る（`natural.ts`）。UI だけ別の色相にすると
+   「上に貼った別のアプリ」に見える。
+   ------------------------------------------------------------------ */
+:root {
+  --panel: #10151d;
+  --line: #26303e;
+  /* ベベルの明暗。板の内側に 1px ずつ入れる */
+  --edge-hi: rgba(255, 255, 255, 0.11);
+  --edge-lo: rgba(0, 0, 0, 0.55);
+  --fg: #e4e9f1;
+  --dim: #808d9f;
+  /* 海の浅瀬（SHALLOW）に寄せた青。地図の中に同じ色がある */
+  --accent: #7fc0e0;
+  /* 溶岩と乾いた岩（LAVA / ROCK_DRY）。警告と介入に使う */
+  --warm: #e8a24a;
+  /* 植生（VEG）。生命と「良い」に使う */
+  --good: #7fc46a;
+}
+
+/* --- 板 ------------------------------------------------------------- */
+.panel, .act, button, .loading, .epop-card, .ivhint, .hoverbar,
+input[type="text"], select {
+  border-radius: 0;
+  backdrop-filter: none;
+}
+.panel, .loading, .ivhint, .epop-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow:
+    inset 1px 1px 0 var(--edge-hi),
+    inset -1px -1px 0 var(--edge-lo),
+    0 2px 0 rgba(0, 0, 0, 0.45);
+}
+.hoverbar {
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-hi), inset -1px -1px 0 var(--edge-lo);
+}
+
+/* --- 押せるもの ------------------------------------------------------ */
+button, .act {
+  background: #1a222d;
+  border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-hi), inset -1px -1px 0 var(--edge-lo);
+  transition: none;   /* ★ドット絵の UI は補間しない。滑らかな遷移は付けない */
+}
+button:hover, .act:hover { background: #232e3c; border-color: #3a4a5e; }
+button:active, .act:active {
+  background: #131a23; transform: translateY(1px);
+  box-shadow: inset 1px 1px 0 var(--edge-lo), inset -1px -1px 0 var(--edge-hi);
+}
+/* 構えている介入。★沈んだまま光る = 「まだ終わっていない」 */
+.act.armed, .act.armed:hover {
+  background: #3a2e16; border-color: var(--warm); color: #ffe6b0;
+  box-shadow: inset 1px 1px 0 var(--edge-lo), inset -1px -1px 0 rgba(255,214,120,0.35),
+    0 0 0 1px rgba(255,214,120,0.35);
+  transform: translateY(1px);
+}
+.sp.active {
+  background: var(--accent); color: #0a0d12; border-color: var(--accent);
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.35), inset -1px -1px 0 rgba(0,0,0,0.35);
+}
+.sp.auto { background: #6b5320; color: #ffd678; border-color: var(--warm); }
+
+/* --- 見出し。★色の棒を左に立てて「章」だと分かるようにする -------- */
+.section {
+  position: relative; padding-left: 8px; opacity: 1;
+  color: var(--dim); font-weight: 600;
+}
+.section::before {
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px;
+  background: var(--line);
+}
+#dash .section::before { background: var(--accent); opacity: 0.55; }
+
+/* --- 見出しの数字。★ゲームの主指標なので、他より一段大きく ---------- */
+.hero-v { font-size: 34px; letter-spacing: -0.01em; font-weight: 600; }
+.dash-hero {
+  padding: 8px 10px; margin: -4px -4px 10px;
+  background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo), inset -1px -1px 0 var(--edge-hi);
+}
+
+/* --- 入力 ------------------------------------------------------------ */
+input[type="text"], select {
+  background: #0a0e14;
+  box-shadow: inset 1px 1px 0 var(--edge-lo);
+}
+#timebar .seedtag { border-radius: 0; background: #0a0e14;
+  box-shadow: inset 1px 1px 0 var(--edge-lo); }
+
+/* --- 小物の角も落とす（1 個でも丸いと「取り残し」に見える）---------- */
+.lg-bar, .lg-sw i, .cl, .cl-head i, .ph-bar, .gm-strip, .gm-row > i, .gm-b,
+.cp-bar, .cp-bar i, .ph-tr i, .ph-tr i b, .epop-anim, .cl-role, .g-org,
+.panel .tag, .warn, .oor { border-radius: 0; }
+
+/* --- 出来事のカード。★左の色縁を太くして、種類が一目で分かるように -- */
+.epop-card { border-left-width: 4px; }
+.epop-card[data-kind="lip"] { border-left-color: #e0603c; }
+.epop-card[data-kind="impact"] { border-left-color: #d84a4a; }
+.epop-card[data-kind="supercontinent"] { border-left-color: #c9a227; }
+.epop-card[data-kind="tectonicMode"] { border-left-color: var(--accent); }
+.epop-card[data-kind="milestone"] { border-left-color: var(--good); }
+
+/* --- ショートカットの札。★ボタンの隅に、押す文字そのものを出す ------
+   説明文に「1 で噴火」と書くより、ボタンに 1 が乗っている方が早い */
+.act[data-key] { position: relative; }
+.act[data-key]::after {
+  content: attr(data-key);
+  position: absolute; right: 4px; top: 3px;
+  color: var(--dim); font-size: 9px; line-height: 1;
+  padding: 1px 3px; background: #0a0e14; border: 1px solid var(--line);
+}
+.act.armed[data-key]::after { color: #ffe6b0; border-color: var(--warm); }
+
+/* --- 操作の説明。★地図の上に素で置くと読めない（実測で読めなかった）--
+   板に載せて、ボタンの列と重ならない高さに畳む */
+.rail-hint {
+  background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo);
+  padding: 5px 6px; margin: 2px 0; line-height: 1.5;
+}
+.rail-hint b { color: var(--accent); font-weight: 600; }
+.rail-hint[hidden] { display: none; }
+
+/* --- 時間の操作。★ゲームの再生ボタンなので、他のボタンより大きく ---- */
+#timebar { padding: 7px 14px; gap: 12px; }
+.speeds { gap: 3px; }
+.sp { min-width: 38px; padding: 5px 7px; font-size: 11.5px; }
+.sp.skip { color: var(--accent); }
+.sp.skip.waiting { background: #24361f; border-color: var(--good); color: var(--good); }
+#timebar .epoch { color: var(--fg); font-weight: 600; }
+
+/* --- 凡例。★色見本は地図と同じ「ベタの段」なので、枠も四角く ------- */
+.lg-sw i { border: 1px solid rgba(0,0,0,0.6); box-shadow: 0 0 0 1px var(--line); }
+
+/* --- 列の見出し。★地図の上に素の文字を置くと、明るい時代（マグマ
+   オーシャン・氷期）で消える。実測で「介入」が読めなかった --------- */
+.rail-title {
+  background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo);
+  padding: 3px 6px; margin: 0 0 2px; color: var(--fg); opacity: 0.9;
+}
+
+/* --- 下端のタイムライン。★画面の端に貼り付ける ---------------------
+   12px 浮かせていたので、**下に地図が 12px だけ覗く帯**ができて
+   「作りかけ」に見えた。ゲームの時間バーは画面の縁に付いている */
+#timeline {
+  left: 0; right: 0; bottom: 0; padding: 6px 12px 8px;
+  border-left: 0; border-right: 0; border-bottom: 0;
+  box-shadow: inset 0 1px 0 var(--edge-hi);
+}
+.timebar { bottom: 92px !important; }
+.legend { bottom: 92px; }
+#dash { bottom: 92px; }
+.phylo { bottom: 92px; }

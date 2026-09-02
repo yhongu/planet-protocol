@@ -56,6 +56,99 @@ function iceCover(f: number): number {
   return Math.pow(t, 0.9)
 }
 
+/**
+ * ★**ピクセル・ファースト。** 混色を【段】に量子化して、色数を落とす。
+ *
+ * もとの実装は混色が連続だったので、128x64 の 1 枚に **18049 色**あった。
+ * 拡大すると海岸線が 4 ピクセルの grad になって「溶けた」ように見える
+ * （ピクセルアートの目安は 64 色以下）。
+ *
+ * ★**バイリニアの補間は残す。** 段にするのは【色】であって【場】ではない。
+ * 場を最近傍にするとセル境界の階段が出る（この実装が最初に避けたもの）。
+ * 補間した場を段の色に落とすと、**海岸線は曲線のまま、色はベタ**になる。
+ *
+ * 端数は 4x4 の Bayer でディザする。切り捨てると段の境界が
+ * 「等高線の帯」になって地図記号に見えるが、ディザすると
+ * **ドット絵のグラデーション**になる（実測でそう見えた）。
+ *
+ * これは**出力 RGBA の段でだけ**掛かる表示処理で、場には一切戻らない
+ * （`rasterSmoothing` で踏んだ経路——`CLAUDE.md` の 37——とは別物）。
+ */
+const BAYER4 = [
+  0, 8, 2, 10,
+  12, 4, 14, 6,
+  3, 11, 1, 9,
+  15, 7, 13, 5,
+]
+
+/**
+ * ★**ディザを掛けるのは「境目」だけ。連続の傾きには掛けない。**
+ *
+ * 海の深さのように**どこでも段の途中**にある量にディザを掛けると、
+ * 画面いっぱいがドットの砂嵐になった（海が「ノイズ」に見える）。
+ * 傾きは**ベタの段**にして、ディザは汀線と氷縁だけに使う。
+ */
+const SOLID = 0.5
+
+/** 混合の重み t を n 段に落とす。d は 0..1 のディザ量（`SOLID` で四捨五入） */
+function band(t: number, n: number, d: number): number {
+  const x = Math.max(0, Math.min(1, t)) * (n - 1)
+  const k = Math.max(0, Math.min(n - 1, Math.floor(x + d)))
+  return k / (n - 1)
+}
+
+/**
+ * 段の数。**ここが「ドット絵らしさ」のつまみ**。
+ * 実測（`probe-pixel.ts` の色数）: 段なし 18049 → この設定で 200 前後。
+ * 陰影を 3 段より増やすと山が「泥」に戻る
+ */
+const BANDS = {
+  /** 海の深さ。大陸棚・外洋・深海が読めるだけあればよい */
+  sea: 5,
+  /** 陸の乾湿。砂漠・半乾燥・湿潤・森 */
+  soil: 4,
+  /** 高地の露岩 */
+  highland: 3,
+  /** 生命の緑。薄い所と濃い所が分かればよい */
+  life: 4,
+  /**
+   * 氷。★**ここもベタにする。** ディザにしたら、氷の割合が 0.1 の海面
+   * （つまり**ほぼ全部の海**）に白い点が撒かれて、太古代の惑星が
+   * 一面の砂嵐になった（実測）。氷は既に強く均してあるので、
+   * ベタの段でも氷縁は滑らかな曲線になる
+   */
+  ice: 6,
+  /** 溶岩 */
+  lava: 5,
+  /** ★陰影は 3 段（暗い・素・明るい）。連続だと山が泥になる */
+  shade: 3,
+  /** ★陸と海の境。2 段 = **ディザの海岸線**。ここが一番効く */
+  coast: 2,
+} as const
+
+/**
+ * ★**ドット 1 個ぶんの陸／海は描かない。**
+ *
+ * 45 億年回した惑星では、外洋のセルの多くが `landFraction ≒ 1/16` を持つ
+ * （粒子が薄く広がるため）。連続の混色なら 6% の茶色は青に溶けて見えなかったが、
+ * ディザにすると **1 セルにつき 1 ドットの陸**として立ち、
+ * **外洋一面が規則正しい点々**になった（実測: `look-08-now.png`）。
+ *
+ * `ss = 4` では 1 セルが 16 ドットなので、**2 ドット未満は捨てる**。
+ * 海岸（0.3〜0.9）はほとんど動かない。海の中の孤立ドットだけが消える。
+ *
+ * ★これは**描画だけの床**で、物理の `landFraction` には触らない。
+ * アルベドも風化も元の値を使い続ける（`CLAUDE.md` の 37 と同じ線引き）。
+ */
+const COAST_FLOOR = 2 / 16
+
+/** 床を掛けて 0..1 に引き直す。陸側と海側の両方に対称に効かせる */
+function coastFloor(t: number): number {
+  if (t <= COAST_FLOOR) return 0
+  if (t >= 1 - COAST_FLOOR) return 1
+  return (t - COAST_FLOOR) / (1 - 2 * COAST_FLOOR)
+}
+
 const mix = (a: Rgb, b: Rgb, t: number): Rgb => [
   a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t,
 ]
@@ -106,9 +199,13 @@ export function renderNatural(
 
   for (let py = 0; py < OH; py++) {
     const fy = (py + 0.5) * inv - 0.5
+    const brow = (py & 3) * 4
     let o = py * OW * 4
     for (let px = 0; px < OW; px++) {
       const fx = (px + 0.5) * inv - 0.5
+      // ★ディザ量。**アートピクセルの座標**で引く（グリッド座標ではない）ので、
+      // 拡大しても模様が動かず、ドットの目が揃う
+      const d = (BAYER4[brow + (px & 3)] + 0.5) / 16
       const h = sampleBilinear(e, W, H, fx, fy)
       // 海の色と氷は【均した場】で決める（陸の起伏は均さない）
       // ★海の色は【大きく均した場】で決める。
@@ -128,8 +225,18 @@ export function renderNatural(
       // ★**混合の重みを平滑化しないこと。** 陸の割合を均してから混ぜると、
       // 孤立した陸が薄まって**大陸がほとんど見えなくなる**（実測）。
       // 均すのは氷と海底地形（斑の元）だけでよい
+      // ★**陸海の重みだけは補間しない**（色は補間したまま）。
+      //
+      // 補間すると陸の割合が隣のセルへ 1〜2 セル分にじみ、2 段のディザに
+      // 落としたとき**汀線が 10 ピクセルの砂粒の帯**になった（実測）。
+      // 最近傍で引くと、`ss = 4` では **1 セルがちょうど 4x4 の Bayer 行列**に
+      // 重なるので、そのセルの陸の割合が **16 段のドットの密度**として出る。
+      // 面積は厳密に保たれ（0.4 のセルは 16 px 中 6 px が陸）、
+      // かつ**セル境界はにじまない**。ドット絵の海岸線はこの形をしている
       const land = lfField
-        ? Math.max(0, Math.min(1, sampleBilinear(lfField, W, H, fx, fy)))
+        ? Math.max(0, Math.min(1, lfField[
+          (Math.max(0, Math.min(H - 1, Math.round(fy)))) * W
+          + (((Math.round(fx) % W) + W) % W)]))
         : (h >= 0 ? 1 : 0)
       // ★**割合を真偽値にしない**（`CLAUDE.md` の 21 を描画にも適用）。
       // 陸 0.4 のセルを「海」と描くと、揺らぎがそのまま斑になる。
@@ -140,34 +247,37 @@ export function renderNatural(
         // 標本ノイズが出る）。大きく均した場で、浅い縁だけを明るくする
         const shelf = Math.max(0, 1 - -hSmooth / 300)
         const deep = Math.min(1, Math.max(0, -hSmooth - 300) / 6000)
-        sea = mix(DEEP, SHALLOW, shelf * shelf * 0.92)
-        sea = mix(sea, ABYSS, deep * 0.12)
+        sea = mix(DEEP, SHALLOW, band(shelf * shelf * 0.92, BANDS.sea, SOLID))
+        sea = mix(sea, ABYSS, band(deep, BANDS.sea, SOLID) * 0.12)
         if (ocean < 1) {
           // ★下限を上げる。浅い所を暗くしすぎると、周りの深海だけが光って
           // **大陸と浅瀬が「黒い穴」に見える**（実測で 2 回踏んだ）
           const heat = (0.5 + 0.5 * Math.min(1, -h / 5000)) * (0.4 + 0.6 * glow)
-          sea = mix(sea, mix(BASALT, LAVA, Math.pow(heat, 0.7)), 1 - ocean)
+          sea = mix(sea, mix(BASALT, LAVA, band(Math.pow(heat, 0.7), BANDS.lava, SOLID)), 1 - ocean)
         } else {
-          sea = mix(sea, BLOOM, Math.min(0.45, bm * 0.5))
+          sea = mix(sea, BLOOM, band(Math.min(0.45, bm * 0.5) / 0.45, BANDS.life, SOLID) * 0.45)
         }
-        sea = mix(sea, SNOW, iceCover(ic) * 0.74)
+        sea = mix(sea, SNOW, band(iceCover(ic), BANDS.ice, SOLID) * 0.74)
       }
       let rockC: Rgb
       {
         const wet = Math.max(0, Math.min(1, sampleBilinear(soil, W, H, fx, fy)))
-        let rock = mix(ROCK_DRY, ROCK_WET, wet)
-        rock = mix(rock, HIGHLAND, Math.min(1, Math.max(0, (h - 1200) / 2500)))
+        let rock = mix(ROCK_DRY, ROCK_WET, band(wet, BANDS.soil, SOLID))
+        rock = mix(rock, HIGHLAND, band((h - 1200) / 2500, BANDS.highland, SOLID))
         // ★緑は生命がいるところにだけ。先カンブリア時代の陸は岩と砂
-        rockC = mix(rock, VEG, Math.min(0.75, bm * 0.9) * wet)
-        rockC = mix(rockC, SNOW, iceCover(ic) * 0.96 + ic * 0.12)
+        rockC = mix(rock, VEG, band(Math.min(0.75, bm * 0.9) * wet / 0.75, BANDS.life, SOLID) * 0.75)
+        rockC = mix(rockC, SNOW, band(iceCover(ic) * 0.96 + ic * 0.12, BANDS.ice, SOLID))
         if (ocean < 1) {
           // ★マグマオーシャン期は**陸も溶けている**。暗くしすぎると
           // 大陸が「黒い穴」に見える（実測でそうなった）
-          const lava = mix(BASALT, LAVA, 0.62 * (0.4 + 0.6 * glow))
+          const lava = mix(BASALT, LAVA, band(0.62 * (0.4 + 0.6 * glow), BANDS.lava, SOLID))
           rockC = mix(rockC, lava, 1 - ocean)
         }
       }
-      const c = mix(sea, rockC, land)
+      // ★**海岸線をディザで切る。** 連続で混ぜると陸と海の間に
+      // 4 ピクセルの grad ができて、拡大したとき「溶けた」ように見えた。
+      // 2 段 + Bayer なら、**海岸は硬い線になり、汀線だけがドットで砕ける**
+      const c = mix(sea, rockC, band(coastFloor(land), BANDS.coast, d))
 
       // --- 陰影（山脈を立体に見せる）---
       let shade = 1
@@ -175,7 +285,9 @@ export function renderNatural(
         const dzdx = sampleBilinear(e, W, H, fx + 1, fy) - sampleBilinear(e, W, H, fx - 1, fy)
         const dzdy = sampleBilinear(e, W, H, fx, fy + 1) - sampleBilinear(e, W, H, fx, fy - 1)
         const s = (-dzdx * 0.6 - dzdy * 0.8) / 900
-        shade = 1 + Math.max(-0.4, Math.min(0.4, s))
+        // ★3 段（暗い・素・明るい）。連続の陰影は山を「泥」にする
+        shade = 0.78 + 0.22 * 2 * band((Math.max(-0.4, Math.min(0.4, s)) + 0.4) / 0.8,
+          BANDS.shade, SOLID)
       }
       out[o] = c[0] * shade
       out[o + 1] = c[1] * shade

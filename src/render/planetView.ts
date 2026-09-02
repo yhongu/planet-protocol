@@ -60,6 +60,9 @@ export interface HoverInfo {
   latDeg: number
 }
 
+/** 球のリムダークニングを段にするための Bayer 行列（`natural.ts` と同じ並び） */
+const BAYER4G = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+
 export class PlanetView {
   private readonly canvas: HTMLCanvasElement
   private readonly ctx: CanvasRenderingContext2D
@@ -189,6 +192,24 @@ export class PlanetView {
     this.dirty = true
   }
 
+  /**
+   * ★**アートのピクセルを、画面のピクセルに整数倍で乗せる。**
+   *
+   * 内部のバッファは 1 セル = `ss` アートピクセル。画面での 1 アートピクセルが
+   * `scale / ss * dpr` デバイスピクセルになるので、これが整数でないと
+   * **同じ大きさのはずのドットが 2px と 3px に割れて**ちらつく。
+   * 1 以上のときだけ丸める（縮小側は補間が効くので触らない）。
+   *
+   * ★`scale` そのものを丸めること。描画時だけ丸めると、当たり判定
+   * （`screenToGrid`）とずれて、クリックした場所と効く場所が食い違う。
+   */
+  private snapScale(v: number): number {
+    const dpr = Math.max(1, window.devicePixelRatio || 1)
+    const artPx = v / this.ss * dpr
+    if (artPx < 1) return v
+    return Math.round(artPx) * this.ss / dpr
+  }
+
   /** 画面全体が収まるようにズームを合わせる */
   fit(): void {
     const { width, height } = this.viewportSize()
@@ -249,8 +270,11 @@ export class PlanetView {
 
     const dw = this.grid.W * this.scale
     const dh = this.grid.H * this.scale
-    const ox = width / 2 - this.cx * this.scale
-    const oy = height / 2 - this.cy * this.scale
+    // ★原点をデバイスピクセルに揃える。揃えないと、拡大中に地図を動かした
+    // とき**ドットの境目が半ピクセルずれて滲む**（整数倍にした意味が消える）
+    const q = 1 / dpr
+    const ox = Math.round((width / 2 - this.cx * this.scale) / q) * q
+    const oy = Math.round((height / 2 - this.cy * this.scale) / q) * q
 
     // 東西にタイルして描く。これで継ぎ目なく無限に回せる。
     const first = Math.floor(-ox / dw)
@@ -373,8 +397,12 @@ export class PlanetView {
           const sx = Math.min(SW - 1, (u * SW) | 0)
           const sy = Math.min(SH - 1, Math.max(0, ((0.5 - lat / Math.PI) * SH) | 0))
           const si = (sy * SW + sx) * 4
-          // 縁を暗くして球に見せる（リムダークニング）
-          const k = 0.55 + 0.45 * z
+          // 縁を暗くして球に見せる（リムダークニング）。
+          // ★**段にする。** 連続で暗くすると色数が爆発して、地図だけ
+          // ドット絵・球だけ滑らかという食い違いが出る（`natural.ts` の `BANDS`）。
+          // 4 段 + 4x4 の Bayer で、明暗の境目をドットで砕く
+          const dz = (BAYER4G[(py & 3) * 4 + (px & 3)] + 0.5) / 16
+          const k = 0.55 + 0.45 * (Math.min(3, Math.floor(z * 3 + dz)) / 3)
           out[o] = src[si] * k
           out[o + 1] = src[si + 1] * k
           out[o + 2] = src[si + 2] * k
@@ -391,7 +419,8 @@ export class PlanetView {
     // 画面に収まる最大の円。`scale` を倍率として効かせる
     const base = Math.min(width, height) * 0.86
     const size = Math.max(64, base * this.globeZoom)
-    ctx.imageSmoothingEnabled = true
+    // ★球も補間しない。ここだけ滑らかにすると、平面図と球で見た目が変わる
+    ctx.imageSmoothingEnabled = size < D
     ctx.drawImage(this.globe, (width - size) / 2, (height - size) / 2, size, size)
     if (this.targeting && this.hoverCell) {
       this.drawGlobeTarget(ctx, width, height, size, this.hoverCell)
@@ -543,7 +572,8 @@ export class PlanetView {
           this.viewportSize().width / this.grid.W,
           this.viewportSize().height / this.grid.H,
         ) * 0.5
-        this.scale = Math.max(minScale, Math.min(48, this.scale * factor))
+        this.scale = this.snapScale(
+          Math.max(minScale, Math.min(48, this.scale * factor)))
         const after = this.screenToGridF(sx, sy)
         // カーソル位置のグリッド座標が動かないようにカメラを補正する
         this.cx += before.x - after.x
