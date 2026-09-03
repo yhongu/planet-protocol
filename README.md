@@ -37,6 +37,32 @@ npm install
 npm run dev        # → http://localhost:5180/
 ```
 
+![最初の画面](docs/images/title.png)
+
+最初の画面で **新しい惑星 / つづきから / 手引き** を選びます。
+seed は読める言葉（`terra-ridge-15` など）で、**同じ seed なら必ず同じ惑星**になります。
+
+### ★ これはどういう理論か、が読める
+
+**このシムの機構は 1 つ残らず論文に根拠があります**（[docs/06](docs/06-science-basis.md)）。
+その根拠をゲームの中から読めるようにしてあります —— レイヤの凡例と年代記の出来事に
+**ⓘ** が付いていて、そこから解説へ飛べます。
+
+★**確からしさを必ず一緒に出します。**
+
+| | 意味 |
+|---|---|
+| **定説** | 広く受け入れられている |
+| **有力だが係争中** | 主流だが反対論がある |
+| **未決着** | 決着していない。説が割れている |
+| **モデルの単純化** | 実際はもっと複雑。意図して簡単にしてある |
+
+たとえば「暗い太陽のパラドクス」は**未決着**と出し、対立する 5 つの仮説と
+それぞれの確度、そして**このモデルの太古代が +0.9℃ で目標に届いていないこと**まで書きます。
+未解決問題を解けたことにしません。出典は原論文か Wikipedia へリンクしています。
+
+![科学の解説](docs/images/science.png)
+
 ![画面](docs/images/ui.png)
 
 **時間を進める** — 下中央の速度の段（`×1` = 10 万年/秒 … `×20` = 200 万年/秒）。
@@ -129,7 +155,7 @@ npx vite-node scripts/probes/probe-pixel.ts   # 3.5 秒。色数を印字する
 | [docs/07-art-spec.md](docs/07-art-spec.md) | ドット絵アイコンの発注仕様 |
 
 作業中の記録は [WORK-IN-PROGRESS.md](WORK-IN-PROGRESS.md)、
-**踏んだ罠の一覧**は [CLAUDE.md](CLAUDE.md)（66 件）。
+**踏んだ罠の一覧**は [CLAUDE.md](CLAUDE.md)（71 件）。
 
 ## いま何ができるか
 
@@ -247,7 +273,7 @@ npx vite-node scripts/phylo-shot.ts           # -> snapshots/phylo.png
 ```
 
 ★**この配管では、数字を出すたびに条件（解像度・seed・パラメータ）を添える。**
-単一ランの終端値では判断しない。踏んだ罠は [CLAUDE.md](CLAUDE.md) に 66 件。
+単一ランの終端値では判断しない。踏んだ罠は [CLAUDE.md](CLAUDE.md) に 71 件。
 
 `proto/` は TypeScript を書く前の数値検証（Python）。[proto/RESULTS.md](proto/RESULTS.md) 参照。
 

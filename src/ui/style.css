@@ -829,3 +829,115 @@ input[type="text"], select {
 /* ★3 つ並べる段。絵を落として文字だけにする（152px に 3 つ入れるため）*/
 .act.icon.tab { padding: 6px 2px; justify-content: center; }
 .act.icon.tab span { font-size: 11px; }
+
+/* --- 科学の解説 ------------------------------------------------------
+   ★確度を色で分ける。**定説と係争中を混ぜない**のがこの部品の要点 */
+.sci { top: 12px; left: 176px; width: 460px; z-index: 47;
+  max-height: calc(100vh - var(--bottom) - 24px); overflow-y: auto; }
+.sci[hidden] { display: none; }
+.sci-intro { color: var(--dim); font-size: 10.5px; line-height: 1.6; margin: 2px 0 8px;
+  padding: 6px 8px; background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo); }
+.sci-intro b { color: var(--fg); }
+.sci-item { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  width: 100%; padding: 6px 8px; margin-bottom: 3px; text-align: left; }
+.sci-item-head { display: flex; align-items: center; gap: 6px; }
+.sci-item b { color: var(--fg); font-size: 11.5px; font-weight: 600; }
+.sci-item span { color: var(--dim); font-size: 10px; line-height: 1.45; }
+.sci-badge { flex: none; font-style: normal; font-size: 9px; padding: 1px 5px;
+  border: 1px solid; letter-spacing: 0.02em; }
+.sci-badge.established { color: #7fc46a; border-color: rgba(127,196,106,0.45); }
+.sci-badge.leading { color: #e8c04a; border-color: rgba(232,192,74,0.45); }
+.sci-badge.contested { color: #e0785c; border-color: rgba(224,120,92,0.5); }
+.sci-badge.simplified { color: #8fa8c4; border-color: rgba(143,168,196,0.4); }
+.sci-back { width: auto; padding: 3px 8px; font-size: 10px; margin-bottom: 8px; }
+.sci-title { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.sci-title b { color: var(--fg); font-size: 14px; font-weight: 600; }
+.sci-lead { color: var(--accent); font-size: 11px; line-height: 1.6; margin-bottom: 4px; }
+.sci-p { color: var(--fg); font-size: 11px; line-height: 1.75; margin: 0 0 7px;
+  opacity: 0.92; }
+.sci-p b { color: #ffe6b0; }
+.sci-ref { display: block; color: var(--accent); font-size: 10px; line-height: 1.5;
+  padding: 4px 7px; margin-bottom: 3px; text-decoration: none;
+  background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); }
+.sci-ref:hover { background: rgba(255,255,255,0.07); }
+.sci-ref.plain { color: var(--dim); border-left-color: var(--line); }
+/* 凡例と年代記から飛ぶ ⓘ */
+.sci-link { flex: none; width: 20px; padding: 2px 0; font-size: 11px; line-height: 1;
+  color: var(--accent); }
+
+/* --- 最初の画面 ------------------------------------------------------
+   ★どれかを選ぶまで先へ進まない。開いた瞬間に走り出していると、
+   「いまどの惑星を見ているのか」も「何ができるのか」も分からない
+
+   ★★**クラス名は `.titlescreen`。`.title` にしてはいけない。**
+   `.panel .title` が既にパネルの見出しに使われているので、
+   `.title` を全画面のオーバーレイにした瞬間、**解説パネルの見出しが
+   画面いっぱいの半透明の板になった**（実測。地図が透けて見えた）。
+   汎用の名前を後から別の意味で使わないこと */
+.titlescreen {
+  position: absolute; inset: 0; z-index: 90;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(6, 9, 14, 0.86);
+}
+.titlescreen[hidden] { display: none; }
+.ttl-card {
+  width: 520px; max-height: calc(100vh - 40px); overflow-y: auto;
+  padding: 20px 22px; background: var(--panel); border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-hi), inset -1px -1px 0 var(--edge-lo),
+    0 12px 40px rgba(0,0,0,0.6);
+}
+.ttl-head { margin-bottom: 12px; }
+.ttl-name { color: var(--fg); font-size: 22px; font-weight: 600; letter-spacing: 0.06em; }
+.ttl-sub { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.ttl-lead { color: var(--dim); font-size: 11px; line-height: 1.7; margin-bottom: 14px;
+  padding: 8px 10px; background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo); }
+.ttl-lead b { color: var(--fg); }
+.ttl-menu { display: flex; flex-direction: column; gap: 6px; }
+.ttl-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 11px 14px; text-align: left; }
+.ttl-btn b { color: var(--fg); font-size: 13px; font-weight: 600; }
+.ttl-btn span { color: var(--dim); font-size: 10.5px; }
+.ttl-btn[disabled] { opacity: 0.45; cursor: default; }
+.ttl-btn[disabled]:hover { background: #1a222d; border-color: var(--line); }
+.ttl-foot { color: var(--dim); font-size: 9.5px; margin-top: 14px; text-align: right;
+  letter-spacing: 0.04em; }
+.ttl-note { color: var(--dim); font-size: 10px; line-height: 1.55; margin: -2px 0 10px; }
+.ttl-note b { color: var(--fg); }
+.ttl-chapters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 8px; }
+.ttl-ch { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 7px 9px; text-align: left; }
+.ttl-ch b { color: var(--fg); font-size: 11.5px; font-weight: 600; }
+.ttl-ch span { color: var(--dim); font-size: 9.5px; }
+.ttl-ch.on { border-color: var(--accent); background: #17222c; }
+.ttl-save { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 10px; margin-bottom: 4px; text-align: left; width: 100%; }
+.ttl-save b { color: var(--fg); font-size: 11.5px; font-weight: 600; }
+.ttl-save span { color: var(--dim); font-size: 10px; }
+button.primary { background: #24506b; border-color: var(--accent); color: #eaf4fb; }
+button.primary:hover { background: #2c6288; }
+.ttl-card .row { margin: 7px 0; }
+.ttl-card .row > span:first-child { min-width: 64px; }
+/* 年代記から科学の解説へ飛ぶ ⓘ */
+.ch-sci { flex: none; width: 18px; padding: 0; align-self: flex-start;
+  background: transparent; border: 0; box-shadow: none;
+  color: var(--dim); font-size: 11px; line-height: 1.3; cursor: pointer; }
+.ch-sci:hover { color: var(--accent); background: transparent; }
+/* 遊び方の表 */
+.sci-man { margin-bottom: 10px; }
+.man-row { display: grid; grid-template-columns: 106px 1fr; gap: 8px; align-items: baseline;
+  padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.man-row > b { color: var(--fg); font-size: 11px; font-weight: 600; }
+.man-row > span { color: var(--dim); font-size: 10.5px; line-height: 1.6; }
+.man-row span b { color: var(--accent); font-weight: 600; }
+/* ★`.panel .row` の flex は【`.panel` の子孫にしか効かない】。
+   タイトルは `.panel` ではないので、行が横に流れて
+   「大きさ」の選択と「陸の割合」が同じ行に並んで見えた（実測） */
+.ttl-card .row { display: flex; align-items: center; gap: 8px; }
+.ttl-card .row > span:first-child { color: var(--dim); }
+.ttl-card input[type="text"], .ttl-card select { flex: 1; min-width: 0; }
+.ttl-card .row.buttons { margin-top: 12px; }
+.ttl-card .section { margin: 12px 0 6px; }
+.sci-p code, .sci-lead code { color: #d8c49a; background: rgba(255,255,255,0.06);
+  padding: 0 3px; font-size: 10px; }

@@ -22,9 +22,16 @@ const SHOTS: Record<string, string> = {
   "phylogeny": `document.getElementById("phyloBtn").click()`,
   "armed": `document.querySelector('.iv[data-kind="volcano"]').click()`,
   "diag": `document.getElementById("detDiag").open = true`,
+  "title": `void 0`,
+  "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
   "saves": `document.getElementById("savesBtn").click()`,
+  "science": `document.getElementById("legendSci").click()`,
+  "manual": `document.getElementById("legendSci").click();`
+    + `document.querySelector(".sci-back").click()`,
 }
 
+// ★タイトルは起動直後に出るので、押さずに撮る
+const TITLE_SHOTS = new Set(["title", "title-new"])
 const name = process.argv[2] ?? "layer-picker"
 const expr = SHOTS[name]
 if (!expr) throw new Error(`知らない部品: ${name}（${Object.keys(SHOTS).join(" / ")}）`)
@@ -66,7 +73,18 @@ async function main(): Promise<void> {
   await send("Page.enable")
   await send("Runtime.enable")
   await send("Page.navigate", { url: URL_ })
-  await sleep(6000)
+  // タイトルは起動直後に出る。それ以外は最初の画面を通してから撮る
+  await sleep(3000)
+  if (!TITLE_SHOTS.has(name)) {
+    await send("Runtime.evaluate", {
+      expression: `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+    })
+    await sleep(400)
+    await send("Runtime.evaluate", {
+      expression: `document.getElementById("ttStart").click()`,
+    })
+    await sleep(5000)
+  }
   await send("Runtime.evaluate", { expression: expr })
   await sleep(600)
   mkdirSync("snapshots", { recursive: true })

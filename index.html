@@ -73,6 +73,7 @@
           <button id="layerBtn" class="lp-open" title="レイヤを選ぶ（25 枚）">
             <span id="layerName">惑星 ★</span><b>▾</b></button>
           <button id="projBtn" class="mini" title="平面 ⇄ 球（見せ方だけ。物理は変わらない）">◍</button>
+          <button id="legendSci" class="mini sci-link" title="このレイヤの科学的な根拠を読む" hidden>ⓘ</button>
           <button id="legendToggle" class="mini" title="凡例をたたむ">▾</button>
         </div>
         <div id="legendBody" class="legend-body"></div>
@@ -269,6 +270,16 @@
       <!-- ★モデルの有効範囲を出たときの表示。
            無言で 491℃ を出し続けるとバグに見える（2026-08-31 に実際そうなった） -->
       <div id="outOfRange" class="oor" hidden></div>
+
+      <!-- 科学の解説。★確度と出典つき（`docs/06-science-basis.md` が元） -->
+      <div id="science" class="panel sci" hidden></div>
+
+      <!-- ============================================================
+           最初の画面。★**どれかを選ぶまで先へ進まない。**
+           開いた瞬間に走り出していると、いまどの惑星を見ているのかも
+           何ができるのかも分からないまま始まってしまう
+           ============================================================ -->
+      <div id="title" class="titlescreen" hidden></div>
 
       <div id="loading" class="loading">惑星を生成しています…</div>
       <div id="warn" class="warn" hidden></div>

@@ -19,6 +19,9 @@ import { Phylogeny } from "./ui/phylogeny"
 import { Chronicle } from "./ui/chronicle"
 import { LayerPicker } from "./ui/layerPicker"
 import { SavesPanel } from "./ui/savesPanel"
+import { SciencePanel } from "./ui/sciencePanel"
+import { TitleScreen, type NewGameOptions } from "./ui/titleScreen"
+import { NOTE_FOR_LAYER } from "./ui/science"
 import { putSave, getSave, gzip, gunzip, whenLabel } from "./ui/saves"
 import { track, trend, drawSparkline, resetSparklines } from "./ui/sparkline"
 import type { CladeInfo } from "./worker/protocol"
@@ -119,6 +122,20 @@ function boot(): void {
       } else {
         view.setWorld(grid, store)
         view.setLayer(layerById(layerSelect.value).render)
+      }
+      // ★生成が終わってから、セーブを当てる／時代まで早送りする。
+      //   どちらも `ready` の前にやると場がまだ無い
+      if (pendingLoad) {
+        const bytes = pendingLoad
+        pendingLoad = null
+        const buf = bytes.buffer.slice(
+          bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        worker?.postMessage({ type: "load", bytes: buf }, [buf])
+      } else if (pendingChapter) {
+        const ch = pendingChapter
+        pendingChapter = null
+        skipLabel = ch.label
+        post({ type: "skipTo", years: PLANET_AGE - ch.ga * 1e9 })
       }
       const warn = $("warn")
       if (!m.shared) {
@@ -745,6 +762,12 @@ $("reset").addEventListener("click", () => {
  */
 function renderLegend(): void {
   const l = layerById(layerSelect.value)
+  // ★**そのレイヤが何の理論なのかへ飛べるようにする。**
+  //   色の意味は凡例が言うが、「なぜその機構があるのか」は言えない
+  const note = NOTE_FOR_LAYER[l.id]
+  const btn = $("legendSci")
+  btn.hidden = !note
+  btn.dataset.note = note ?? ""
   const el = $("legendBody")
   const lg = l.legend
   if (!lg) { el.innerHTML = `<div class="lg-note">このレイヤに凡例はありません</div>`; return }
@@ -841,6 +864,11 @@ const layerPicker = new LayerPicker($("layerPicker"), LAYERS, (id) => {
   layerSelect.dispatchEvent(new Event("change"))
 })
 $("layerBtn").addEventListener("click", () => layerPicker.toggle(layerSelect.value))
+chronicle.onNote = (id) => science.show(id)
+$("legendSci").addEventListener("click", () => {
+  const id = $("legendSci").dataset.note
+  if (id) science.toggle(id)
+})
 /**
  * 平面 ⇄ 球の切り替え。★**物理は一切変わらない。投影だけ。**
  * 正距円筒は極を引き伸ばすので、球にすると氷冠が正しい大きさで見える。
@@ -885,7 +913,57 @@ function frame(): void {
 }
 
 void lastGeneration
-boot()
+
+// --- 科学の解説 -------------------------------------------------------
+//
+// ★**確度を必ず一緒に出す。** 定説と係争中を混ぜないのが `docs/06` の原則
+const science = new SciencePanel($("science"))
+
+// --- 最初の画面 -------------------------------------------------------
+//
+// ★どれかを選ぶまで先へ進まない。開いた瞬間に既定 seed で走り出していると、
+// 「いまどの惑星を見ているのか」も「何ができるのか」も分からないまま始まる
+const title = new TitleScreen($("title"), {
+  onNew: (o: NewGameOptions) => {
+    title.close()
+    seedInput.value = o.seed
+    gridSelect.value = `${o.width}x${o.height}`
+    landInput.value = String(o.landFraction)
+    $("landVal").textContent = o.landFraction.toFixed(2)
+    // 冥王代以外を選んだら、生成のあとでそこまで早送りする
+    pendingChapter = o.startGa < 4.53 ? { ga: o.startGa, label: o.startLabel } : null
+    boot()
+  },
+  onLoad: async (id) => {
+    title.close()
+    const bytes = await getSave(id)
+    if (!bytes) { boot(); return }
+    // ★**保存された惑星の解像度で作り直してから当てる。**
+    //   場は SharedArrayBuffer なので、大きさが違うと貼り直しが要る
+    const info = readInfo(bytes)
+    seedInput.value = info.seed
+    gridSelect.value = `${info.width}x${info.height}`
+    pendingLoad = bytes
+    boot()
+  },
+  onManual: () => { science.show() },
+})
+
+/** 生成が終わったら当てるセーブ / 早送りの行き先 */
+let pendingLoad: Uint8Array | null = null
+let pendingChapter: { ga: number; label: string } | null = null
+
+/** セーブの見出しだけ読む（形式は `snapshot.ts` と対。12 バイト目から JSON）*/
+function readInfo(b: Uint8Array): { width: number; height: number; seed: string } {
+  const dv = new DataView(b.buffer, b.byteOffset, b.byteLength)
+  const len = dv.getUint32(8, true)
+  const meta = JSON.parse(new TextDecoder().decode(b.subarray(12, 12 + len))) as {
+    options: { width: number; height: number; seed: string }
+  }
+  return meta.options
+}
+
+void title.show()
 // 起動時に pushAtmosphere() を呼んではいけない。
 // スライダーの初期値（CO2 280ppm・太陽 1.0 倍）が
 // 冥王代の初期状態（CO2 10%・暗い太陽）を上書きしてしまう。

@@ -83,6 +83,22 @@ async function main() {
   await send("Page.enable")
   await send("Log.enable")
   await send("Page.navigate", { url: URL_ })
+  await sleep(2500)
+  // ★**最初の画面はどれかを選ぶまで先へ進まない。**
+  //   通し確認も同じ道を通ること（ここが壊れるとゲームが始まらない）
+  await send("Runtime.evaluate", {
+    expression: `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+  })
+  await sleep(500)
+  const titleOk = ((await send("Runtime.evaluate", {
+    returnByValue: true,
+    expression: `!!document.getElementById("ttStart")`,
+  })).result.value) === true
+  await send("Runtime.evaluate", {
+    expression: `document.getElementById("ttSeed").value = "hadean-01";`
+      + `document.getElementById("ttStart").click()`,
+  })
+  console.log(`\n--- 最初の画面 ---\n  新しい惑星の設定が開く: ${titleOk ? "OK" : "NG"}`)
   console.log(`読み込み: ${URL_}  ${WAIT_MS / 1000}s 待機…`)
   await sleep(WAIT_MS)
 
@@ -184,7 +200,9 @@ async function main() {
   await send("Runtime.evaluate", {
     expression: `document.querySelector(".sav-load").click()`,
   })
-  await sleep(3000)
+  // ★読み込みは 34MB の伸長と場の貼り直しで 1 秒近くかかる。
+  //   ここを短くすると、次の検査が「まだ読み込み中の惑星」を見て落ちる（実測）
+  await sleep(5000)
   const after2 = (await send("Runtime.evaluate", {
     returnByValue: true,
     expression: `parseFloat(document.getElementById("tAge").textContent)`,
@@ -322,7 +340,7 @@ async function main() {
   const globeOk = globe.painted > 20
   const ok = v.loading === true && Number(v.painted) > 200 &&
     String(v.mean).includes("℃") && advanced && erupted && skipped && armed && legendOk && phyloOk && globeOk &&
-    savedOk &&
+    savedOk && titleOk &&
     consoleErrors.length === 0 && pageErrors.length === 0
   if (!advanced) console.log("  ! 時間が進んでいない")
   if (!erupted) console.log("  ! 介入が効いていない")
@@ -332,6 +350,7 @@ async function main() {
   if (!phyloOk) console.log("  ! 系譜タブが開かない/描けない")
   if (!globeOk) console.log("  ! 球体表示が真っ黒")
   if (!savedOk) console.log("  ! 記録（保存とロード）が動いていない")
+  if (!titleOk) console.log("  ! 最初の画面から新しい惑星に入れない")
   console.log(`\n${ok ? "PASS" : "FAIL"}  snapshots/app-smoke.png`)
   ws.close()
   chrome.kill()

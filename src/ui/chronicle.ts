@@ -17,6 +17,8 @@
  * なので新しい順にする。全史を通しで読みたいときは下のタイムラインがある。
  */
 
+import { NOTE_FOR_EVENT } from "./science"
+
 export interface Ev {
   year: number
   kind: string
@@ -69,6 +71,10 @@ export class Chronicle {
       ).join("")}</div>`
       + `<div class="ch-body" id="chBody">—</div>`
     this.body = root.querySelector<HTMLElement>("#chBody")!
+    this.body.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLElement>(".ch-sci")
+      if (b && this.onNote) this.onNote(b.dataset.note!)
+    })
     for (const b of root.querySelectorAll<HTMLButtonElement>(".ch-tab")) {
       b.addEventListener("click", () => {
         this.cat = b.dataset.cat as Cat
@@ -78,6 +84,9 @@ export class Chronicle {
       })
     }
   }
+
+  /** ★解説を開く手（`main.ts` が刺す）。この部品は科学の中身を知らない */
+  onNote: ((id: string) => void) | null = null
 
   set(events: Ev[]): void {
     this.events = events
@@ -98,8 +107,13 @@ export class Chronicle {
       const ico = e.code
         ? `<img class="ch-ico" src="icons/${e.code}.png" alt="" onerror="this.remove()" />`
         : `<i class="ch-dot"></i>`
+      // ★**その出来事が「どういう理論の話か」へ飛べるようにする。**
+      //   起きたことだけ出しても、なぜ起きたのかは伝わらない
+      const note = e.code ? NOTE_FOR_EVENT[e.code] : undefined
+      const sci = note
+        ? `<button class="ch-sci" data-note="${note}" title="この出来事の科学的な背景">ⓘ</button>` : ""
       return `<div class="ch-ev" data-cat="${cat}">${ico}`
-        + `<div class="ch-tx"><span class="ch-yr">${when(e.year)}</span>${e.text}</div></div>`
+        + `<div class="ch-tx"><span class="ch-yr">${when(e.year)}</span>${e.text}</div>${sci}</div>`
     }).join("")
   }
 }
