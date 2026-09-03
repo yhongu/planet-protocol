@@ -47,6 +47,20 @@ export interface CarbonParams {
   Wsf0: number
   /** 大気+海洋の実効リザーバ [Gt-C/ppm] */
   Meff: number
+  /**
+   * ★**大気だけの実効リザーバ [Gt-C/ppm]。海が無い時代はこちら。**
+   *
+   * `Meff = 21` は【大気+海洋】で、**10 倍のうち 9 割は海が緩衝している分**
+   * である（大気だけなら 2.13 Gt-C/ppm）。ところがマグマオーシャン期には
+   * 液体の海が無い。脱ガスした炭素は**全部大気に残る**はずなのに、
+   * 存在しない海に 9 割を薄めていた。
+   *
+   * ★**較正は動かない。** 火山脱ガスは `volcanicFlux = land + seafloor`
+   * で定義され（`recalibrate`）、`Meff` はそこに現れない。
+   * `Meff` が効くのは `dCo2 = net / Meff · dt` ——**応答の時定数だけ**で、
+   * 基準状態では net = 0 なので姿を見せない。
+   */
+  MeffAtmosphere: number
 
   /** 速度論律速の CO2 依存 (CO2/280)^co2Exp */
   co2Exp: number
@@ -131,6 +145,8 @@ export const EARTH_CARBON: CarbonParams = {
   W0: 0.07,
   Wsf0: 0.03,
   Meff: 21,
+  /** 大気だけ: 5.15e18 kg の大気に対し 1 ppm = 2.13 Gt-C */
+  MeffAtmosphere: 2.13,
   co2Exp: 0.3,
   Tweath: 13.7,
   supplyLimitedTarget: 0.25,
@@ -214,6 +230,25 @@ export function computeErosion(world: World): void {
  * 供給律速の割合は比 rho = S/K だけで決まる（スケールに依らない）ので、
  * まず rho を二分法で決め、そのあと総和が W0 になるよう両者を一緒にスケールする。
  */
+/**
+ * ★**「液体の水があるか」の門。定義を 1 か所にする。**
+ *
+ * 風化・炭酸塩化・炭素のリザーバの 3 つがこれを使う。
+ * 別々に書くと、片方だけ直したときに**打ち消し合って成功に見える**
+ * （`CLAUDE.md` の 19）。
+ *
+ * 海の割合は水の沈み込みで 1 をわずかに割る（実測 0.99981）ので、
+ * **飽和する形にすること**。線形だと現在の地球で 1 にならず、較正が動く。
+ */
+export function liquidWaterGate(world: World): number {
+  const g = world.globals
+  const wf = g.oceanWaterFraction
+  const t = wf <= 0 ? 0 : wf >= 0.05 ? 1 : wf / 0.05
+  const smooth = t * t * (3 - 2 * t)          // smoothstep
+  // 水がすべて水蒸気なら液体は無い（マグマオーシャン期）
+  return smooth * (1 - Math.max(0, Math.min(1, g.steamFraction)))
+}
+
 export function calibrateCarbon(world: World, cp: CarbonParams): CarbonState {
   const { W, H } = world.grid
   const ero = world.store.f32("erosionRate").read
@@ -308,9 +343,7 @@ export function computeWeathering(
   // 風化は温度に指数で依存するので当然だが、物理的には起きてはいけない。
   //
   // 海の量に対して滑らかに立ち上げる（不連続にすると気候ソルバが振動する）。
-  const wf = world.globals.oceanWaterFraction
-  const t = wf <= 0 ? 0 : wf >= 0.05 ? 1 : wf / 0.05
-  const liquid = t * t * (3 - 2 * t)          // smoothstep
+  const liquid = liquidWaterGate(world)
   const kBase = st.kDensity * fCo2 * cp.biotaFactor * liquid
   const sBase = st.sDensity * cp.erosionFactor * liquid
   const regCap = cp.regolithCapYears * st.kDensity
@@ -379,8 +412,7 @@ export function computeWeathering(
    * 炭素の較正（`assertReferenceState`）は 1 ビットも動かない。
    * 動くのはマグマオーシャン期だけ。
    */
-  const noSteam = 1 - Math.max(0, Math.min(1, world.globals.steamFraction))
-  const seafloor = liquid * noSteam
+  const seafloor = liquid
     * cp.Wsf0 * Math.pow(Math.max(1e-6, co2) / 280, cp.sfCo2Exp)
     * Math.exp((meanT - T0) / cp.sfTweath)
 
@@ -565,11 +597,15 @@ export class CarbonCycle implements Subsystem {
     this.lastFluxes = f
 
     const prev = world.globals.co2
-    const dCo2 = (f.net / cp.Meff) * dtYears
+    // ★リザーバは「液体の海があるか」で変わる（`MeffAtmosphere` を読むこと）。
+    // 現在の地球では門が厳密に 1 なので `Meff` そのものになる
+    const meff = cp.MeffAtmosphere
+      + (cp.Meff - cp.MeffAtmosphere) * liquidWaterGate(world)
+    const dCo2 = (f.net / meff) * dtYears
     world.globals.co2 = Math.max(1, prev + dCo2)
 
     // 寄与台帳。どちらのレジームで除去されたかを区別する（docs/04-5）
-    const k = dtYears / cp.Meff
+    const k = dtYears / meff
     world.ledger.add("co2", f.volcanic * k, "volcanism.arc")
     world.ledger.add("co2", -f.landKinetic * k, "weathering.kinetic")
     world.ledger.add("co2", -f.landSupplyLimited * k, "weathering.supplyLimited")

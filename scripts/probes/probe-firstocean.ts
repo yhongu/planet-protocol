@@ -55,7 +55,7 @@ while (w.globals.yearsElapsed < UNTIL) {
   if (g.yearsElapsed < next) continue
   next = g.yearsElapsed + EVERY
   // 地表温度の広がり。**平均だけ見ると「一様に冷えた」と見分けがつかない**
-  const f = w.carbon.lastFluxes ?? { land: 0, seafloor: 0, volcanic: 0 }
+  const f = w.carbon.lastFluxes ?? { land: 0, seafloor: 0, volcanic: 0, supplyLimitedFraction: 0 }
   const st = w.store.f32("surfaceTemp").read
   let hot = -Infinity, cold = Infinity
   for (let i = 0; i < w.grid.cellCount; i++) {
@@ -81,7 +81,10 @@ while (w.globals.yearsElapsed < UNTIL) {
     // ★CO2 が落ちる先を分ける。**海に溶けた**のか**風化で消えた**のかで
     // 話がまったく違う（凝結直後に海が吸うのは Sleep & Zahnle 2001 で正しい）
     `  |陸風化${(f.land * 1000).toFixed(1).padStart(7)} 海底${(f.seafloor * 1000).toFixed(1).padStart(7)}` +
-    ` 火山${(f.volcanic * 1000).toFixed(1).padStart(6)} Mt-C/yr`)
+    ` 火山${(f.volcanic * 1000).toFixed(1).padStart(6)} Mt-C/yr` +
+    // ★風化の暴走を止める唯一の仕組みは【供給律速】（新鮮な岩の在庫）。
+    // 効いているかは面積割合でしか分からない（`CLAUDE.md` の 46）
+    `  供給律速${((f.supplyLimitedFraction ?? 0) * 100).toFixed(0).padStart(4)}%`)
 }
 console.log(`\n地球の拘束: Jack Hills 4.404Ga = 形成から約 160Myr 後に液体の水`)
 console.log(`（惑星年齢 ${(PLANET_AGE_YEARS / 1e9).toFixed(2)}Ga）`)
