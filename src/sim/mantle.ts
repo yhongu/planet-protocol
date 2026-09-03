@@ -204,6 +204,10 @@ export class Mantle implements Subsystem {
   params: MantleParams
   state: MantleState
 
+  /** ★セーブ用。温度と様式、そして「一度でも動いたか」の履歴 */
+  snapshot(): Record<string, unknown> { return { ...this.state } }
+  restore(v: Record<string, unknown>): void { Object.assign(this.state, v) }
+
   constructor(params: Partial<MantleParams> = {}, initialTempC?: number) {
     this.params = { ...EARTH_MANTLE, ...params }
     const t = initialTempC ?? 2300

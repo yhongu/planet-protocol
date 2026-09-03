@@ -58,6 +58,22 @@ export class Rng {
     if ((this.s0 | this.s1 | this.s2 | this.s3) === 0) this.s0 = 1
   }
 
+  /**
+   * ★**内部状態の取り出しと復元。** セーブとロードのため。
+   *
+   * 決定論が契約なので（`docs/04-6`）、**乱数の途中経過まで保存しないと
+   * 復元した惑星は別の惑星になる。** 4 語すべてを持つこと。
+   */
+  getState(): [number, number, number, number] {
+    return [this.s0, this.s1, this.s2, this.s3]
+  }
+
+  setState(v: readonly [number, number, number, number]): void {
+    this.s0 = v[0] >>> 0; this.s1 = v[1] >>> 0
+    this.s2 = v[2] >>> 0; this.s3 = v[3] >>> 0
+    if ((this.s0 | this.s1 | this.s2 | this.s3) === 0) this.s0 = 1
+  }
+
   /** 32bit 符号なし整数 */
   nextU32(): number {
     const result = Math.imul(rotl(Math.imul(this.s1, 5) >>> 0, 7), 9) >>> 0

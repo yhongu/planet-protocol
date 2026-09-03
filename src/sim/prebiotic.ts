@@ -266,6 +266,17 @@ export class Prebiotic implements Subsystem {
     hazard: 0, cumulativeHazard: 0,
   }
   private readonly rng: Rng
+
+  /** ★セーブ用 */
+  snapshot(): Record<string, unknown> {
+    return { state: { ...this.state }, rng: this.rng.getState() }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as { state: Record<string, unknown>; rng: [number, number, number, number] }
+    Object.assign(this.state, g.state)
+    this.rng.setState(g.rng)
+  }
   private polyBuf: Float32Array | null = null
   private routeBuf: Uint8Array | null = null
 

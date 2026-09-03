@@ -155,6 +155,8 @@ export class World {
   readonly ledger = new Ledger()
   params: PlanetParams
   globals: PlanetGlobals
+  /** ★この惑星の seed。セーブとロードに要る（決定論の入口） */
+  readonly seed: string
   stats: ClimateStats | null = null
   lastStep: StepReport | null = null
   /** 主要な出来事の記録。タイムライン UI が読む */
@@ -175,6 +177,7 @@ export class World {
     const hadean = opts.startEpoch === "hadean"
     this.mantle = new Mantle(opts.mantle,
       opts.initialMantleTempC ?? (hadean ? HADEAN_START.mantleTempC : 1350))
+    this.seed = opts.seed
     this.tectonics = new Tectonics(opts.seed, opts.tectonics)
     this.ocean = new Ocean(opts.ocean)
     this.prebiotic = new Prebiotic(opts.seed, opts.prebiotic)
@@ -636,6 +639,44 @@ export class World {
    * 閾値は実測の分布から（海面 P25 -1365m / 中央 -927m / P75 -486m）。
    */
   private seaState = 0
+
+  /**
+   * ★**セーブ用。** 出来事の検出はどれも「前回どうだったか」を持っている。
+   * これを落とすと、復元した直後に**同じ出来事がもう一度出る**
+   * （氷期・海進・時代の変わり目）。
+   */
+  snapshot(): Record<string, unknown> {
+    return {
+      stats: this.stats,
+      evolvingSun: this.evolvingSun,
+      climateCouplingYears: this.climateCouplingYears,
+      // ★サブシステムの端数の持ち越し。**「いつ発火するか」そのもの**
+      loop: this.loop.snapshot(),
+      lastEpochId: this.lastEpochId,
+      glaciationState: this.glaciationState,
+      glaciationPending: this.glaciationPending,
+      glaciationPendingSince: this.glaciationPendingSince,
+      seaState: this.seaState,
+    }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as {
+      stats: ClimateStats | null; evolvingSun: boolean; climateCouplingYears: number
+      loop: Record<string, number>
+      lastEpochId: string; glaciationState: number
+      glaciationPending: number; glaciationPendingSince: number; seaState: number
+    }
+    this.stats = g.stats
+    this.evolvingSun = g.evolvingSun
+    this.climateCouplingYears = g.climateCouplingYears
+    this.loop.restore(g.loop)
+    this.lastEpochId = g.lastEpochId
+    this.glaciationState = g.glaciationState
+    this.glaciationPending = g.glaciationPending
+    this.glaciationPendingSince = g.glaciationPendingSince
+    this.seaState = g.seaState
+  }
   private detectSeaLevel(): void {
     // ★**液体の海が無いときに「海進・海退」と言ってはいけない。**
     // マグマオーシャン期は海面が -5069m になるので、門が無いと

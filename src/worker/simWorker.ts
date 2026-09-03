@@ -6,6 +6,7 @@
  */
 
 import { World } from "../sim/world"
+import { saveWorld, applySnapshot } from "../sim/snapshot"
 import { WORLD_FIELDS } from "../sim/world"
 import { SPEED_STEPS, couplingForSpeed, tickYears } from "../sim/loop"
 import { initGpu } from "../gpu/device"
@@ -52,6 +53,14 @@ const post = (m: FromWorker, transfer?: Transferable[]) =>
  */
 let yearBank = 0
 /**
+ * ★**章立ての早送り先 [経過年]。0 なら早送りしていない。**
+ *
+ * 「太古代から始める」は**本当にそこまで回す**。決め打ちの初期値を置くと、
+ * その惑星の歴史が嘘になる（`docs/00` の「台本を書かない」）。
+ * 128x64 で顕生代までは約 50 分かかるので、**進捗を必ず返すこと**。
+ */
+let skipTarget = 0
+/**
  * 1 フレームで進めるティックの上限。
  * 解が重くて貯金が膨らんだとき、追いつこうとしてさらに重くなる
  * 死のスパイラルに入らないようにする。溢れた分は捨てる（＝一時的に遅くなる）。
@@ -60,6 +69,28 @@ const MAX_TICKS_PER_FRAME = 8
 
 async function tick(): Promise<void> {
   if (!world) return
+
+  // --- 章立ての早送り -------------------------------------------------
+  //
+  // ★**本当にそこまで回す。** 決め打ちの初期値を置くと、その惑星の歴史が
+  // 嘘になる。時間はかかるので、**16ms ごとに進捗を返して画面を止めない**
+  if (skipTarget > 0) {
+    const budgetMs = performance.now() + 16
+    while (world.globals.yearsElapsed < skipTarget && performance.now() < budgetMs) {
+      // ★物理上限の段（×20）で回す。それより速くすると風化サーモスタットの
+      // 応答（20〜40kyr）を分解できなくなり、**別の惑星が出来上がる**
+      world.advance(tickYears(world.yearsPerSecond(20)), INTERACTIVE)
+    }
+    const done = world.globals.yearsElapsed >= skipTarget
+    post({
+      type: "progress", years: world.globals.yearsElapsed, target: skipTarget,
+      label: world.epoch.label, done,
+    })
+    if (done) skipTarget = 0
+    timer = setTimeout(() => { void tick() }, 0)
+    return
+  }
+
   const now = performance.now()
   const dtWall = Math.min(0.25, (now - lastWall) / 1000)
   lastWall = now
@@ -296,6 +327,38 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break
     case "intervene":
       if (world) { world.intervene(m.kind, m.magnitude, m.cell, m.geneKind); void world.refreshAsync() }
+      break
+    // --- セーブ ---------------------------------------------------
+    case "save":
+      if (world) {
+        const bytes = saveWorld(world)
+        // ★`ArrayBuffer` を **転送**する（コピーしない）。34MB を毎回
+        // 構造化複製すると、保存のたびに画面が固まる
+        const buf = bytes.buffer.slice(
+          bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+        ;(self as unknown as {
+          postMessage: (m: unknown, t: Transferable[]) => void
+        }).postMessage(
+          { type: "saved", bytes: buf, years: world.globals.yearsElapsed, seed: world.seed },
+          [buf])
+      }
+      break
+    case "load":
+      if (world) {
+        // 速度を 0 にしてから当てる（進行中に場を差し替えると 1 歩ぶん混ざる）
+        yearsPerSecond = 0
+        speedMultiplier = 0
+        yearBank = 0
+        applySnapshot(world, new Uint8Array(m.bytes))
+        void world.refreshAsync(INTERACTIVE)
+      }
+      break
+    // --- 章立て（指定の年まで早送りする）-----------------------------
+    case "skipTo":
+      if (world) {
+        yearsPerSecond = 0; speedMultiplier = 0; yearBank = 0
+        skipTarget = m.years
+      }
       break
     case "run":
       // 速度倍率から、そのエポックの標準速度と物理上限を踏まえた進行年数を決める

@@ -24,6 +24,7 @@ import type { Subsystem } from "./loop"
 import type { World } from "./world"
 import { MODE_TRAITS, type ModeTraits } from "./mantle"
 import { ParcelStore, fibonacciSphere, landFractionFromParcels } from "./parcels"
+import type { ParcelSnapshot } from "./parcels"
 
 export const TECTONIC_FIELDS: readonly FieldSpec[] = [
   { name: "crustThickness", kind: "f32", doubleBuffered: true, comment: "km。地殻の厚さ" },
@@ -1065,6 +1066,57 @@ export class Tectonics implements Subsystem {
   private pendBuf: Float32Array | null = null
   private landMask: Uint8Array | null = null
   private rng: Rng
+
+  /**
+   * ★**セーブ用の状態。** 作業バッファ（`vE` など）は入れない ——
+   * 次の 1 歩で作り直される。
+   * 逆に **`rng` と `assembled` は必ず入れること** ——
+   * 乱数の途中経過と超大陸の判定は、無いと復元した惑星が別の道を歩く。
+   */
+  snapshot(): Record<string, unknown> {
+    return {
+      plates: this.plates, llsvp: this.llsvp, lastLipYear: this.lastLipYear,
+      budget: { ...this.budget }, waterBudget: { ...this.waterBudget },
+      landLoss: { ...this.landLoss },
+      lastDispersion: this.lastDispersion, assembled: this.assembled,
+      recycleWeight: this.recycleWeight,
+      // ★**最初の 1 歩で 1 回だけ測る基準**。落とすと復元後に
+      // 【そのときの地形】で測り直してしまい、海面が別の所に落ち着く
+      // （実測: 25 歩で海の割合が 1.01004 と 1.01036 に割れた）
+      refWaterVolume: this.refWaterVolume,
+      varLedger: { ...this.varLedger },
+      prevBudget: { ...this.prevBudget },
+      rng: this.rng.getState(),
+      parcels: this.parcels ? this.parcels.snapshot() : null,
+    }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as {
+      plates: Plate[]; llsvp: Vec3[]; lastLipYear: number
+      budget: Record<string, number>; waterBudget: Record<string, number>
+      landLoss: Record<string, number>
+      lastDispersion: number; assembled: boolean; recycleWeight: number
+      refWaterVolume: number
+      varLedger: Record<string, number>; prevBudget: Record<string, number>
+      rng: [number, number, number, number]
+      parcels: ParcelSnapshot | null
+    }
+    this.plates = g.plates
+    this.llsvp = g.llsvp
+    this.lastLipYear = g.lastLipYear
+    Object.assign(this.budget, g.budget)
+    Object.assign(this.waterBudget, g.waterBudget)
+    Object.assign(this.landLoss, g.landLoss)
+    this.lastDispersion = g.lastDispersion
+    this.assembled = g.assembled
+    this.recycleWeight = g.recycleWeight
+    this.refWaterVolume = g.refWaterVolume
+    Object.assign(this.varLedger, g.varLedger)
+    Object.assign(this.prevBudget, g.prevBudget)
+    this.rng.setState(g.rng)
+    if (g.parcels && this.parcels) this.parcels.restore(g.parcels)
+  }
   /** 基準の海水量。初回の update で地形から測る。−1 は未測定 */
   private refWaterVolume = -1
   /**

@@ -524,6 +524,29 @@ export class CarbonCycle implements Subsystem {
 
   /** 前ティックの氷被覆率。脱氷による火山活動の増幅に使う */
   private prevIce = -1
+
+  /** ★セーブ用。`volcanicFlux` は【較正で決まった値】なので必ず持つこと ——
+   *  復元後に較正し直すと、その時点の地形で別の値になる */
+  snapshot(): Record<string, unknown> {
+    return {
+      state: this.state, prevIce: this.prevIce,
+      volcanicFlux: this.params.volcanicFlux,
+      presentCrustProduction: this.presentCrustProduction,
+      presentActualProduction: this.presentActualProduction,
+    }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as {
+      state: CarbonState | null; prevIce: number; volcanicFlux: number
+      presentCrustProduction: number; presentActualProduction: number
+    }
+    this.state = g.state
+    this.prevIce = g.prevIce
+    this.params.volcanicFlux = g.volcanicFlux
+    this.presentCrustProduction = g.presentCrustProduction
+    this.presentActualProduction = g.presentActualProduction
+  }
   /** 現在の地球の海洋地殻の生産量 [km³/yr]。recalibrate が撮る */
   presentCrustProduction = 0
   /**

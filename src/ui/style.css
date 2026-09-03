@@ -792,3 +792,40 @@ input[type="text"], select {
 .phylo { bottom: var(--bottom); }
 .lp { bottom: var(--bottom); max-height: calc(100vh - var(--bottom) - 24px); }
 .rail { max-height: calc(100vh - var(--bottom) - 24px); }
+
+/* --- 記録（保存・読み込み・章立て）----------------------------------
+   ★1 ゲームが 38〜60 分あるので、**途中でやめられること**が要る */
+.saves { top: 12px; left: 176px; width: 360px; z-index: 46;
+  max-height: calc(100vh - var(--bottom) - 24px); overflow-y: auto; }
+.ch-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.sav-ch { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 6px 8px; text-align: left; }
+.sav-ch b { color: var(--fg); font-size: 11.5px; font-weight: 600; }
+.sav-ch span { color: var(--dim); font-size: 10px; }
+.sav-list { display: flex; flex-direction: column; gap: 3px; }
+.sav-row { display: flex; align-items: center; gap: 6px;
+  padding: 5px 6px; background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent); }
+.sav-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.sav-meta b { color: var(--fg); font-size: 11px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sav-meta span { color: var(--dim); font-size: 9.5px; }
+.sav-row .mini { width: 22px; }
+
+/* --- 早送りの進捗 ----------------------------------------------------
+   ★**無言で数分固まるのが一番いけない。** 何をしているかを必ず出す */
+.skipbar {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  z-index: 60; width: 420px; padding: 14px 18px; text-align: center;
+  background: var(--panel); border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-hi), inset -1px -1px 0 var(--edge-lo),
+    0 8px 28px rgba(0,0,0,0.55);
+}
+.skipbar[hidden] { display: none; }
+.skipbar b { color: var(--fg); font-size: 13px; }
+.skip-sub { color: var(--dim); font-size: 10.5px; margin: 5px 0 9px; line-height: 1.5; }
+.skip-bar { height: 10px; background: #0a0e14; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo); }
+.skip-bar i { display: block; height: 100%; background: var(--accent); }
+/* ★3 つ並べる段。絵を落として文字だけにする（152px に 3 つ入れるため）*/
+.act.icon.tab { padding: 6px 2px; justify-content: center; }
+.act.icon.tab span { font-size: 11px; }

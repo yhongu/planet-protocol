@@ -235,6 +235,18 @@ export class Climate {
   readonly grid: Grid
   private geo: Geometry
   private tPrev: Float32Array
+
+  /**
+   * ★**セーブ用。`tPrev` はソルバの状態である。**
+   *
+   * 擬似時間発展の強制項が `c * (tPrev - T)` なので、これが違うと
+   * **同じ場から出発しても違う解に落ちる**（対話中は `maxOuter: 8` で
+   * 打ち切っているので、なおさら出発点が効く）。
+   * 場そのものは `FieldStore` が持っているが、これは【前の歩の写し】なので
+   * 別に保存しなければならない。
+   */
+  snapshot(): number[] { return Array.from(this.tPrev) }
+  restore(v: number[]): void { this.tPrev.set(v) }
   // PCG のスクラッチ。ティックループ内で確保しない（docs/04-8.5 規則 7）
   private cgX: Float64Array
   private cgR: Float64Array

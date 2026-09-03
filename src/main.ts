@@ -18,6 +18,8 @@ import { Inspector } from "./ui/inspector"
 import { Phylogeny } from "./ui/phylogeny"
 import { Chronicle } from "./ui/chronicle"
 import { LayerPicker } from "./ui/layerPicker"
+import { SavesPanel } from "./ui/savesPanel"
+import { putSave, getSave, gzip, gunzip, whenLabel } from "./ui/saves"
 import { track, trend, drawSparkline, resetSparklines } from "./ui/sparkline"
 import type { CladeInfo } from "./worker/protocol"
 import type { WorldEvent } from "./sim/world"
@@ -130,10 +132,65 @@ function boot(): void {
       phylogeny.setData(m.nodes, m.originYear, m.originSite)
       return
     }
+    // --- セーブが返ってきた ---
+    if (m.type === "saved") {
+      const raw = new Uint8Array(m.bytes)
+      if (pendingDownload) {
+        pendingDownload = false
+        void gzip(raw).then((gz) => {
+          const url = URL.createObjectURL(
+            new Blob([gz.buffer.slice(
+              gz.byteOffset, gz.byteOffset + gz.byteLength) as ArrayBuffer]))
+          const a = document.createElement("a")
+          a.href = url
+          a.download = `${m.seed}-${whenLabel(m.years).replace(" ", "")}.gaia`
+          a.click()
+          URL.revokeObjectURL(url)
+        })
+      }
+      if (pendingSaveName) {
+        const name = pendingSaveName
+        pendingSaveName = null
+        void putSave({
+          id: `${Date.now()}`, name, seed: m.seed, years: m.years, savedAt: Date.now(),
+        }, raw).then(() => { if (savesPanel.open) void savesPanel.show() })
+      }
+      return
+    }
+    // --- 章立ての早送り ---
+    if (m.type === "progress") {
+      const el = $("skipProgress")
+      if (m.done) {
+        el.hidden = true
+        // ★着いたら【止まった状態】にする。勝手に走り出さない
+        for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
+        document.querySelector(".sp[data-speed=\"0\"]")?.classList.add("active")
+        speed = 0
+        // ★**着いた惑星をそのまま記録に残す。**
+        // 章立ては「決め打ちの初期値」ではなく本当に回した結果なので、
+        // 捨てるともう一度同じ時間がかかる。2 回目からは読み込むだけで始まる
+        if (skipLabel) {
+          pendingSaveName = `${skipLabel}（${seedInput.value}）`
+          post({ type: "save" })
+          skipLabel = ""
+        }
+        return
+      }
+      const from = lastYears
+      const pct = Math.max(0, Math.min(100,
+        (m.years - from) / Math.max(1, m.target - from) * 100))
+      el.hidden = false
+      el.innerHTML = `<b>${skipLabel}まで進めています</b>`
+        + `<div class="skip-sub">${m.label} · ${whenLabel(m.years)} → ${whenLabel(m.target)}`
+        + `　★台本ではありません。本当にそこまで回しています</div>`
+        + `<div class="skip-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`
+      return
+    }
     if (m.type === "tick") {
       lastGeneration = m.generation
       $("loading").hidden = true
       lastGlobals = m.globals
+      lastYears = m.years
       if (m.stoppedAtEvent && skipBtn.classList.contains("waiting")) {
         skipBtn.classList.remove("waiting")
         speed = 0
@@ -732,6 +789,52 @@ layerSelect.addEventListener("change", () => {
   $("layerName").textContent = layerById(layerSelect.value).label
   renderLegend()
 })
+
+// --- 記録（保存・読み込み・章立て）----------------------------------
+//
+// ★**1 ゲームが 38〜60 分ある。** 途中でやめられないことが、
+// 実際に遊ぶ回数を減らし、そのぶんバグが見つからなくなっていた。
+let pendingSaveName: string | null = null
+let pendingDownload = false
+
+const savesPanel = new SavesPanel($("saves"), {
+  onSave: (name) => { pendingSaveName = name; post({ type: "save" }) },
+  onDownload: () => { pendingDownload = true; post({ type: "save" }) },
+  onLoad: async (id) => {
+    const bytes = await getSave(id)
+    if (!bytes) return
+    savesPanel.close()
+    const buf = bytes.buffer.slice(
+      bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    worker?.postMessage({ type: "load", bytes: buf }, [buf])
+  },
+  onFile: async (f) => {
+    const raw = new Uint8Array(await f.arrayBuffer())
+    // ★`.gaia` は gzip 圧縮してある。生のセーブも読めるようにしておく
+    //   （先頭 2 バイトが 1f 8b なら gzip）
+    const bytes = (raw[0] === 0x1f && raw[1] === 0x8b) ? await gunzip(raw) : raw
+    savesPanel.close()
+    const buf = bytes.buffer.slice(
+      bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    worker?.postMessage({ type: "load", bytes: buf }, [buf])
+  },
+  onChapter: (ga, label) => {
+    savesPanel.close()
+    // 惑星年齢 4.54Ga のうち「何年経過したか」に直す
+    const years = (PLANET_AGE - ga * 1e9)
+    if (years <= lastYears) {
+      alert(`いまは ${whenLabel(lastYears)} なので、` +
+        `${label}へは戻れません（惑星を作り直してから選んでください）`)
+      return
+    }
+    skipLabel = label
+    post({ type: "skipTo", years })
+  },
+})
+$("savesBtn").addEventListener("click", () => { void savesPanel.toggle() })
+let skipLabel = ""
+/** いまの経過年。★章立ての可否と進捗の分母に要る */
+let lastYears = 0
 
 const layerPicker = new LayerPicker($("layerPicker"), LAYERS, (id) => {
   layerSelect.value = id

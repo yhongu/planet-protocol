@@ -437,6 +437,28 @@ export class Ocean implements Subsystem {
   private boxTempL = 25
   private boxTempH = 5
 
+  /** ★セーブ用。2 箱（Stommel 1961）の温度は積分状態なので必ず持つ */
+  snapshot(): Record<string, unknown> {
+    return {
+      state: { ...this.state },
+      phosphorusBudget: { ...this.phosphorusBudget },
+      boxTempL: this.boxTempL, boxTempH: this.boxTempH,
+      calibrated: this.calibrated,
+    }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as {
+      state: Record<string, number>; phosphorusBudget: Record<string, number>
+      boxTempL: number; boxTempH: number; calibrated: boolean
+    }
+    Object.assign(this.state, g.state)
+    Object.assign(this.phosphorusBudget, g.phosphorusBudget)
+    this.boxTempL = g.boxTempL
+    this.boxTempH = g.boxTempH
+    this.calibrated = g.calibrated
+  }
+
   /** 作業用バッファ。ティックループ内で確保しない（docs/04-8.5 規則 7） */
   private tauX: Float32Array | null = null
   private tauY: Float32Array | null = null

@@ -55,6 +55,18 @@ export interface ParcelInit {
   age: number
 }
 
+/** `ParcelStore.snapshot()` が返す形。`snapshot.ts` が符号化する */
+export interface ParcelSnapshot {
+  high: number
+  liveCount: number
+  freeTop: number
+  x: Float64Array; y: Float64Array; z: Float64Array
+  plate: Int32Array
+  felsic: Float32Array; thick: Float32Array; age: Float32Array
+  alive: Uint8Array
+  freeList: Int32Array
+}
+
 export class ParcelStore {
   /** 単位球上の位置。連続座標なので移流に数値拡散が無い */
   readonly x: Float64Array
@@ -102,6 +114,48 @@ export class ParcelStore {
     this.counter = new Int32Array(grid.cellCount)
     // 面積は「粒子の目標数」で割る。実際の生存数が増減しても 1 個の重みは変えない
     this.parcelArea = (4 * Math.PI * 6.371e6 * 6.371e6) / count
+  }
+
+  /**
+   * ★**セーブ用。生きている範囲（`high` まで）だけを渡す。**
+   *
+   * 容量は目標数の 2.5 倍あるので、全部書くと 2.5 倍の無駄になる。
+   * `cellStart` / `cellIndex` / `cellOf` / `counter` は
+   * **`rasterize` が作り直す派生量**なので保存しない。
+   *
+   * ★**位置は Float64 のまま渡すこと。** 量子化すると最終桁が変わり、
+   * 45 億年でカオスにより別の惑星になる（`CLAUDE.md` の 11）。
+   */
+  snapshot(): ParcelSnapshot {
+    const n = this.high
+    return {
+      high: this.high, liveCount: this.liveCount, freeTop: this.freeTop,
+      x: this.x.slice(0, n), y: this.y.slice(0, n), z: this.z.slice(0, n),
+      plate: this.plate.slice(0, n),
+      felsic: this.felsic.slice(0, n),
+      thick: this.thick.slice(0, n),
+      age: this.age.slice(0, n),
+      alive: this.alive.slice(0, n),
+      freeList: this.freeList.slice(0, this.freeTop),
+    }
+  }
+
+  restore(s: ParcelSnapshot): void {
+    if (s.high > this.capacity) {
+      throw new Error(`粒子の容量が足りない（保存 ${s.high} > 容量 ${this.capacity}）。` +
+        `解像度か parcelsPerCell が保存時と違う`)
+    }
+    this.x.set(s.x); this.y.set(s.y); this.z.set(s.z)
+    this.plate.set(s.plate)
+    this.felsic.set(s.felsic)
+    this.thick.set(s.thick)
+    this.age.set(s.age)
+    this.alive.fill(0)
+    this.alive.set(s.alive)
+    this.freeList.set(s.freeList)
+    this.high = s.high
+    this.liveCount = s.liveCount
+    this.freeTop = s.freeTop
   }
 
   get count(): number { return this.liveCount }

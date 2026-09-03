@@ -22,6 +22,7 @@ const SHOTS: Record<string, string> = {
   "phylogeny": `document.getElementById("phyloBtn").click()`,
   "armed": `document.querySelector('.iv[data-kind="volcano"]').click()`,
   "diag": `document.getElementById("detDiag").open = true`,
+  "saves": `document.getElementById("savesBtn").click()`,
 }
 
 const name = process.argv[2] ?? "layer-picker"

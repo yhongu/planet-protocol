@@ -258,6 +258,9 @@ export class OriginCounter {
   private next = 1
   issue(): number { return this.next++ }
   get issued(): number { return this.next - 1 }
+  /** ★セーブ用。由来 id は相同と収斂を分ける鍵なので、通し番号を必ず持つ */
+  snapshot(): number { return this.next }
+  restore(v: number): void { this.next = v }
 }
 
 /**

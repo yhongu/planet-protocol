@@ -152,6 +152,46 @@ async function main() {
       events: document.getElementById("chBody").textContent.replace(/\s+/g," ").slice(0,80),
     })`,
   })).result.value as Record<string, unknown>
+  // --- 記録（保存 → 一覧に出るか → 読み込めるか）---
+  //
+  // ★**セーブは 34MB あり、往復に IndexedDB と gzip を通る。**
+  // 型検査では一切出ないので、通しで押して確かめるしかない
+  await send("Runtime.evaluate", {
+    expression: `document.getElementById("savesBtn").click()`,
+  })
+  await sleep(700)
+  await send("Runtime.evaluate", {
+    expression: `(() => { document.getElementById("savName").value = "smoke";
+      document.getElementById("savNow").click() })()`,
+  })
+  await sleep(4000)
+  await send("Runtime.evaluate", {
+    expression: `document.getElementById("savesBtn").click();`
+      + `document.getElementById("savesBtn").click()`,
+  })
+  await sleep(1200)
+  const sav = (await send("Runtime.evaluate", {
+    returnByValue: true,
+    expression: `({ rows: document.querySelectorAll(".sav-row").length,
+      text: (document.querySelector(".sav-meta") || {}).textContent || "" })`,
+  })).result.value as { rows: number; text: string }
+  console.log("\n--- 記録（保存とロード）---")
+  console.log(`  保存した惑星 ${sav.rows} 件  ${sav.text}`)
+  const before = (await send("Runtime.evaluate", {
+    returnByValue: true,
+    expression: `parseFloat(document.getElementById("tAge").textContent)`,
+  })).result.value as number
+  await send("Runtime.evaluate", {
+    expression: `document.querySelector(".sav-load").click()`,
+  })
+  await sleep(3000)
+  const after2 = (await send("Runtime.evaluate", {
+    returnByValue: true,
+    expression: `parseFloat(document.getElementById("tAge").textContent)`,
+  })).result.value as number
+  const savedOk = sav.rows > 0 && Number.isFinite(after2)
+  console.log(`  読み込み: ${before} Ga -> ${after2} Ga   ${savedOk ? "OK" : "NG"}`)
+
   console.log("\n--- 次の出来事まで進める ---")
   console.log(`  年代 ${after.age} Ga -> ${skip.age} Ga   待機中 ${skip.waiting}`)
   console.log(`  出来事 ${String(skip.events).slice(0, 70)}`)
@@ -282,6 +322,7 @@ async function main() {
   const globeOk = globe.painted > 20
   const ok = v.loading === true && Number(v.painted) > 200 &&
     String(v.mean).includes("℃") && advanced && erupted && skipped && armed && legendOk && phyloOk && globeOk &&
+    savedOk &&
     consoleErrors.length === 0 && pageErrors.length === 0
   if (!advanced) console.log("  ! 時間が進んでいない")
   if (!erupted) console.log("  ! 介入が効いていない")
@@ -290,6 +331,7 @@ async function main() {
   if (!legendOk) console.log("  ! 凡例が出ていない")
   if (!phyloOk) console.log("  ! 系譜タブが開かない/描けない")
   if (!globeOk) console.log("  ! 球体表示が真っ黒")
+  if (!savedOk) console.log("  ! 記録（保存とロード）が動いていない")
   console.log(`\n${ok ? "PASS" : "FAIL"}  snapshots/app-smoke.png`)
   ws.close()
   chrome.kill()

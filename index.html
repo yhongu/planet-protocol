@@ -47,11 +47,15 @@
             <img src="icons/ev-speciation.png" alt="" /></button>
         </div>
         <div class="rail-hint" id="railHintIdle">選んでから地図をクリック<br><b>1-4</b> 介入 · <b>空白</b> 停止<br><b>, .</b> 速度 · <b>[ ]</b> レイヤ</div>
+        <!-- ★**行を増やさないこと。** 列が伸びると凡例と重なる（罠 48）。
+             3 つ目を足すときは同じ段に入れて、絵は落とす -->
         <div class="rail-strip">
-          <button id="phyloBtn" class="act icon wide" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
-            <img src="icons/ev-speciation.png" alt="" /><span>系譜</span></button>
-          <button id="settingsBtn" class="act icon wide" title="惑星の作り直しと物理のつまみ">
-            <img src="icons/ui-layer.png" alt="" /><span>設定</span></button>
+          <button id="phyloBtn" class="act icon tab" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
+            <span>系譜</span></button>
+          <button id="savesBtn" class="act icon tab" title="保存と読み込み・時代を選んで始める">
+            <span>記録</span></button>
+          <button id="settingsBtn" class="act icon tab" title="惑星の作り直しと物理のつまみ">
+            <span>設定</span></button>
         </div>
       </div>
 
@@ -199,6 +203,16 @@
 
       <!-- レイヤの選択。★凡例の【上】に開く（いま見ている色の隣で選ぶ） -->
       <div id="layerPicker" class="panel lp" hidden></div>
+
+      <!-- ============================================================
+           記録。**保存・読み込み・章立て**。
+           ★章立ては「決め打ちの初期値」ではなく【本当にそこまで回す】。
+           台本を書かないのがこの企画の原則（`docs/00`）。
+           ============================================================ -->
+      <div id="saves" class="panel drawer saves" hidden></div>
+
+      <!-- 早送りの進捗。★無言で数分固まるのが一番いけない -->
+      <div id="skipProgress" class="skipbar" hidden></div>
 
       <!-- ============================================================
            生命の系譜。**絶滅したものも含む全クレード**と、その遺伝子。

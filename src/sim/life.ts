@@ -569,6 +569,54 @@ export class Life implements Subsystem {
   private recentExtinctions: number[] = []
   /** 最後に大量絶滅を刻んだ年。同じ episode を二重に刻まないため */
   private lastMassExtinction = -Infinity
+
+  /**
+   * ★**セーブ用。** クレードは**生きているものと絶滅したもの両方**を持つ
+   * （`history` が系統樹の骨格）。`freeLanes` と `nextId` を落とすと、
+   * 復元後に**別の系統が前の色とレーンを継ぐ**（罠 53 の逆）。
+   *
+   * `Map` は JSON にならないので配列にする。**戻すときは Map に戻すこと。**
+   */
+  snapshot(): Record<string, unknown> {
+    return {
+      clades: this.clades, history: this.history,
+      nextId: this.nextId, freeLanes: this.freeLanes,
+      nitrogen: this.nitrogen,
+      origins: this.origins.snapshot(),
+      firstSeen: [...this.firstSeen],
+      recentExtinctions: this.recentExtinctions,
+      lastMassExtinction: this.lastMassExtinction,
+      rng: this.rng.getState(),
+    }
+  }
+
+  restore(v: Record<string, unknown>): void {
+    const g = v as {
+      clades: Clade[]; history: Clade[]; nextId: number; freeLanes: number[]
+      nitrogen: number; origins: number; firstSeen: [number, number][]
+      recentExtinctions: number[]; lastMassExtinction: number
+      rng: [number, number, number, number]
+    }
+    this.clades.length = 0; this.clades.push(...g.clades)
+    // ★**`history` は生きているクレードと【同じオブジェクト】を共有している。**
+    //
+    // だから生きている系統の遺伝子が変異すると、`history` 側も一緒に変わる
+    // （系統樹はいつも最新の姿を出す）。JSON を通すとこの共有が切れて
+    // **2 つの別物**になり、復元後は系統樹だけが保存時の姿で止まる。
+    // 物理は動かないので**画面を見るまで気づけない**。id で貼り直す。
+    const live = new Map(this.clades.map((c) => [c.id, c]))
+    this.history.length = 0
+    for (const h of g.history) this.history.push(live.get(h.id) ?? h)
+    this.nextId = g.nextId
+    this.freeLanes = g.freeLanes
+    this.nitrogen = g.nitrogen
+    this.origins.restore(g.origins)
+    this.firstSeen.clear()
+    for (const [k, y] of g.firstSeen) this.firstSeen.set(k, y)
+    this.recentExtinctions = g.recentExtinctions
+    this.lastMassExtinction = g.lastMassExtinction
+    this.rng.setState(g.rng)
+  }
   /** 捕食者どうしの競争（生産者とは別の土俵） */
   private sumBufC: Float32Array | null = null
   private maxBufC: Float32Array | null = null

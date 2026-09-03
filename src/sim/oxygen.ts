@@ -150,6 +150,10 @@ export class Oxygen implements Subsystem {
     this.params = { ...EARTH_OXYGEN, ...params }
   }
 
+  /** ★セーブ用。`buriedOrganicC` は積分状態（O2 の全部を決めている） */
+  snapshot(): Record<string, unknown> { return { ...this.state } }
+  restore(v: Record<string, unknown>): void { Object.assign(this.state, v) }
+
   isActive(world: World): boolean {
     return this.params.enabled > 0 && world.prebiotic.state.originYear >= 0
   }

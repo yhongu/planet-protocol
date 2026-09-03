@@ -239,6 +239,23 @@ export class SimLoop {
   reset(): void {
     for (const k of this.pending.keys()) this.pending.set(k, 0)
   }
+
+  /**
+   * ★**セーブ用。持ち越しは「いつ発火するか」そのものである。**
+   *
+   * 各サブシステムは `preferredStepYears` ぴったりで発火し、端数を持ち越す
+   * （上のコメントの通り、これが決定論の要）。この端数を保存しないと、
+   * 復元した惑星は**別のタイミングでマントルや炭素が動く**。
+   * 実測: 保存の 10 歩後に**マントル温度が 1770℃ と 1890℃**（冷却 1 段ぶん）に割れ、
+   * そこから気候・海・生命の全部が別の惑星になった。
+   */
+  snapshot(): Record<string, number> {
+    return Object.fromEntries(this.pending)
+  }
+
+  restore(v: Record<string, number>): void {
+    for (const k of this.pending.keys()) this.pending.set(k, v[k] ?? 0)
+  }
 }
 
 /**

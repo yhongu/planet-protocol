@@ -323,6 +323,10 @@ export class Hydrology implements Subsystem {
    */
   private shapeNorm = 1
 
+  /** ★セーブ用。`shapeNorm` は最初の 1 回だけ較正される（`=== 1` が合図）*/
+  snapshot(): number { return this.shapeNorm }
+  restore(v: number): void { this.shapeNorm = v }
+
   constructor(params: Partial<HydroParams> = {}) {
     this.params = { ...EARTH_HYDRO, ...params }
   }

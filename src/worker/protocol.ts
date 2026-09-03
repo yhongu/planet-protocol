@@ -77,9 +77,41 @@ export interface InterveneMessage {
   geneKind?: number
 }
 
+/** セーブを要求する。返るのは `SavedMessage` */
+export interface SaveMessage { type: "save" }
+
+/**
+ * セーブを読み込む。★**解像度が違えば作り直してから当てる**
+ * （場は SharedArrayBuffer なので、主スレッドは `ready` を待って貼り直す）
+ */
+export interface LoadMessage { type: "load"; bytes: ArrayBuffer }
+
+/**
+ * ★**章立て。** 指定の年まで一気に進める。
+ * 進捗を `progress` で返し、着いたら通常の tick に戻る。
+ */
+export interface SkipToMessage { type: "skipTo"; years: number }
+
+export interface SavedMessage {
+  type: "saved"
+  bytes: ArrayBuffer
+  years: number
+  seed: string
+}
+
+/** 早送りの進捗。★**無言で数分固まるのが一番いけない** */
+export interface ProgressMessage {
+  type: "progress"
+  years: number
+  target: number
+  label: string
+  done: boolean
+}
+
 export type ToWorker =
   | InitMessage | SetGlobalsMessage | SetParamsMessage | SetCarbonMessage
   | RunMessage | InterveneMessage | RequestPhylogenyMessage
+  | SaveMessage | LoadMessage | SkipToMessage
 
 /** クレード 1 つぶんの名簿（`TickMessage.life.roster`） */
 export interface CladeInfo {
@@ -204,3 +236,4 @@ export interface PhylogenyMessage {
 }
 
 export type FromWorker = ReadyMessage | TickMessage | PhylogenyMessage
+  | SavedMessage | ProgressMessage
