@@ -46,7 +46,7 @@
             title="水平伝播（同じマスの 2 系統で遺伝子を渡す）">
             <img src="icons/ev-speciation.png" alt="" /></button>
         </div>
-        <div class="rail-hint" id="railHintIdle">選んでから地図をクリック<br><b>1-4</b> 介入 · <b>空白</b> 停止 · <b>, .</b> 速度</div>
+        <div class="rail-hint" id="railHintIdle">選んでから地図をクリック<br><b>1-4</b> 介入 · <b>空白</b> 停止<br><b>, .</b> 速度 · <b>[ ]</b> レイヤ</div>
         <div class="rail-strip">
           <button id="phyloBtn" class="act icon wide" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
             <img src="icons/ev-speciation.png" alt="" /><span>系譜</span></button>
@@ -61,7 +61,13 @@
            ============================================================ -->
       <div id="legendPanel" class="panel legend">
         <div class="legend-head">
-          <select id="layer"></select>
+          <!-- ★`<select>` は【値の置き場】として残す（読む側 5 か所を変えない）。
+               見せるのはタイルの選択画面（`layerPicker.ts`）。
+               25 枚を 1 個のドロップダウンに入れていたので、
+               開くまで中身が見えず、知らないレイヤは一生選ばれなかった -->
+          <select id="layer" hidden></select>
+          <button id="layerBtn" class="lp-open" title="レイヤを選ぶ（25 枚）">
+            <span id="layerName">惑星 ★</span><b>▾</b></button>
           <button id="projBtn" class="mini" title="平面 ⇄ 球（見せ方だけ。物理は変わらない）">◍</button>
           <button id="legendToggle" class="mini" title="凡例をたたむ">▾</button>
         </div>
@@ -71,34 +77,55 @@
       <!-- ============================================================
            右: 惑星の状態。上から「読む頻度の高い順」。
            ============================================================ -->
+      <!-- ============================================================
+           右の列。★**2 枚を縦に積むだけ**だが、絶対配置で高さを
+           決め打ちすると、状態が長い惑星で【生命の行が画面の外】に出る
+           （実測でそうなった）。flex の 1 本にして、
+           状態は中身ぶん・年代記が残りを取る形にする。
+           ============================================================ -->
+      <div id="rightCol">
       <div id="dash" class="panel">
         <div class="dash-hero">
           <div class="hero-k">全球平均気温</div>
-          <div class="hero-v"><span id="dMean">—</span></div>
+          <div class="hero-v"><span id="dMean">—</span><canvas id="spT" class="spark hero-spark"></canvas></div>
           <div class="hero-sub">赤道 / 極 <span id="dGrad" class="num">—</span></div>
         </div>
 
+        <!-- ★**いま何が起きているか**の 1 行。
+             数字を 14 個読んで自分で組み立てさせない -->
+        <div id="dNow" class="dash-now">—</div>
+
+        <!-- ★主要な量には【線】を付ける。値だけの表は、変化を読むのに
+             「さっきの画面を覚えていること」を要求する（sparkline.ts） -->
         <div class="section">大気</div>
-        <div class="row stat"><span>CO₂</span><span id="dCo2" class="num">—</span></div>
-        <div class="row stat"><span>CH₄</span><span id="dCh4" class="num">—</span></div>
-        <div class="row stat"><span>O₂</span><span id="dO2" class="num">—</span></div>
-        <div class="row stat"><span>氷被覆率</span><span id="dIce" class="num">—</span></div>
-        <div class="row stat"><span>惑星アルベド</span><span id="dAlb" class="num">—</span></div>
+        <div class="row stat sp"><span>CO₂</span>
+          <canvas class="spark" data-sp="co2"></canvas><span id="dCo2" class="num">—</span></div>
+        <div class="row stat sp"><span>O₂</span>
+          <canvas class="spark" data-sp="o2"></canvas><span id="dO2" class="num">—</span></div>
+        <div class="row stat sp"><span>氷被覆率</span>
+          <canvas class="spark" data-sp="ice"></canvas><span id="dIce" class="num">—</span></div>
 
         <div class="section">固体地球</div>
         <div class="row stat"><span>テクトニクス様式</span><span id="dMode" class="num">—</span></div>
-        <div class="row stat"><span>マントル温度</span><span id="dTm" class="num">—</span></div>
-        <div class="row stat"><span>陸地面積</span><span id="dLand" class="num">—</span></div>
-        <div class="row stat"><span>大陸の分散度</span><span id="dDisp" class="num">—</span></div>
+        <div class="row stat sp"><span>陸地面積</span>
+          <canvas class="spark" data-sp="land"></canvas><span id="dLand" class="num">—</span></div>
 
         <!-- ★生命は M5 で入っているのに画面に無かった -->
         <div class="section">生命</div>
         <div class="row stat"><span>状態</span><span id="dLife" class="num">—</span></div>
         <div class="row stat"><span>クレード数</span><span id="dClades" class="num">—</span></div>
-        <div class="row stat"><span>生物圏</span><span id="dBio" class="num">—</span></div>
+        <div class="row stat sp"><span>生物圏</span>
+          <canvas class="spark" data-sp="bio"></canvas><span id="dBio" class="num">—</span></div>
 
         <details id="detDiag">
           <summary>診断</summary>
+          <!-- ★常時は見ない量をここへ。上の 8 行は「毎秒読むもの」だけにする -->
+          <div class="row stat sp"><span>CH₄</span>
+            <canvas class="spark" data-sp="ch4"></canvas><span id="dCh4" class="num">—</span></div>
+          <div class="row stat"><span>惑星アルベド</span><span id="dAlb" class="num">—</span></div>
+          <div class="row stat sp"><span>マントル温度</span>
+            <canvas class="spark" data-sp="tm"></canvas><span id="dTm" class="num">—</span></div>
+          <div class="row stat"><span>大陸の分散度</span><span id="dDisp" class="num">—</span></div>
           <!-- ★エアロゾルは減衰が 2〜6 年。シムの 1 ステップは 10 万年なので、
                入れた瞬間に次のティックの前に消える。常設に置くと原理的に
                ほぼ常に「—」になるので、診断へ移した（値は介入の出来事に書く） -->
@@ -114,15 +141,26 @@
           <div id="cpCo2"></div>
         </details>
 
-        <div class="section">出来事</div>
-        <div id="eventLog" class="evlog">—</div>
       </div>
 
       <!-- ============================================================
-           下中央: 時間の操作。
-           ★速度は【絶対値の段】。どの時代でも同じ年数/秒で進む
+           ★**年代記。** これまで出来事は右パネルの数字 14 行と診断の
+           【下】に畳まれていた。45.4 億年を眺めるゲームで、
+           起きたことのログが画面で一番奥にあった。
+           状態の表と同じ大きさの独立した部品にする。
            ============================================================ -->
-      <div id="timebar" class="panel timebar">
+      <div id="chronicle" class="panel"></div>
+      </div>
+
+      <!-- ============================================================
+           下端の時間バー。★**時間の部品を 1 つにする。**
+           速度の操作（浮いた板）と時間軸（下端の帯）が別々にあったので、
+           「いまどこか」と「どう進めるか」を目で往復する必要があった。
+           1 枚に積むと、**軸の上に操作が乗った 1 つの装置**になる。
+           速度は【絶対値の段】。どの時代でも同じ年数/秒で進む
+           ============================================================ -->
+      <div id="timeline" class="panel">
+        <div id="timebar" class="timebar">
         <span id="tSeed" class="seedtag" title="この惑星の seed">hadean-01</span>
         <span id="tEpoch" class="epoch">冥王代</span>
         <span id="tMode" class="mode">—</span>
@@ -136,9 +174,7 @@
           <button id="skipEvent" class="sp skip" title="何も起きない時代を飛ばして、次の出来事で止まる">▶ 次の出来事まで</button>
         </span>
         <span id="tRate" class="num rate">—</span>
-      </div>
-
-      <div id="timeline" class="panel">
+        </div>
         <canvas id="tlCanvas"></canvas>
         <div id="tlInfo" class="tlinfo">出来事のマーカーにカーソルを合わせると詳細が出ます</div>
       </div>
@@ -160,6 +196,9 @@
       <div id="railHint" class="ivhint" hidden></div>
 
       <div id="inspector" class="panel drawer" hidden></div>
+
+      <!-- レイヤの選択。★凡例の【上】に開く（いま見ている色の隣で選ぶ） -->
+      <div id="layerPicker" class="panel lp" hidden></div>
 
       <!-- ============================================================
            生命の系譜。**絶滅したものも含む全クレード**と、その遺伝子。

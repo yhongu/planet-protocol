@@ -132,7 +132,7 @@ async function main() {
       age: parseFloat(document.getElementById("tAge").textContent),
       rate: document.getElementById("tRate").textContent,
       cp: document.getElementById("cp").textContent.replace(/\\s+/g," ").slice(0,90),
-      events: document.getElementById("eventLog").textContent.replace(/\\s+/g," ").slice(0,120),
+      events: document.getElementById("chBody").textContent.replace(/\\s+/g," ").slice(0,120),
     })`,
   })).result.value as Record<string, string | number>
 
@@ -149,7 +149,7 @@ async function main() {
     expression: `({
       age: parseFloat(document.getElementById("tAge").textContent),
       waiting: document.getElementById("skipEvent").classList.contains("waiting"),
-      events: document.getElementById("eventLog").textContent.replace(/\s+/g," ").slice(0,80),
+      events: document.getElementById("chBody").textContent.replace(/\s+/g," ").slice(0,80),
     })`,
   })).result.value as Record<string, unknown>
   console.log("\n--- 次の出来事まで進める ---")
@@ -203,7 +203,7 @@ async function main() {
     expression: `({
       co2: document.getElementById("dCo2").textContent,
       aero: document.getElementById("dAero").textContent,
-      events: document.getElementById("eventLog").textContent.replace(/\\s+/g," ").slice(0,120),
+      events: document.getElementById("chBody").textContent.replace(/\\s+/g," ").slice(0,120),
       legend: document.getElementById("legendBody").textContent.replace(/\\s+/g," ").slice(0,80),
 
       life: document.getElementById("dLife").textContent,

@@ -51,6 +51,8 @@ npx vite-node scripts/probes/probe-look.ts                   # 時代ごとの�
 npx vite-node scripts/probes/probe-pixel.ts                  # ★ドット絵の見た目と【色数】（3.5 秒）
 npx vite-node scripts/probes/probe-pixel.ts --years 3e8      # 氷のある惑星で見る（5 分）
 npm run smoke                         # ブラウザ通し確認（要 npm run dev）
+npx vite-node scripts/ui-shot.ts layer-picker  # ★押さないと出ない部品を撮る
+                                      #   （settings / phylogeny / armed / diag）
 npx vite-node scripts/probes/probe-thc.ts        # 熱塩循環の較正とヒステリシス
 npx vite-node scripts/probes/probe-gyre.ts       # 湧昇・西岸境界流（数十秒）
 npm run gpu-verify                    # GPU 版と CPU 版の数値一致（要 npm run dev）
@@ -358,6 +360,19 @@ wait
    は最初から切ってあった。犯人は**場ではなく色の側**で、連続の混色が
    1 枚に 18049 色を作っていた。**まず色数を数えること**（`probe-pixel.ts`）。
    3.5 秒で測れて、ぼやけの有無が 1 つの数字になる
+
+62. ★**`npm run smoke` は「押さないと出ない部品」を一度も写さない。** 通しの
+   筋書きしか走らないので、レイヤの選択画面は作っても撮られなかった。
+   罠 48（UI を足したらスクリーンショットを見る）を満たすには、
+   **部品ごとに開いて撮る道具**が要る（`scripts/ui-shot.ts`）
+63. ★**画面の端から逃がす高さを直書きしない。** 下端の帯に時間バーを
+   取り込んで高さが 92 → 124px になった瞬間、`bottom: 92px` を書いていた
+   **5 か所すべて**が帯の裏に隠れた（右の列の下・凡例・系譜・レイヤ選択・介入列）。
+   `--bottom` の 1 変数にする。**同じ数字が 5 か所にあるなら、それは変数である**
+64. ★**絶対配置で 2 枚を縦に積むと、中身が伸びた側が画面の外へ出る。**
+   状態パネルを `max-height: 52vh`、年代記をその下に置いたら、
+   **生命の 3 行が画面の外**に出た（値では気づけない —— スクロールすれば見える）。
+   縦に積むものは flex の 1 本にして、**優先度の低い方に残りを取らせる**
 
 詳しい実測値と経緯は `WORK-IN-PROGRESS.md` と `docs/01-6.5c`。
 

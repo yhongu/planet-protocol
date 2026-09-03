@@ -651,3 +651,144 @@ input[type="text"], select {
 .legend { bottom: 92px; }
 #dash { bottom: 92px; }
 .phylo { bottom: 92px; }
+
+/* ======================================================================
+   ★UI の作り直し その 2（2026-09-03）: 年代記・スパークライン・状況の 1 行
+   ====================================================================== */
+
+/* --- 右の列を 2 段に分ける -------------------------------------------
+   上 = 状態（数字）、下 = 年代記（起きたこと）。
+   ★これまで出来事は状態の【下】に畳まれていて、45.4 億年を眺めるゲームで
+   起きたことのログが画面で一番奥にあった */
+#dash { top: 12px; right: 12px; width: 300px; bottom: auto; max-height: 52vh; }
+#chronicle {
+  top: calc(52vh + 20px); right: 12px; width: 300px; bottom: 92px;
+  max-height: none; display: flex; flex-direction: column; padding: 10px 10px 8px;
+}
+
+/* --- 状況の 1 行。★数字 14 個を読んで自分で組み立てさせない ---------- */
+.dash-now {
+  margin: -4px 0 10px; padding: 5px 8px;
+  background: #0c1119; border: 1px solid var(--line);
+  box-shadow: inset 1px 1px 0 var(--edge-lo);
+  color: var(--accent); font-size: 11px; line-height: 1.45;
+}
+
+/* --- スパークライン --------------------------------------------------
+   ★値だけの表は、変化を読むのに「さっきの画面を覚えていること」を要求する */
+.spark { display: block; width: 58px; height: 14px; flex: none; margin-left: auto; }
+.row.stat.sp .num { margin-left: 8px; min-width: 82px; text-align: right; }
+.hero-spark { width: 100%; height: 20px; margin: 2px 0 0; opacity: 0.8; }
+
+/* --- 年代記 ----------------------------------------------------------
+   分類は `code` の前置きで決める（本文では決めない）。
+   ★色はタイムラインのマーカー・出来事カードの縁と同じ配色にすること */
+.ch-tabs { display: flex; gap: 3px; margin: 6px 0 7px; }
+.ch-tab {
+  flex: 1; padding: 3px 0; font-size: 10px; color: var(--dim);
+  background: #0c1119;
+}
+.ch-tab.on { color: var(--fg); background: #232e3c; border-color: #3a4a5e; }
+.ch-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+.ch-ev {
+  display: flex; gap: 7px; align-items: flex-start;
+  padding: 4px 5px; margin-bottom: 2px;
+  background: rgba(255,255,255,0.025); border-left: 3px solid var(--line);
+}
+.ch-ev[data-cat="life"] { border-left-color: #7fc46a; }
+.ch-ev[data-cat="earth"] { border-left-color: #e0603c; }
+.ch-ev[data-cat="climate"] { border-left-color: #7fc0e0; }
+.ch-ev[data-cat="hand"] { border-left-color: #ffd678; }
+/* ★ドット絵は整数分の 1 でしか綺麗に出ない。素材が 64px なので 16px（1/4）*/
+.ch-ico {
+  width: 16px; height: 16px; flex: 0 0 16px; margin-top: 1px;
+  image-rendering: pixelated; image-rendering: crisp-edges;
+}
+.ch-dot { width: 16px; height: 16px; flex: 0 0 16px; }
+.ch-tx { min-width: 0; font-size: 10.5px; line-height: 1.45; color: var(--fg); }
+.ch-yr {
+  color: var(--dim); font-variant-numeric: tabular-nums;
+  margin-right: 6px; font-size: 10px;
+}
+
+/* --- 右の列を 1 本の flex にする -------------------------------------
+   ★絶対配置で 2 枚の高さを決め打ちすると、状態の行が増えた惑星で
+   **生命の行が画面の外**に出る（実測）。状態は中身ぶん、年代記が残り */
+#rightCol {
+  position: absolute; top: 12px; right: 12px; bottom: 92px; width: 300px;
+  display: flex; flex-direction: column; gap: 8px; z-index: 10;
+}
+#rightCol > .panel {
+  position: static; width: auto; max-height: none; bottom: auto; top: auto; right: auto;
+}
+#dash { flex: 0 1 auto; overflow-y: auto; }
+#chronicle { flex: 1 1 40%; min-height: 140px; }
+/* ★行を詰める。ゲームの状態表示は「読む」より「見る」もの */
+#dash .row { margin: 3px 0; }
+#dash .section { margin: 8px 0 5px; }
+.hero-spark { height: 16px; opacity: 0.7; }
+/* ★状態を優先して割り付ける。**表が切れると「生命の行が無い」と読まれる**
+   （実測で生物圏と診断が画面の外に出た）。年代記は下限だけ守る */
+#chronicle { flex: 1 1 28%; min-height: 132px; }
+.hero-v { font-size: 30px; }
+
+/* --- レイヤの選択 ----------------------------------------------------
+   ★25 枚を `<select>` 1 個に入れていた。開くまで中身が見えず、
+   知らないレイヤは一生選ばれなかった。分類と色見本を一緒に出す */
+.lp-open {
+  flex: 1; display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; padding: 4px 8px; text-align: left;
+}
+.lp-open b { margin-left: auto; color: var(--dim); font-weight: 400; }
+/* ★3 列にして**スクロールせずに 25 枚全部見える**幅にする。
+   2 列だと生命の分類が下に隠れて、探索できないという元の問題が半分残った */
+.lp {
+  left: 12px; bottom: 92px; top: auto; width: 452px; z-index: 46;
+  max-height: calc(100vh - 130px); overflow-y: auto;
+}
+.lp[hidden] { display: none; }
+.lp .section:first-of-type { margin-top: 4px; }
+.lp-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; margin-bottom: 8px; }
+.lp-tile {
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  padding: 5px 6px; font-size: 10.5px; text-align: left; line-height: 1.3;
+}
+/* 色見本はそのレイヤの凡例から作る。★新しいレイヤを足しても何も書かなくてよい */
+.lp-tile i { display: block; height: 8px; border: 1px solid rgba(0,0,0,0.5); }
+.lp-tile span { color: var(--dim); }
+.lp-tile.on { border-color: var(--accent); background: #17222c; }
+.lp-tile.on span { color: var(--fg); }
+.lp-tile:hover span { color: var(--fg); }
+/* ★25 枚が**一度に見えること**がこの部品の唯一の目的なので、
+   スクロールが出ない高さまで詰める（実測で 2 枚はみ出していた） */
+.lp .section { margin: 6px 0 4px; }
+.lp-grid { gap: 3px; margin-bottom: 5px; }
+.lp-tile { padding: 4px 5px; gap: 3px; }
+.lp-tile i { height: 7px; }
+
+/* --- 時間の部品を 1 つにする ----------------------------------------
+   ★速度の操作（浮いた板）と時間軸（下端の帯）が別々にあったので、
+   「いまどこか」と「どう進めるか」で目を往復させていた。
+   1 枚に積んで、**軸の上に操作が乗った 1 つの装置**にする */
+#timeline { padding: 0 0 6px; }
+#timeline > .timebar {
+  position: static; transform: none; bottom: auto; left: auto;
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 12px; margin: 0;
+  background: transparent; border: 0; box-shadow: none;
+  border-bottom: 1px solid var(--line);
+}
+#tlCanvas { margin: 4px 12px 0; width: calc(100% - 24px); }
+.tlinfo { margin: 3px 12px 0; }
+/* 右端の速度表示は伸ばして、押しボタンを左に寄せる */
+#timebar .rate { margin-left: auto; }
+
+/* ★下端の帯が高くなった（時間バーを取り込んだ）ので、
+   逃がす高さを **1 か所で決める**。92px の直書きが 5 か所に散っていて、
+   帯の高さを変えたら右パネルの下と凡例が帯の【裏】に隠れた（実測） */
+:root { --bottom: 124px; }
+#rightCol { bottom: var(--bottom); }
+.legend { bottom: var(--bottom); }
+.phylo { bottom: var(--bottom); }
+.lp { bottom: var(--bottom); max-height: calc(100vh - var(--bottom) - 24px); }
+.rail { max-height: calc(100vh - var(--bottom) - 24px); }

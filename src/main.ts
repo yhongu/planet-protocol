@@ -16,9 +16,12 @@ import { Timeline } from "./ui/timeline"
 import { EventPopup } from "./ui/eventPopup"
 import { Inspector } from "./ui/inspector"
 import { Phylogeny } from "./ui/phylogeny"
+import { Chronicle } from "./ui/chronicle"
+import { LayerPicker } from "./ui/layerPicker"
+import { track, trend, drawSparkline, resetSparklines } from "./ui/sparkline"
 import type { CladeInfo } from "./worker/protocol"
 import type { WorldEvent } from "./sim/world"
-import type { FromWorker, ToWorker } from "./worker/protocol"
+import type { FromWorker, ToWorker, TickMessage } from "./worker/protocol"
 import { MODE_LABEL } from "./sim/mantle"
 import { GENE_KINDS } from "./sim/genome"
 
@@ -98,6 +101,9 @@ function boot(): void {
   worker = new Worker(new URL("./worker/simWorker.ts", import.meta.url), { type: "module" })
   allEvents.length = 0
   eventPopup.clear()
+  // ★前の惑星の線が残ると誤読する。作り直したら履歴も捨てる
+  resetSparklines()
+  renderEventLog()
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data
     if (m.type === "ready") {
@@ -223,6 +229,22 @@ function boot(): void {
       $("dClades").textContent = L.originYear < 0 ? "—" : String(L.clades)
       $("dBio").textContent = L.originYear < 0 ? "—" : L.biomass.toFixed(2)
 
+      // --- スパークライン。★標本は【年】で取る（フレームではない）---
+      const yr = m.years
+      track("co2", yr, m.globals.co2, true)
+      track("ch4", yr, m.globals.ch4, true)
+      track("o2", yr, Math.max(1e-9, m.globals.o2), true)
+      track("ice", yr, s.iceFraction)
+      track("temp", yr, s.meanT)
+      track("tm", yr, m.mantleTempC)
+      track("land", yr, m.landFraction)
+      track("bio", yr, m.life.biomass)
+      for (const cv of document.querySelectorAll<HTMLCanvasElement>("canvas.spark[data-sp]")) {
+        drawSparkline(cv, cv.dataset.sp!, "rgba(127,192,224,0.75)")
+      }
+      drawSparkline($<HTMLCanvasElement>("spT"), "temp", "rgba(232,162,74,0.85)")
+      $("dNow").textContent = nowLine(m)
+
       // タイムラインと出来事ログ
       if (m.newEvents.length) {
         allEvents.push(...m.newEvents)
@@ -250,19 +272,35 @@ function boot(): void {
   })
 }
 
+const chronicle = new Chronicle($("chronicle"))
+
 function renderEventLog(): void {
-  const el = $("eventLog")
-  const recent = allEvents.slice(-40).reverse()
-  if (recent.length === 0) { el.textContent = "—"; return }
-  el.innerHTML = recent.map((e) => {
-    const ga = (PLANET_AGE - e.year) / 1e9
-    const when = ga >= 0.01 ? `${ga.toFixed(2)}Ga` : `${((PLANET_AGE - e.year) / 1e6).toFixed(1)}Ma`
-      // 絵が無い出来事は img を出さない（`docs/07-art-spec.md` のフォールバック）
-    const ico = e.code
-      ? `<img class="ico" src="icons/${e.code}.png" alt="" onerror="this.remove()" />` : ""
-    return `<div class="ev ${e.kind}">${ico}<span class="yr">${when}</span>` +
-      `<span class="tx">${e.text}</span></div>`
-  }).join("")
+  chronicle.set(allEvents)
+}
+
+/**
+ * ★**「いま何が起きているか」の 1 行。**
+ *
+ * 数字を 14 個読ませて自分で組み立てさせない。
+ * 順番は**そのとき惑星で一番大きいこと**から。マグマオーシャンで
+ * 「氷が退いている」と書いても意味が無いので、上から順に最初に当たったものを返す。
+ *
+ * ★**判定はスパークラインの傾き**（`trend`）で行う。1 フレームの差分だと
+ * 数値の揺らぎで毎フレーム文が入れ替わり、読めなくなる
+ */
+function nowLine(m: TickMessage): string {
+  const s = m.stats
+  const L = m.life
+  if (m.globals.oceanWaterFraction < 0.05) return "マグマオーシャン。岩そのものが溶けている"
+  if (s.iceFraction > 0.6) return "★全球凍結に近い。氷のアルベドが暴走している"
+  if (s.iceFraction > 0.25 && trend("ice") > 0) return "氷が広がりつつある"
+  if (s.iceFraction > 0.15 && trend("ice") < 0) return "氷が退きつつある"
+  if (L.originYear >= 0 && L.goeYear < 0 && trend("o2") > 0) return "酸素が溜まり始めた"
+  if (L.goeYear >= 0 && trend("bio") > 0) return "生物圏が広がりつつある"
+  if (trend("co2") < 0) return "風化が脱ガスを上回り、CO₂ が下がりつつある"
+  if (trend("co2") > 0) return "脱ガスが風化を上回り、CO₂ が上がりつつある"
+  if (L.originYear < 0) return "まだ生命はいない"
+  return "落ち着いている"
 }
 
 function onHover(info: { x: number; y: number; lonDeg: number; latDeg: number } | null): void {
@@ -552,6 +590,15 @@ window.addEventListener("keydown", (e) => {
     b?.click()
     return
   }
+  // レイヤを 1 枚ずつ送る。★**押して確かめられること**が探索に効く
+  if (e.key === "[" || e.key === "]") {
+    e.preventDefault()
+    const i = LAYERS.findIndex((l) => l.id === layerSelect.value)
+    const j = (i + (e.key === "]" ? 1 : LAYERS.length - 1)) % LAYERS.length
+    layerSelect.value = LAYERS[j].id
+    layerSelect.dispatchEvent(new Event("change"))
+    return
+  }
   // 速度の段を 1 つずつ動かす
   if (e.key === "," || e.key === ".") {
     e.preventDefault()
@@ -682,8 +729,15 @@ function refreshLegendIfNeeded(): void {
 
 layerSelect.addEventListener("change", () => {
   view?.setLayer(layerById(layerSelect.value).render)
+  $("layerName").textContent = layerById(layerSelect.value).label
   renderLegend()
 })
+
+const layerPicker = new LayerPicker($("layerPicker"), LAYERS, (id) => {
+  layerSelect.value = id
+  layerSelect.dispatchEvent(new Event("change"))
+})
+$("layerBtn").addEventListener("click", () => layerPicker.toggle(layerSelect.value))
 /**
  * 平面 ⇄ 球の切り替え。★**物理は一切変わらない。投影だけ。**
  * 正距円筒は極を引き伸ばすので、球にすると氷冠が正しい大きさで見える。
