@@ -98,7 +98,17 @@ async function main() {
     expression: `document.getElementById("ttSeed").value = "hadean-01";`
       + `document.getElementById("ttStart").click()`,
   })
+  // ★**SharedArrayBuffer が使えているかを必ず確かめる。**
+  //   COOP/COEP が片方でも欠けると `crossOriginIsolated` が false になり、
+  //   場が毎フレーム転送されて重くなる。**落ちないので気づきにくい**
+  const iso = ((await send("Runtime.evaluate", {
+    returnByValue: true,
+    expression: `({ isolated: self.crossOriginIsolated === true,
+      sab: typeof SharedArrayBuffer !== "undefined" })`,
+  })).result.value) as { isolated: boolean; sab: boolean }
+  const isoOk = iso.isolated && iso.sab
   console.log(`\n--- 最初の画面 ---\n  新しい惑星の設定が開く: ${titleOk ? "OK" : "NG"}`)
+  console.log(`  cross-origin isolated: ${iso.isolated}  SharedArrayBuffer: ${iso.sab}`)
   console.log(`読み込み: ${URL_}  ${WAIT_MS / 1000}s 待機…`)
   await sleep(WAIT_MS)
 
@@ -340,7 +350,7 @@ async function main() {
   const globeOk = globe.painted > 20
   const ok = v.loading === true && Number(v.painted) > 200 &&
     String(v.mean).includes("℃") && advanced && erupted && skipped && armed && legendOk && phyloOk && globeOk &&
-    savedOk && titleOk &&
+    savedOk && titleOk && isoOk &&
     consoleErrors.length === 0 && pageErrors.length === 0
   if (!advanced) console.log("  ! 時間が進んでいない")
   if (!erupted) console.log("  ! 介入が効いていない")
@@ -351,6 +361,7 @@ async function main() {
   if (!globeOk) console.log("  ! 球体表示が真っ黒")
   if (!savedOk) console.log("  ! 記録（保存とロード）が動いていない")
   if (!titleOk) console.log("  ! 最初の画面から新しい惑星に入れない")
+  if (!isoOk) console.log("  ! cross-origin isolated ではない（COOP/COEP が届いていない）")
   console.log(`\n${ok ? "PASS" : "FAIL"}  snapshots/app-smoke.png`)
   ws.close()
   chrome.kill()

@@ -439,6 +439,22 @@ wait
    `pointerId` で全部覚えること。★**ピンチを終えて指を離した瞬間を
    クリックにしない** —— 拡大するたびに介入が落ちる
 
+75. ★**`public/` は開発用の素材まで本番に載る。** `dist` が 46.9MB あり、
+   うち **38MB が `timelapse.bin`**（開発用の閲覧ページだけが読む）。
+   Cloudflare Pages は **1 ファイル 25MiB 上限**なので、そのままではデプロイが
+   失敗する。`scripts/prune-dist.ts` で落として **0.4MB** になった。
+   ★**上限の検査もその場に書くこと** —— 落とし忘れたら次に気づくのは
+   デプロイの最後になる
+76. ★**開発サーバが通っても本番ビルドが通るとは限らない。** ヘッダの出所が
+   違う（dev は `vite.config.ts`、本番は `_headers`）。
+   `scripts/serve-dist.ts` で `dist` を `_headers` どおりに配って、
+   **同じ smoke を掛ける**こと。実測で `crossOriginIsolated: true` を確認した
+77. ★**COOP/COEP が欠けても落ちない。遅くなるだけ。** `SharedArrayBuffer` が
+   使えないと場が毎フレーム転送される。**気づきにくい失敗**なので、
+   通し確認で `self.crossOriginIsolated === true` を明示的に検査する
+78. ★**JSDoc の中に `*` と `/` を並べない。** `**/*.aseprite` と書いたら
+   そこでコメントが閉じて、esbuild が `Unexpected "*"` で落ちた
+
 詳しい実測値と経緯は `WORK-IN-PROGRESS.md` と `docs/01-6.5c`。
 
 ## 設計上の契約

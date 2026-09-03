@@ -277,6 +277,49 @@ npx vite-node scripts/phylo-shot.ts           # -> snapshots/phylo.png
 
 `proto/` は TypeScript を書く前の数値検証（Python）。[proto/RESULTS.md](proto/RESULTS.md) 参照。
 
+## 公開する（Cloudflare Pages）
+
+★**このゲームは完全な静的サイト**です。計算はすべてブラウザの中で走り、
+サーバ側の処理は 1 つもありません。だから Workers ではなく **Pages** が合います。
+
+```bash
+npm run build:deploy      # ビルドして、配布に要らない物を落とす
+npx wrangler login        # 対話なので、Claude Code なら `! npx wrangler login`
+npm run deploy            # wrangler pages deploy dist
+```
+
+Git 連携にする場合は、Cloudflare の管理画面で **ビルドコマンド `npm run build:deploy`・
+出力 `dist`** を指定します。
+
+★**`npm run build` ではなく `build:deploy` を使うこと。** 素の build は
+`public/` を丸ごと写すので、開発用の `timelapse.bin`（38MB）が載り、
+**Pages の 1 ファイル 25MiB 上限に引っかかってデプロイが失敗**します。
+実測 **46.9 MB → 0.4 MB**（72 ファイル）。
+
+### ★ COOP / COEP が要る
+
+このシムは **`SharedArrayBuffer`** で場を Worker と共有しています（`docs/04-2.1`）。
+それには **cross-origin isolation** —— つまり以下の 2 つを両方返すことが必要です。
+`public/_headers` に書いてあり、Pages がそのまま返します。
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+★**片方でも欠けると、落ちずに「遅くなる」だけ**なので気づきにくい。
+だから通し確認が `crossOriginIsolated === true` を検査します。
+本番ビルドをそのまま検査するには:
+
+```bash
+npm run build:deploy
+npx vite-node scripts/serve-dist.ts &                 # → http://localhost:5190/
+SMOKE_URL=http://localhost:5190/ npm run smoke        # ★_headers ごと確かめる
+```
+
+独自ドメインは Pages のプロジェクト → **Custom domains** から。HTTPS は必須です
+（`SharedArrayBuffer` は安全なコンテキストでしか使えません）。
+
 ## ライセンス
 
 **MIT License** — Copyright (c) 2026 Nilklops Inc. 詳細は [LICENSE](LICENSE)。

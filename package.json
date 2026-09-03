@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "gpu-verify": "vite-node scripts/gpu-verify.ts",
     "smoke": "vite-node scripts/smoke.ts",
-    "audit": "vite-node scripts/audit.ts"
+    "audit": "vite-node scripts/audit.ts",
+    "build:deploy": "npm run build && vite-node scripts/prune-dist.ts",
+    "deploy": "npm run build:deploy && npx wrangler pages deploy dist --project-name=gaia-protocol"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.72",

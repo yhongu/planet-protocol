@@ -1,0 +1,19 @@
+# Cloudflare Pages のヘッダ設定。
+#
+# ★**このシムは SharedArrayBuffer が前提**（場を Worker と主スレッドで共有する。
+# `docs/04-2.1`）。それを使うには **cross-origin isolation** が要る ——
+# つまり COOP と COEP の 2 つを両方返さなければならない。
+#
+# ★片方だけでは効かない。`crossOriginIsolated` が false のままだと、
+# 場が毎フレーム転送されて重くなる（アプリは黙って落ちずに遅くなるので、
+# **気づきにくい**。画面下に警告が出るようにしてある）。
+#
+# HTTPS も必須。Cloudflare Pages は既定で HTTPS なので条件を満たす。
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+# ドット絵とアセットは内容が変わったらファイル名も変わる（Vite のハッシュ）。
+# 長く持たせてよい
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

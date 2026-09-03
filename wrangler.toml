@@ -1,0 +1,32 @@
+# Cloudflare Pages の設定。
+#
+# ★**Workers ではなく Pages を使う。** このゲームは完全な静的サイト
+# （計算はすべてブラウザの中で走る。サーバ側の処理は 1 つも無い）なので、
+# Workers でリクエストを受ける理由が無い。Pages なら `_headers` で
+# COOP/COEP を返せて、独自ドメインも管理画面から付けられる。
+#
+# ## Git 連携で使う場合（推奨）
+#
+#   Cloudflare の管理画面 → Workers & Pages → Create → Pages →
+#   GitHub の yhongu/planet-protocol を選ぶ
+#     ビルドコマンド : npm run build:deploy
+#     出力ディレクトリ: dist
+#
+#   ★**`npm run build` ではなく `build:deploy`。** 素の build は
+#   `public/` を丸ごと写すので、開発用の `timelapse.bin`（38MB）が載り、
+#   **Pages の 1 ファイル 25MiB 上限に引っかかってデプロイが失敗する**。
+#
+# ## 手元から直接上げる場合
+#
+#   npx wrangler login          # ← 対話なので `! npx wrangler login` で
+#   npm run deploy
+#
+# ## 独自ドメイン
+#
+#   Pages のプロジェクト → Custom domains → Set up a custom domain
+#   （ドメインが既に Cloudflare にあれば DNS は自動で入る）
+#   ★HTTPS は必須。SharedArrayBuffer は安全なコンテキストでしか使えない
+
+name = "gaia-protocol"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "dist"
