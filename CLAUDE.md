@@ -52,7 +52,9 @@ npx vite-node scripts/probes/probe-pixel.ts                  # ★ドット絵�
 npx vite-node scripts/probes/probe-pixel.ts --years 3e8      # 氷のある惑星で見る（5 分）
 npm run smoke                         # ブラウザ通し確認（要 npm run dev）
 npx vite-node scripts/ui-shot.ts layer-picker  # ★押さないと出ない部品を撮る
-                                      #   （settings / phylogeny / armed / diag）
+                                      #   （settings / phylogeny / armed / diag / saves / science）
+npx vite-node scripts/ui-shot.ts diag 430,932  # ★スマホの幅で撮る（第 2 引数が画面）
+npx vite-node scripts/probes/probe-mobile.ts   # CPU を絞って重さを測る（要 npm run dev）
 npx vite-node scripts/probes/probe-thc.ts        # 熱塩循環の較正とヒステリシス
 npx vite-node scripts/probes/probe-gyre.ts       # 湧昇・西岸境界流（数十秒）
 npm run gpu-verify                    # GPU 版と CPU 版の数値一致（要 npm run dev）
@@ -423,6 +425,19 @@ wait
 71. ★**`docs/` の文章をそのまま画面に出すと Markdown の記法が見える。**
    `**強調**` と `` `コード` `` が字のまま出た。変換を掛けること。
    ★**先にエスケープしてから変換する** —— 逆にすると本文が HTML を注入できる
+
+72. ★**「入るか」は撮ってから言う。** スマホ幅 390px に対し、左の列 152 +
+   右の列 300 + レイヤの選択 452 —— **どれ 1 つも入らない**。
+   撮ったら地図がほぼ全部隠れていた。狭い画面では**畳むのではなく
+   置き場所を変える** —— パネルを下から出るシートにして、一度に 1 枚だけ出す
+73. ★**シートを `display: block` で出すと flex が死ぬ。** 介入の列は
+   `flex-direction: row; flex-wrap: wrap` で 2 列に並べていたのに、
+   可視化を `display: block` でやったせいで**縦 1 列・幅 103px に潰れた**。
+   可視化は元の `display` の値で行うこと
+74. ★**タッチの指は複数ある。** マウスは 1 本しか無いので `pointermove` を
+   素直に書くと、2 本目が来たときに**片方の指だけを見て地図が飛ぶ**。
+   `pointerId` で全部覚えること。★**ピンチを終えて指を離した瞬間を
+   クリックにしない** —— 拡大するたびに介入が落ちる
 
 詳しい実測値と経緯は `WORK-IN-PROGRESS.md` と `docs/01-6.5c`。
 

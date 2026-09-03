@@ -963,6 +963,30 @@ function readInfo(b: Uint8Array): { width: number; height: number; seed: string 
   return meta.options
 }
 
+// --- 狭い画面（スマホ）の下タブ ---------------------------------------
+//
+// ★**一度に 1 枚だけ出す。** 幅 390px に左の列 152 + 右の列 300 は入らない。
+// 押した札をもう一度押すと閉じる（地図を全画面で見たいときがある）
+for (const b of document.querySelectorAll<HTMLButtonElement>(".mtab")) {
+  b.addEventListener("click", () => {
+    const app = document.getElementById("app")!
+    const want = b.dataset.sheet!
+    if (want === "more") {
+      // 「その他」は系譜・記録・設定・解説をまとめて開く入口
+      app.dataset.sheet = ""
+      for (const o of document.querySelectorAll(".mtab")) o.classList.remove("on")
+      void savesPanel.toggle()
+      return
+    }
+    const same = app.dataset.sheet === want
+    app.dataset.sheet = same ? "" : want
+    for (const o of document.querySelectorAll(".mtab")) o.classList.remove("on")
+    if (!same) b.classList.add("on")
+    // シートを開いたら、上に重なる物は畳む
+    if (!same) { layerPicker.close(); savesPanel.close(); science.close() }
+  })
+}
+
 void title.show()
 // 起動時に pushAtmosphere() を呼んではいけない。
 // スライダーの初期値（CO2 280ppm・太陽 1.0 倍）が

@@ -941,3 +941,110 @@ button.primary:hover { background: #2c6288; }
 .ttl-card .section { margin: 12px 0 6px; }
 .sci-p code, .sci-lead code { color: #d8c49a; background: rgba(255,255,255,0.06);
   padding: 0 3px; font-size: 10px; }
+
+/* ======================================================================
+   ★狭い画面（スマホ）
+   ======================================================================
+
+   ★**横に並べる場所が無い。** 幅 390px に対し、左の列 152 + 右の列 300 +
+   レイヤの選択 452 —— どれ 1 つも入らない。実測で撮ったら地図がほぼ
+   全部隠れていた。
+
+   だから**畳むのではなく、置き場所を変える**:
+   パネルを**下から出るシート**にして、**一度に 1 枚だけ**出す。
+   選ぶのは下端のタブ。地図は常に全画面。
+
+   ★閾値は 860px。ここを切ると「左の列 + 地図 + 右の列」が成り立たない
+   ------------------------------------------------------------------ */
+.mtabs { display: none; }
+
+@media (max-width: 860px) {
+  /* --- 下タブ --- */
+  .mtabs {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 70;
+    display: flex; gap: 1px; padding: 0;
+    background: var(--panel); border-top: 1px solid var(--line);
+    box-shadow: inset 0 1px 0 var(--edge-hi);
+  }
+  .mtab { flex: 1; padding: 10px 2px; font-size: 11px; border-radius: 0;
+    border: 0; background: transparent; box-shadow: none; color: var(--dim); }
+  .mtab.on { color: var(--fg); background: #232e3c;
+    box-shadow: inset 0 2px 0 var(--accent); }
+
+  /* --- パネルはシートになる --- */
+  #rightCol, .rail, .legend, .lp, .saves, .sci, .drawer, .phylo {
+    position: absolute; left: 0; right: 0; top: auto;
+    bottom: 44px;                       /* 下タブのぶん */
+    width: auto; max-width: none;
+    max-height: 58vh; overflow-y: auto;
+    z-index: 65;
+    border-left: 0; border-right: 0;
+    display: none;
+  }
+  #app[data-sheet="dash"] #rightCol,
+  #app[data-sheet="rail"] .rail,
+  #app[data-sheet="legend"] .legend { display: block; }
+  #app[data-sheet="chron"] #rightCol { display: block; }
+  /* 「状態」と「年代記」は同じ列にあるので、いらない方を隠す */
+  #app[data-sheet="dash"] #chronicle { display: none; }
+  #app[data-sheet="chron"] #dash { display: none; }
+  #rightCol { display: none; gap: 0; }
+  #rightCol > .panel { max-height: none; }
+  /* 「その他」で開く物は、開いたときだけ出す（`hidden` が効く） */
+  .lp:not([hidden]), .saves:not([hidden]), .sci:not([hidden]),
+  .drawer:not([hidden]), .phylo:not([hidden]) { display: block; }
+
+  /* --- 左の列は横並びに畳む --- */
+  .rail { flex-direction: row; flex-wrap: wrap; gap: 5px; padding: 10px 10px 12px; }
+  .rail-title { width: 100%; margin: 2px 0 0; }
+  .rail .iv { width: auto; flex: 1 1 40%; }
+  .rail-strip { flex: 1 1 100%; }
+  .rail-hint { flex: 1 1 100%; }
+
+  /* --- 時間バーは下タブの上に、1 行で --- */
+  #timeline { bottom: 44px; padding: 0 0 4px; }
+  #timeline > .timebar { gap: 8px; padding: 5px 8px; flex-wrap: nowrap;
+    overflow-x: auto; }
+  #timebar .seedtag, #timebar .mode, #timebar .rate { display: none; }
+  #tlCanvas { height: 28px; margin: 3px 8px 0; width: calc(100% - 16px); }
+  .tlinfo { display: none; }
+  .sp { min-width: 34px; padding: 6px 6px; }
+  .sp.skip { font-size: 10px; }
+
+  /* --- 上中央の帯は邪魔なので消す（タッチにホバーは無い）--- */
+  .hoverbar { display: none; }
+  /* 出来事のカードは画面幅いっぱいに */
+  #eventPopup { left: 8px; right: 8px; transform: none; top: 8px; }
+  .epop-card { max-width: none; }
+  .epop-anim { display: none; }
+
+  /* --- 最初の画面 --- */
+  .ttl-card { width: auto; margin: 0 10px; padding: 16px 14px; }
+  .ttl-chapters { grid-template-columns: 1fr; }
+  .ttl-name { font-size: 18px; }
+
+  /* --- 早送りの進捗 --- */
+  .skipbar { width: auto; left: 10px; right: 10px; transform: translateY(-50%); }
+
+  /* --- 科学の解説とレイヤ選択はシートなので幅いっぱい --- */
+  .lp-grid { grid-template-columns: 1fr 1fr; }
+  .man-row { grid-template-columns: 84px 1fr; }
+}
+
+@media (max-width: 860px) {
+  /* ★シートは【時間バーの上】に出す。時間バーを覆うと、
+     状態を読みながら止められない（読みたいのは動いているときだから） */
+  #rightCol, .rail, .legend, .lp, .saves, .sci, .drawer, .phylo {
+    bottom: 84px; max-height: calc(100vh - 140px);
+  }
+  /* シートが開いている間は時間【軸】だけ畳む。速度の段は残す */
+  #app[data-sheet]:not([data-sheet=""]) #tlCanvas { display: none; }
+  #app[data-sheet]:not([data-sheet=""]) #timeline { padding-bottom: 0; }
+
+  /* ★シートを `display: block` にすると flex が死ぬ。
+     介入の列は横並びなので、可視化は `flex` で行うこと
+     （実測でボタンが縦 1 列・幅 103px に潰れた） */
+  #app[data-sheet="rail"] .rail { display: flex; }
+  .rail .iv { flex: 1 1 calc(50% - 3px); min-width: 0; }
+  .rail .rail-strip .act { flex: 1; }
+}

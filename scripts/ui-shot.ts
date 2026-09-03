@@ -24,6 +24,10 @@ const SHOTS: Record<string, string> = {
   "diag": `document.getElementById("detDiag").open = true`,
   "title": `void 0`,
   "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+  "m-dash": `document.querySelector('.mtab[data-sheet="dash"]').click()`,
+  "m-chron": `document.querySelector('.mtab[data-sheet="chron"]').click()`,
+  "m-rail": `document.querySelector('.mtab[data-sheet="rail"]').click()`,
+  "m-legend": `document.querySelector('.mtab[data-sheet="legend"]').click()`,
   "saves": `document.getElementById("savesBtn").click()`,
   "science": `document.getElementById("legendSci").click()`,
   "manual": `document.getElementById("legendSci").click();`
@@ -33,6 +37,8 @@ const SHOTS: Record<string, string> = {
 // ★タイトルは起動直後に出るので、押さずに撮る
 const TITLE_SHOTS = new Set(["title", "title-new"])
 const name = process.argv[2] ?? "layer-picker"
+/** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
+const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)
 const expr = SHOTS[name]
 if (!expr) throw new Error(`知らない部品: ${name}（${Object.keys(SHOTS).join(" / ")}）`)
 
@@ -41,7 +47,7 @@ const PORT = 9600 + (process.pid % 150)
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const chrome = spawn("chromium-browser", [
   "--headless", "--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu",
-  `--remote-debugging-port=${PORT}`, "--window-size=1600,900", "about:blank",
+  `--remote-debugging-port=${PORT}`, `--window-size=${SIZE[0]},${SIZE[1]}`, "about:blank",
 ], { stdio: "ignore" })
 
 async function main(): Promise<void> {
@@ -89,8 +95,9 @@ async function main(): Promise<void> {
   await sleep(600)
   mkdirSync("snapshots", { recursive: true })
   const shot = await send("Page.captureScreenshot", { format: "png" })
-  writeFileSync(`snapshots/ui-${name}.png`, Buffer.from(shot.data, "base64"))
-  console.log(`  -> snapshots/ui-${name}.png`)
+  const tag = SIZE[0] === 1600 ? name : `${name}-${SIZE[0]}x${SIZE[1]}`
+  writeFileSync(`snapshots/ui-${tag}.png`, Buffer.from(shot.data, "base64"))
+  console.log(`  -> snapshots/ui-${tag}.png  (${SIZE[0]}x${SIZE[1]})`)
   ws.close(); chrome.kill()
   process.exit(0)
 }

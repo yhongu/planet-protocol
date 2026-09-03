@@ -281,6 +281,19 @@
            ============================================================ -->
       <div id="title" class="titlescreen" hidden></div>
 
+      <!-- ============================================================
+           ★**狭い画面（スマホ）用の下タブ。**
+           横に並べる場所が無いので、パネルを下から出るシートにして
+           **一度に 1 枚だけ**出す。広い画面では出ない（CSS で消す）。
+           ============================================================ -->
+      <div id="mtabs" class="mtabs">
+        <button class="mtab" data-sheet="dash">状態</button>
+        <button class="mtab" data-sheet="chron">年代記</button>
+        <button class="mtab" data-sheet="rail">介入</button>
+        <button class="mtab" data-sheet="legend">レイヤ</button>
+        <button class="mtab" data-sheet="more">その他</button>
+      </div>
+
       <div id="loading" class="loading">惑星を生成しています…</div>
       <div id="warn" class="warn" hidden></div>
     </div>

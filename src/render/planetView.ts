@@ -203,6 +203,27 @@ export class PlanetView {
    * ★`scale` そのものを丸めること。描画時だけ丸めると、当たり判定
    * （`screenToGrid`）とずれて、クリックした場所と効く場所が食い違う。
    */
+  /**
+   * ★**タッチの指。** マウスは 1 本しか無いが、指は 2 本以上ある。
+   * `pointerId` で覚えておかないと、2 本目が来たときに
+   * **片方の指だけを見て地図が飛ぶ**（実測でそうなった）。
+   */
+  private touches = new Map<number, { x: number; y: number }>()
+  private pinch: {
+    dist: number; cx: number; cy: number; scale: number; globeZoom: number
+  } | null = null
+
+  /** 2 本目が触れた瞬間の間隔と倍率を覚える。以後はその比で拡大する */
+  private beginPinch(): void {
+    const [a, b] = [...this.touches.values()]
+    if (!a || !b) return
+    this.pinch = {
+      dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+      scale: this.scale, globeZoom: this.globeZoom,
+    }
+  }
+
   private snapScale(v: number): number {
     const dpr = Math.max(1, window.devicePixelRatio || 1)
     const artPx = v / this.ss * dpr
@@ -486,13 +507,31 @@ export class PlanetView {
     const c = this.canvas
 
     c.addEventListener("pointerdown", (e) => {
+      // ★**指を全部覚える。** 2 本になったらピンチに切り替える
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (this.touches.size >= 2) { this.dragging = false; this.beginPinch(); return }
       this.dragging = true
       this.lastPointer = { x: e.clientX, y: e.clientY }
       this.downAt = { x: e.clientX, y: e.clientY }
       this.moved = 0
       c.setPointerCapture(e.pointerId)
     })
+    c.addEventListener("pointercancel", (e) => {
+      this.touches.delete(e.pointerId)
+      this.pinch = null
+      this.dragging = false
+    })
     c.addEventListener("pointerup", (e) => {
+      this.touches.delete(e.pointerId)
+      // ★**ピンチを終えた指を離した瞬間をクリックにしない。**
+      // 2 本目を離した位置で介入が落ちると、拡大するたびに事故が起きる
+      if (this.pinch || this.touches.size > 0) {
+        this.pinch = null
+        this.dragging = false
+        this.lastPointer = null
+        this.downAt = null
+        return
+      }
       this.dragging = false
       this.lastPointer = null
       c.releasePointerCapture(e.pointerId)
@@ -516,6 +555,33 @@ export class PlanetView {
       this.onHover?.(null)
     })
     c.addEventListener("pointermove", (e) => {
+      if (this.touches.has(e.pointerId)) {
+        this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      }
+      // --- ピンチ（2 本指の拡大縮小と平行移動）---
+      if (this.pinch && this.touches.size >= 2) {
+        const [a, b] = [...this.touches.values()]
+        const dist = Math.hypot(a.x - b.x, a.y - b.y)
+        const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2
+        const r = c.getBoundingClientRect()
+        if (this.mode === "globe") {
+          this.globeZoom = Math.max(0.4, Math.min(6,
+            this.pinch.globeZoom * (dist / this.pinch.dist)))
+        } else {
+          const before = this.screenToGridF(this.pinch.cx - r.left, this.pinch.cy - r.top)
+          const minScale = Math.min(
+            this.viewportSize().width / this.grid.W,
+            this.viewportSize().height / this.grid.H,
+          ) * 0.5
+          this.scale = this.snapScale(Math.max(minScale, Math.min(48,
+            this.pinch.scale * (dist / this.pinch.dist))))
+          // 2 本指の中点のグリッド座標が動かないようにカメラを補正する
+          const after = this.screenToGridF(cx - r.left, cy - r.top)
+          this.cx += before.x - after.x
+          this.cy += before.y - after.y
+        }
+        return
+      }
       if (this.dragging && this.lastPointer) {
         const dx = e.clientX - this.lastPointer.x
         const dy = e.clientY - this.lastPointer.y
