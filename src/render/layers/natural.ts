@@ -169,6 +169,37 @@ const BLOOM: Rgb = [46, 122, 118]
 /** 溶けた岩 */
 const BASALT: Rgb = [46, 34, 30]
 const LAVA: Rgb = [255, 148, 62]
+/** 冷めかけの溶岩（噴出して間もない黒い玄武岩に赤が残る） */
+const LAVA_COOL: Rgb = [148, 62, 34]
+
+/**
+ * ★**火成活動は【セルごと】に描く。全球の海の割合で決めない。**
+ *
+ * それまで溶岩は `1 - oceanWaterFraction` だけで混ぜていたので、
+ * **最初の海ができた瞬間に、溶岩が 1 ピクセルも描かれなくなった**。
+ * そのときマントルは 1650℃ のスクイッシーリッドで、地殻の生産も
+ * 始まっている —— **見えていないだけで、惑星は激しく噴いている**。
+ *
+ * 実際の冥王代〜太古代前期は、海と溶岩が同居している状態のはず
+ * （ヒートパイプ = Io 型の再舗装。液体の海と活発な火成活動は両立する）。
+ *
+ * ★**2 つに分ける。地殻年代だけでは足りなかった。**
+ * 40Myr 時点で **12Myr 未満の地殻は 7% しかない**（海嶺の生産が 25Myr に
+ * 始まったばかりで、若い地殻がまだ作られていない）。実測でほぼ何も光らなかった。
+ *
+ *   1. **熱い地面**（マントル温度から。全球）—— ヒートパイプは
+ *      蓋【全体】を舗装し直すので、地表そのものが玄武岩で熱い
+ *   2. **噴いたばかりの斑**（地殻年代から。セルごと）—— 明るく光る
+ *
+ * ★現在の地球（マントル約 1350℃）ではどちらの項も厳密に 0 になるので、
+ * **現代の見た目は 1 ピクセルも変わらない**（基準状態を動かさない。
+ * 実測で色数 111 のまま）。
+ */
+/** これより若い地殻は「噴いたばかり」[Myr] */
+const FRESH_AGE_MYR = 12
+/** 溶岩が地表に出ている度合いが立ち上がるマントル温度 [℃]。
+ *  現在の地球は 1350℃ なので、下限はそれより上に置くこと */
+const GLOW_T0 = 1420, GLOW_T1 = 1750
 
 export function renderNatural(
   grid: Grid, store: FieldStore, out: Uint8ClampedArray, ss: number, env: LayerEnv,
@@ -190,6 +221,11 @@ export function renderNatural(
   const inv = 1 / ss
   const ocean = Math.max(0, Math.min(1, env.oceanWaterFraction))
   const glow = Math.max(0, Math.min(1, (env.mantleTempC - 1350) / 900))
+  // ★セルごとの火成活動。地殻年代が無い盤面（M0 のスナップショット）では
+  // 使わない —— **無い場を読んで落ちるより、光らせない方がよい**
+  const ageF = store.has("crustAge") ? store.f32("crustAge").read : null
+  const hotMantle = Math.max(0, Math.min(1,
+    (env.mantleTempC - GLOW_T0) / (GLOW_T1 - GLOW_T0)))
   // 生物量は 0..1 だが実際は薄いので、上位を基準に正規化する
   let bioRef = 0
   if (bio) {
@@ -256,6 +292,13 @@ export function renderNatural(
           sea = mix(sea, mix(BASALT, LAVA, band(Math.pow(heat, 0.7), BANDS.lava, SOLID)), 1 - ocean)
         } else {
           sea = mix(sea, BLOOM, band(Math.min(0.45, bm * 0.5) / 0.45, BANDS.life, SOLID) * 0.45)
+          // ★浅い海の熱い海底。**深海では光らせない**（水が厚いほど見えない）。
+          // 海と溶岩が同居している時代を、海側にも 1 段だけ出す
+          if (hotMantle > 0) {
+            const shallowOnly = Math.max(0, 1 - -hSmooth / 1200)
+            sea = mix(sea, LAVA_COOL,
+              band(hotMantle * shallowOnly, BANDS.lava, SOLID) * 0.4)
+          }
         }
         sea = mix(sea, SNOW, band(iceCover(ic), BANDS.ice, SOLID) * 0.74)
       }
@@ -267,6 +310,20 @@ export function renderNatural(
         // ★緑は生命がいるところにだけ。先カンブリア時代の陸は岩と砂
         rockC = mix(rock, VEG, band(Math.min(0.75, bm * 0.9) * wet / 0.75, BANDS.life, SOLID) * 0.75)
         rockC = mix(rockC, SNOW, band(iceCover(ic) * 0.96 + ic * 0.12, BANDS.ice, SOLID))
+        // ★**火成活動。** 氷より後に乗せる —— 溶岩の上に雪は積もらない
+        if (hotMantle > 0) {
+          // (1) 熱い地面。玄武岩に寄せて、わずかに赤を差す
+          rockC = mix(rockC, LAVA_COOL, band(hotMantle, BANDS.lava, SOLID) * 0.55)
+          // (2) 噴いたばかりの斑。★年代は補間しない
+          //     （隣のセルへにじむと溶岩原が広がって見える）
+          if (ageF) {
+            const a = ageF[(Math.max(0, Math.min(H - 1, Math.round(fy)))) * W
+              + (((Math.round(fx) % W) + W) % W)]
+            const fresh = Math.max(0, 1 - a / FRESH_AGE_MYR)
+            const g = band(fresh * hotMantle, BANDS.lava, d)
+            if (g > 0) rockC = mix(rockC, LAVA, g * 0.85)
+          }
+        }
         if (ocean < 1) {
           // ★マグマオーシャン期は**陸も溶けている**。暗くしすぎると
           // 大陸が「黒い穴」に見える（実測でそうなった）

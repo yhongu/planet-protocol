@@ -83,3 +83,11 @@ const st = w.stats!
 console.log(`${W}x${H} ss${SS}  seed ${SEED}  ${st.meanT.toFixed(1)}℃` +
   `  氷 ${(st.iceFraction * 100).toFixed(0)}%  陸 ${(st.landFraction * 100).toFixed(0)}%`)
 console.log(`★色数 ${seen.size}  （ピクセルアートの目安は 64 以下）`)
+// ★カナリア（`CLAUDE.md` の 13）: マントル温度と「若い地殻」の割合を出す。
+// 溶岩が描かれるかはこの 2 つで決まるので、絵が変わらないときに
+// 「機構が効いていない」のか「効く条件でない」のかを分けられる
+const ageR = w.store.f32("crustAge").read
+let young = 0
+for (let i = 0; i < w.grid.cellCount; i++) if (ageR[i] < 12) young++
+console.log(`  マントル ${w.mantle.state.temperature.toFixed(0)}℃` +
+  `  12Myr 未満の地殻 ${(young / w.grid.cellCount * 100).toFixed(0)}%`)

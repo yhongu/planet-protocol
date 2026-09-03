@@ -360,8 +360,28 @@ export function computeWeathering(
   }
 
   const meanT = world.stats?.meanT ?? T0
-  // 海底風化も海が無ければ起きない
-  const seafloor = liquid * cp.Wsf0 * Math.pow(Math.max(1e-6, co2) / 280, cp.sfCo2Exp)
+  /**
+   * 海底風化（玄武岩の炭酸塩化）。★**液体の水が無ければ起きない。**
+   *
+   * `liquid`（海の割合の smoothstep）だけでは足りなかった ——
+   * マグマオーシャン期の海の割合は 0 ではなく **1%** で、
+   * 脱ガスした水が少しずつ入るため `liquid ≒ 0.10` にしかならない。
+   * 一方、地表 165℃ での指数項は **`exp((165−15)/30) = 147 倍`**。
+   * **1 割に絞っても、147 倍には桁で負ける。**
+   *
+   * 実測（`probe-firstocean.ts`、seed hadean-01）:
+   * 16Myr の時点で **海底 1215.8 Mt-C/yr = 火山の脱ガス 450.7 の 2.7 倍**。
+   * 水はすべて水蒸気で液体の海はまだ無いのに、CO₂ が 335077 → 126627 まで
+   * 削られ、**凝結した瞬間に痩せた大気だけが残って一気に氷へ落ちていた**
+   * （20Myr で CO₂ 3951 ppm・地表 8℃、32Myr で −2.5℃・氷 38%）。
+   *
+   * ★**現在の地球では `steamFraction = 0` なので係数は厳密に 1。**
+   * 炭素の較正（`assertReferenceState`）は 1 ビットも動かない。
+   * 動くのはマグマオーシャン期だけ。
+   */
+  const noSteam = 1 - Math.max(0, Math.min(1, world.globals.steamFraction))
+  const seafloor = liquid * noSteam
+    * cp.Wsf0 * Math.pow(Math.max(1e-6, co2) / 280, cp.sfCo2Exp)
     * Math.exp((meanT - T0) / cp.sfTweath)
 
   return {
