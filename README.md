@@ -5,7 +5,7 @@
 
 ![45.4 億年](docs/images/history.png)
 
-> 上は実際の出力（seed `gaia-6`・全史 48 コマ・256×128）。マグマオーシャンから始まり、
+> 上は実際の出力（seed `gaia-6`・全史 40 コマ・512×256）。マグマオーシャンから始まり、
 > 海ができ、大陸が育ち、氷が来ては去り、緑が乗る。**台本はありません。**
 > 描いているのは**シミュレーションの場そのもの**で、テクスチャは 1 枚も無い。
 
@@ -129,7 +129,7 @@ npx vite-node scripts/probes/probe-pixel.ts   # 3.5 秒。色数を印字する
 | [docs/07-art-spec.md](docs/07-art-spec.md) | ドット絵アイコンの発注仕様 |
 
 作業中の記録は [WORK-IN-PROGRESS.md](WORK-IN-PROGRESS.md)、
-**踏んだ罠の一覧**は [CLAUDE.md](CLAUDE.md)（64 件）。
+**踏んだ罠の一覧**は [CLAUDE.md](CLAUDE.md)（66 件）。
 
 ## いま何ができるか
 
@@ -198,24 +198,31 @@ npx vite-node scripts/probes/probe-pixel.ts   # 3.5 秒。色数を印字する
 `npm run audit -- --width 96` で全史を通して 28 項目を検査する（96×48 で約 29 分）。
 
 ```
-28 項目  PASS 24  WARN 3  FAIL 1
+28 項目  PASS 25  WARN 2  FAIL 1
 ```
 
 | | 45.4 億年の実測（seed audit） | 地球 |
 |---|---|---|
-| 顕生代の気温 | **18.4 ℃** | 17〜20 |
-| 顕生代の CO₂ | **812 ppm** | 300〜3000 |
-| 陸の平均標高 | **1018 m** | 840 |
-| 海底熱水の総出力 | **3.14 TW** | 2.8±1 |
-| エクマン湧昇の総量 | **205 Sv** | 理論値 約 220 |
-| 海洋のリン在庫 | **2.31e15 mol** | 2.9e15 |
-| エネルギー収支の不平衡 | **6.9e-5 W/m²** | ~0 |
+| 顕生代の気温 | **18.1 ℃** | 17〜20 |
+| 顕生代の CO₂ | **799 ppm** | 300〜3000 |
+| 陸地面積（全史の中央値） | **21.2 %** | 29.2 |
+| 海底熱水の総出力 | **3.5 TW** | 2.8±1 |
+| エネルギー収支の不平衡 | **6.3e-5 W/m²** | ~0 |
+
+★**冥王代の道筋**（`probe-firstocean.ts`）。凝結後に **64〜75℃ の温かい海**が
+約 7Myr 続く —— Sleep & Zahnle (2001) の「数十気圧の CO₂ で地表 100〜200℃」:
+
+```
+       様式          地表      CO₂[ppm]  |陸風化  海底  火山 Mt-C/yr
+ 16Myr heatPipe    171.7℃   5,211,757        0.0   0.0  450.7  ← 水はすべて水蒸気
+ 25Myr ★最初の海: 水蒸気大気が凝結し、液体の海ができた
+ 28Myr squishyLid   64.1℃   1,009,314     8362.0 1528.1 120.2
+```
 
 **WARN と FAIL は意図して残している**:
 
-- 太古代が 0.3℃（10℃ 以上を期待）= **暗い太陽のパラドクスの残り**
-- 熱塩循環が −9.3 Sv（塩分枝＝逆転循環に落ちている）
-- 陸地面積の中央値 19.6%（地球 29.2）
+- 太古代が 0.9℃（10℃ 以上を期待）= **暗い太陽のパラドクスの残り**
+- 熱塩循環が −10.9 Sv（塩分枝＝逆転循環に落ちている）
 - FAIL は `degassingFollowsCrust` の**停止検出**（直すと悪化することを実測済み）
 
 ## 検査を回す
@@ -231,6 +238,7 @@ npx vite-node scripts/probes/probe-look.ts     # 時代ごとの見た目を PNG
 npx vite-node scripts/probes/probe-pixel.ts    # ドット絵の見た目と色数（3.5 秒）
 npx vite-node scripts/probes/probe-life.ts     # 生命の獲得の鎖がどこで切れているか
 npx vite-node scripts/probes/probe-events.ts   # 出来事の頻度（上の年代記）
+npx vite-node scripts/probes/probe-firstocean.ts  # 冥王代を刻む（上の表）
 npx vite-node scripts/probes/probe-anim.ts     # 上のアニメーションを作り直す
 
 # 系統樹の見た目を確かめる（smoke は冥王代までしか進まないため）
@@ -239,7 +247,7 @@ npx vite-node scripts/phylo-shot.ts           # -> snapshots/phylo.png
 ```
 
 ★**この配管では、数字を出すたびに条件（解像度・seed・パラメータ）を添える。**
-単一ランの終端値では判断しない。踏んだ罠は [CLAUDE.md](CLAUDE.md) に 64 件。
+単一ランの終端値では判断しない。踏んだ罠は [CLAUDE.md](CLAUDE.md) に 66 件。
 
 `proto/` は TypeScript を書く前の数値検証（Python）。[proto/RESULTS.md](proto/RESULTS.md) 参照。
 
