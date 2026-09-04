@@ -35,6 +35,46 @@ export const WORLD_FIELDS: readonly FieldSpec[] =
   [...M1_FIELDS, ...CARBON_FIELDS, ...HYDRO_FIELDS, ...TECTONIC_FIELDS, ...OCEAN_FIELDS,
     ...PREBIOTIC_FIELDS, ...LIFE_FIELDS]
 
+/**
+ * ★**陸の面積割合。物理が食べているのと同じ量を返す。**
+ *
+ * 気候のアルベド（`climate.ts`）も炭素の風化（`carbon.ts`）も、
+ * **サブグリッドの `landFraction`** を読んでいる。ところが測定の側は
+ * ずっと `elevation >= seaLevel`（セル平均の離散判定）を見ていた。
+ *
+ * ★**2 つは「まとまった陸が消えると」開く。** 実測（96x48・4 seed・全史）:
+ *
+ * | | 冥王代 | 原生代 | 顕生代 |
+ * |---|---|---|---|
+ * | 一致度（lf ÷ elev） | 1.00〜1.12 | **最大 3.48** | 1.2〜1.6 |
+ * | `landFraction` | 26〜29% | 約 21% | 15.5〜19.8% |
+ * | `elevation >= 海面` | 25〜29% | **5.3% まで落ちる** | 12〜19% |
+ *
+ * 理由は `CLAUDE.md` の 23 と同じ —— **半分が厚い地殻・半分が薄い**セルでは、
+ * セル平均の標高は海面を下回るのに、粒子の半分は海面より上にある。
+ *
+ * だから**測るのはこちら**。定義を 1 か所に置く（2 つあったのが原因なので）。
+ */
+export function landAreaFraction(world: World): number {
+  const { W, H } = world.grid
+  const lf = world.store.f32("landFraction").read
+  let a = 0, tot = 0
+  for (let y = 0; y < H; y++) {
+    const aw = world.grid.areaWeight[y]
+    for (let x = 0; x < W; x++) { a += lf[y * W + x] * aw; tot += aw }
+  }
+  return tot > 0 ? a / tot : 0
+}
+
+/**
+ * 参考: セル平均の標高で切った陸（**測定の基準にはしないこと**）。
+ * 上の食い違いを見張るカナリアとして残す。
+ */
+export function landAreaByElevation(world: World): number {
+  return world.grid.areaFractionWhere(
+    world.store.f32("elevation").read, (v) => v >= world.globals.seaLevel)
+}
+
 /** 惑星の総年齢 [yr]。地球は 45.4 億年 */
 export const PLANET_AGE_YEARS = 4.54e9
 

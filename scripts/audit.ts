@@ -26,7 +26,8 @@
  * どちらも全史 1 本を回す。別々に走らせると 6 分 + 40 分かかる。
  * 監査の全史ランからフレームを抜けば 1 回で済む。
  */
-import { World, PLANET_AGE_YEARS, WORLD_FIELDS } from "../src/sim/world"
+import { World, PLANET_AGE_YEARS, WORLD_FIELDS,
+  landAreaFraction, landAreaByElevation } from "../src/sim/world"
 import { MODE_LABEL } from "../src/sim/mantle"
 import { EARTH_TECTONICS } from "../src/sim/tectonics"
 import { EARTH_HYDRO } from "../src/sim/hydrology"
@@ -142,7 +143,7 @@ function numerics(): void {
     for (let i = 0; i < 20; i++) {
       w.advance(400e3, OPT)
       c.push(w.globals.co2); t.push(w.stats!.meanT)
-      l.push(w.grid.areaFractionWhere(w.store.f32("elevation").read, (v) => v >= w.globals.seaLevel))
+      l.push(landAreaFraction(w))
     }
     return { co2: med(c), meanT: med(t), land: med(l) }
   })
@@ -186,6 +187,10 @@ function fullHistory(): void {
     : { orogeny: 0, arc: 0, erosion: 0, rift: 0, deposition: 0,
         vents: 0, overturning: 0, upwelling: 0 }
   const traj = { land: [] as number[], co2: [] as number[], temp: [] as number[],
+    /** ★まとまった陸（landFraction >= 0.75）の面積割合 */
+    landSolid: [] as number[],
+    /** 参考: セル平均の標高で切った陸。★食い違いのカナリア */
+    landElevBased: [] as number[],
     imb: [] as number[], landElev: [] as number[], carbonNet: [] as number[],
     ventTW: [] as number[], overturn: [] as number[], upwell: [] as number[],
     deepO2: [] as number[], phosphate: [] as number[],
@@ -267,19 +272,30 @@ function fullHistory(): void {
     traj.upwell.push(os.upwellingSv)
     traj.deepO2.push(os.deepOxygen)
     traj.phosphate.push(os.phosphateInventory)
+    // ★**陸は `landFraction` で測る。物理が食べているのと同じ量にする。**
+    //   セル平均の標高で切ると、まとまった陸が消えたとき最大 3.5 倍ずれる
+    //   （`landAreaFraction` の説明を読むこと）。
+    //   標高の平均は陸の割合で重み付ける（同じ集合で測るため）
     const el = w.store.f32("elevation").read
-    let a = 0, es = 0
+    const lfa = w.store.f32("landFraction").read
+    let a = 0, es = 0, solid = 0, tot = 0
     for (let y = 0; y < H; y++) {
       const aw = w.grid.areaWeight[y]
       for (let x = 0; x < W; x++) {
         const i = y * W + x
-        if (el[i] < w.globals.seaLevel) continue
-        a += aw; es += (el[i] - w.globals.seaLevel) * aw
+        const lw = lfa[i] * aw
+        a += lw
+        tot += aw
+        es += Math.max(0, el[i] - w.globals.seaLevel) * lw
+        // ★**まとまった陸**（0.75 以上）。面積が同じでも中身が違う
+        if (lfa[i] >= 0.75) solid += aw
       }
     }
     traj.ga.push((PLANET_AGE_YEARS - w.globals.yearsElapsed) / 1e9)
-    traj.land.push(100 * a)
+    traj.land.push(100 * landAreaFraction(w))
     traj.landElev.push(a > 0 ? es / a : 0)
+    traj.landSolid.push(tot > 0 ? (100 * solid) / tot : 0)
+    traj.landElevBased.push(100 * landAreaByElevation(w))
     traj.co2.push(w.globals.co2)
     traj.temp.push(w.stats!.meanT)
     traj.imb.push(Math.abs(w.stats!.imbalance))
@@ -425,7 +441,16 @@ function fullHistory(): void {
   // --- 判定 ---
   // 陸は全史で見る（地球史を通してほぼ一定）
   const landRows: Array<[string, number[], string, number, number]> = [
+    // ★**物理（アルベド・風化）が食べている `landFraction` で測る。**
+    //   以前はセル平均の標高で切っていたので、まとまった陸が消えた惑星で
+    //   最大 3.5 倍ずれていた（`landAreaFraction` の説明）
     ["陸地面積 [%]（全史）", traj.land, "地球 29.2", 20, 40],
+    // ★**まとまった陸**。面積が同じでも中身が違う。実測で全史中央値 1.7〜2.4%、
+    //   顕生代 0.1〜0.9% しかない（地球には大陸がある）。**いまは意図的に赤**
+    ["まとまった陸 [%]（landFraction>=0.75・全史）", traj.landSolid, "地球はほぼ全部", 10, 100],
+    // ★**カナリア。** セル平均の標高で切った陸。上の「陸地面積」と大きく開いたら、
+    //   まとまった陸が消えている（半分厚い・半分薄いセルばかりになっている）
+    ["参考: 標高で切った陸 [%]（全史）", traj.landElevBased, "上と近いこと", 0, 100],
     ["陸の平均標高 [m]（全史）", traj.landElev, "地球 840", 400, 1500],
   ]
   for (const [name, arr, ref, lo, hi] of landRows) {

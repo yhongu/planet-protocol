@@ -7,6 +7,7 @@
 
 import { World } from "../sim/world"
 import type { WorldEvent } from "../sim/world"
+import { landAreaFraction } from "../sim/world"
 import { saveWorld, applySnapshot } from "../sim/snapshot"
 import { WORLD_FIELDS } from "../sim/world"
 import { SPEED_STEPS, couplingForSpeed, tickYears } from "../sim/loop"
@@ -229,8 +230,9 @@ function postState(solveMs: number): void {
     tectonicMode: world.tectonicMode,
     mantleTempC: world.mantle.state.temperature,
     dispersion: world.tectonics.dispersion(world),
-    landFraction: world.grid.areaFractionWhere(
-      world.store.f32("elevation").read, (v) => v >= 0),
+    // ★物理（アルベド・風化）が食べているのと同じ量を出す。
+    //   セル平均の標高で切ると、まとまった陸が消えたとき最大 3.5 倍ずれる
+    landFraction: landAreaFraction(world),
     newEvents,
     yearsPerSecond,
     climateFallbacks: world.climateBackendFailures,
