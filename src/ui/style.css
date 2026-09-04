@@ -1048,3 +1048,11 @@ button.primary:hover { background: #2c6288; }
   .rail .iv { flex: 1 1 calc(50% - 3px); min-width: 0; }
   .rail .rail-strip .act { flex: 1; }
 }
+/* 配られている章の印。★「押したらすぐ始まる」ことが見えないと意味がない */
+.ttl-ready { font-style: normal; font-size: 9px; color: var(--good);
+  border: 1px solid rgba(127,196,106,0.4); padding: 0 5px; margin-top: 3px;
+  align-self: flex-start; }
+.ttl-note.fixed { color: #ffe6b0; }
+.titlescreen.fixed-planet #ttSeed,
+.titlescreen.fixed-planet #ttGrid,
+.titlescreen.fixed-planet #ttLand { opacity: 0.4; }

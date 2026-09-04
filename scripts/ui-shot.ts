@@ -24,6 +24,14 @@ const SHOTS: Record<string, string> = {
   "diag": `document.getElementById("detDiag").open = true`,
   "title": `void 0`,
   "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+  // ★配られた章を実際に読み込む（読めているかは年代を見る）
+  "chapter": `(() => {
+    document.querySelector('.ttl-btn[data-go="new"]').click();
+    setTimeout(() => {
+      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      setTimeout(() => document.getElementById("ttStart").click(), 200);
+    }, 200);
+  })()`,
   "m-dash": `document.querySelector('.mtab[data-sheet="dash"]').click()`,
   "m-chron": `document.querySelector('.mtab[data-sheet="chron"]').click()`,
   "m-rail": `document.querySelector('.mtab[data-sheet="rail"]').click()`,
@@ -35,7 +43,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "title-new"])
+const TITLE_SHOTS = new Set(["title", "title-new", "chapter"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)
@@ -92,7 +100,19 @@ async function main(): Promise<void> {
     await sleep(5000)
   }
   await send("Runtime.evaluate", { expression: expr })
-  await sleep(600)
+  await sleep(name === "chapter" ? 25000 : 600)
+  if (name === "chapter") {
+    const v = (await send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `({ age: document.getElementById("tAge").textContent,
+        o2: document.getElementById("dO2").textContent,
+        t: document.getElementById("dMean").textContent,
+        clades: document.getElementById("dClades").textContent,
+        seed: document.getElementById("tSeed").textContent })`,
+    })).result.value as Record<string, string>
+    console.log(`  章を読み込んだ: ${v.age}  ${v.t}  O2 ${v.o2}  クレード ${v.clades}`
+      + `  seed ${v.seed}`)
+  }
   mkdirSync("snapshots", { recursive: true })
   const shot = await send("Page.captureScreenshot", { format: "png" })
   const tag = SIZE[0] === 1600 ? name : `${name}-${SIZE[0]}x${SIZE[1]}`

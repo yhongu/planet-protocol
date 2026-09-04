@@ -11,6 +11,7 @@
  */
 import { listSaves, whenLabel, type SaveInfo } from "./saves"
 import { CHAPTERS } from "./savesPanel"
+import { listChapters, type ChapterInfo } from "./chapters"
 
 export interface NewGameOptions {
   seed: string
@@ -20,6 +21,12 @@ export interface NewGameOptions {
   /** 開始する時代。`ga` が 4.54 なら最初から */
   startGa: number
   startLabel: string
+  /**
+   * ★**配られた章の id。** これがあるときは seed も大きさも陸の割合も
+   * 効かない —— **その惑星そのもの**を読み込むから。
+   * 無ければ、その場で冥王代から早送りする
+   */
+  chapterId?: string
 }
 
 export class TitleScreen {
@@ -28,6 +35,8 @@ export class TitleScreen {
   private onLoad: (id: string) => void
   private onManual: () => void
   private saves: SaveInfo[] = []
+  /** 配られている章。取れなければ空（その場で計算する道に落ちる）*/
+  private chapters: ChapterInfo[] = []
 
   constructor(root: HTMLElement, h: {
     onNew: (o: NewGameOptions) => void
@@ -40,6 +49,7 @@ export class TitleScreen {
 
   async show(): Promise<void> {
     this.saves = await listSaves().catch(() => [])
+    this.chapters = await listChapters()
     this.root.innerHTML = this.menu()
     this.root.hidden = false
     this.wire()
@@ -75,6 +85,8 @@ export class TitleScreen {
         <input id="ttSeed" type="text" value="${seed}" spellcheck="false" />
         <button id="ttDice" class="mini" title="振り直す">🎲</button></label>
       <div class="ttl-note">同じ seed なら<b>必ず同じ惑星</b>になります。友達と同じ惑星を遊べます</div>
+      <div class="ttl-note fixed" id="ttFixed" hidden>★配られた章を選んでいるので、
+        <b>seed と大きさと陸の割合は効きません</b>（その惑星そのものを読み込むため）</div>
       <label class="row"><span>大きさ</span>
         <select id="ttGrid">
           <option value="128x64" selected>128 × 64（既定・全史 約 60 分）</option>
@@ -87,11 +99,24 @@ export class TitleScreen {
         <span id="ttLandVal" class="num">0.29</span></label>
       <div class="ttl-note">地球は 0.29。小さくすると水惑星、大きくすると乾いた惑星になります</div>
       <div class="section">どの時代から始めるか</div>
-      <div class="ttl-chapters">${CHAPTERS.map((c, i) =>
-        `<button class="ttl-ch${i === 0 ? " on" : ""}" data-ga="${c.ga}" data-label="${c.label}">`
-        + `<b>${c.label}</b><span>${c.ga.toFixed(2)} Ga · ${c.note}</span></button>`).join("")}</div>
-      <div class="ttl-note">★冥王代以外を選ぶと、<b>そこまで実際に計算します</b>（初回だけ・数分）。
-        時代の初期値を決め打ちすると、その惑星の歴史が嘘になるからです</div>
+      <div class="ttl-chapters">${CHAPTERS.map((c, i) => {
+        const ship = this.chapters.find((x) => x.id === c.id)
+        // ★配られている章は【その惑星の実際の数字】を出す。
+        //   「太古代」とだけ書くより、-0.8℃・CO2 11306ppm の方がはるかに伝わる
+        const sub = ship
+          ? `${ship.meanT}℃ · CO₂ ${ship.co2.toLocaleString()}ppm`
+            + ` · ${ship.width}×${ship.height} · ${(ship.bytes / 1e6).toFixed(0)}MB`
+          : `${c.ga.toFixed(2)} Ga · ${c.note}`
+        return `<button class="ttl-ch${i === 0 ? " on" : ""}" data-ga="${c.ga}"`
+          + ` data-label="${c.label}"${ship ? ` data-chapter="${c.id}"` : ""}>`
+          + `<b>${c.label}</b><span>${sub}</span>`
+          + (ship ? `<i class="ttl-ready">配布ずみ</i>` : "")
+          + `</button>`
+      }).join("")}</div>
+      <div class="ttl-note">★<b>台本ではありません。</b>「配布ずみ」の章は、
+        こちらで冥王代から<b>本当に回した 1 つの惑星</b>を、その時代に着いた時点で
+        保存したものです（決定論なので、同じ seed で回せば同じ物が出ます）。<br>
+        配布が無い章はその場で計算するので、数分〜1 時間かかります</div>
       <div class="row buttons">
         <button id="ttBack">← 戻る</button>
         <button id="ttStart" class="primary">この惑星を始める</button>
@@ -134,6 +159,16 @@ export class TitleScreen {
       c.addEventListener("click", () => {
         for (const o of this.root.querySelectorAll(".ttl-ch")) o.classList.remove("on")
         c.classList.add("on")
+        // ★**配られた章では seed も大きさも陸の割合も効かない。**
+        //   触れるのに効かないつまみは、嘘をついているのと同じ
+        const ship = !!c.dataset.chapter
+        this.root.classList.toggle("fixed-planet", ship)
+        for (const el of this.root.querySelectorAll<HTMLElement>(
+          "#ttSeed, #ttGrid, #ttLand, #ttDice")) {
+          (el as HTMLInputElement).disabled = ship
+        }
+        const note = this.root.querySelector<HTMLElement>("#ttFixed")
+        if (note) note.hidden = !ship
       })
     }
     for (const s of this.root.querySelectorAll<HTMLButtonElement>(".ttl-save")) {
@@ -142,12 +177,14 @@ export class TitleScreen {
     q("#ttStart")?.addEventListener("click", () => {
       const [w, h] = (q<HTMLSelectElement>("#ttGrid")?.value ?? "128x64").split("x").map(Number)
       const ch = this.root.querySelector<HTMLElement>(".ttl-ch.on")
+      const chapterId = ch?.dataset.chapter
       this.onNew({
         seed: (q<HTMLInputElement>("#ttSeed")?.value ?? "").trim() || randomSeed(),
         width: w, height: h,
         landFraction: Number(q<HTMLInputElement>("#ttLand")?.value ?? 0.29),
         startGa: Number(ch?.dataset.ga ?? 4.54),
         startLabel: ch?.dataset.label ?? "",
+        ...(chapterId ? { chapterId } : {}),
       })
     })
   }

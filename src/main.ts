@@ -23,6 +23,7 @@ import { SciencePanel } from "./ui/sciencePanel"
 import { TitleScreen, type NewGameOptions } from "./ui/titleScreen"
 import { NOTE_FOR_LAYER } from "./ui/science"
 import { putSave, getSave, gzip, gunzip, whenLabel } from "./ui/saves"
+import { fetchChapter } from "./ui/chapters"
 import { track, trend, drawSparkline, resetSparklines } from "./ui/sparkline"
 import type { CladeInfo } from "./worker/protocol"
 import type { WorldEvent } from "./sim/world"
@@ -95,10 +96,23 @@ timeline.onHoverEvents = (evs) => {
 
 const layerById = (id: string) => LAYERS.find((l) => l.id === id) ?? LAYERS[0]
 const post = (m: ToWorker) => worker?.postMessage(m)
+// ★検査用の口。**通し確認とプローブがゲームと同じ経路を通れるようにする**
+//   （別の道を作ると、通ったのに本番が壊れていることがある）
+;(window as unknown as { __post: typeof post }).__post = post
+
+/**
+ * ★**次に作る惑星の大きさ。** 読み込んだセーブや配られた章は
+ * `<select>` に無い大きさのことがある（章は 96x48、選択肢は 128x64 から）。
+ * `<select>` に無い値を代入すると **`value` が空文字になって `0 × undefined`
+ * で生成が止まる**（実測。画面には「惑星を生成しています…」が残るだけ）。
+ * だから大きさは選択肢に縛らず、ここで持つ。
+ */
+let nextGrid: [number, number] | null = null
 
 function boot(): void {
   worker?.terminate()
-  const [w, h] = gridSelect.value.split("x").map(Number)
+  const [w, h] = nextGrid ?? gridSelect.value.split("x").map(Number) as [number, number]
+  nextGrid = null
   $("dSolve").textContent = "生成中…"
   const loading = $("loading")
   loading.hidden = false
@@ -109,6 +123,19 @@ function boot(): void {
   // ★前の惑星の線が残ると誤読する。作り直したら履歴も捨てる
   resetSparklines()
   renderEventLog()
+  // ★**Worker の例外を握りつぶさない。**
+  //
+  // Worker の中で投げると、既定では**どこにも出ずにティックのループが止まる**。
+  // 画面は最後の値のまま固まるので、「遅い」のか「壊れた」のかが分からない。
+  // 実測: 章立ての早送りが無言で何も起こさなかったとき、原因を突き止めるのに
+  // ここが無いせいで 1 時間かかった
+  worker.onerror = (e) => {
+    const w = $("warn")
+    w.hidden = false
+    w.textContent = `シミュレータが止まりました: ${e.message || "不明な例外"}`
+    console.error("worker error", e)
+  }
+  worker.onmessageerror = (e) => { console.error("worker message error", e) }
   worker.onmessage = (e: MessageEvent<FromWorker>) => {
     const m = e.data
     if (m.type === "ready") {
@@ -204,6 +231,9 @@ function boot(): void {
       return
     }
     if (m.type === "tick") {
+      // ★検査用: ティックが来ているかを数える。「重い」と「止まっている」を分ける
+      const wnd = window as unknown as { __ticks?: number }
+      wnd.__ticks = (wnd.__ticks ?? 0) + 1
       lastGeneration = m.generation
       $("loading").hidden = true
       lastGlobals = m.globals
@@ -926,11 +956,39 @@ const science = new SciencePanel($("science"))
 const title = new TitleScreen($("title"), {
   onNew: (o: NewGameOptions) => {
     title.close()
+    // ★**配られた章は「その惑星そのもの」**なので、seed も大きさも使わない
+    if (o.chapterId) {
+      const bar = $("skipProgress")
+      bar.hidden = false
+      bar.innerHTML = `<b>${o.startLabel}の惑星を読み込んでいます</b>`
+        + `<div class="skip-sub">こちらで冥王代から本当に回した惑星です</div>`
+        + `<div class="skip-bar"><i style="width:0%"></i></div>`
+      void fetchChapter(o.chapterId, (t) => {
+        const i = bar.querySelector<HTMLElement>(".skip-bar i")
+        if (i) i.style.width = `${Math.max(0, t) * 100}%`
+      }).then((bytes) => {
+        const info = readInfo(bytes)
+        seedInput.value = info.seed
+        nextGrid = [info.width, info.height]
+        pendingLoad = bytes
+        bar.hidden = true
+        boot()
+      }).catch((e: unknown) => {
+        // ★**配布が読めなくても遊べなくならない。** その場で計算する道へ落ちる
+        console.warn("章が読めないので、その場で計算します", e)
+        bar.hidden = true
+        seedInput.value = o.seed
+        nextGrid = [o.width, o.height]
+        pendingChapter = { ga: o.startGa, label: o.startLabel }
+        boot()
+      })
+      return
+    }
     seedInput.value = o.seed
-    gridSelect.value = `${o.width}x${o.height}`
+    nextGrid = [o.width, o.height]
     landInput.value = String(o.landFraction)
     $("landVal").textContent = o.landFraction.toFixed(2)
-    // 冥王代以外を選んだら、生成のあとでそこまで早送りする
+    // 冥王代以外で配布が無いときは、生成のあとでそこまで早送りする
     pendingChapter = o.startGa < 4.53 ? { ga: o.startGa, label: o.startLabel } : null
     boot()
   },
@@ -942,7 +1000,7 @@ const title = new TitleScreen($("title"), {
     //   場は SharedArrayBuffer なので、大きさが違うと貼り直しが要る
     const info = readInfo(bytes)
     seedInput.value = info.seed
-    gridSelect.value = `${info.width}x${info.height}`
+    nextGrid = [info.width, info.height]
     pendingLoad = bytes
     boot()
   },

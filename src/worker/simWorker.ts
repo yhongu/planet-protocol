@@ -6,6 +6,7 @@
  */
 
 import { World } from "../sim/world"
+import type { WorldEvent } from "../sim/world"
 import { saveWorld, applySnapshot } from "../sim/snapshot"
 import { WORLD_FIELDS } from "../sim/world"
 import { SPEED_STEPS, couplingForSpeed, tickYears } from "../sim/loop"
@@ -60,6 +61,10 @@ let yearBank = 0
  * 128x64 で顕生代までは約 50 分かかるので、**進捗を必ず返すこと**。
  */
 let skipTarget = 0
+/** 早送り中に状態を返した時刻。0.5 秒に 1 回へ間引く */
+let lastSkipReport = 0
+/** 次の状態通知で送る出来事。`postState` が送ったら空にする */
+let newEvents: WorldEvent[] = []
 /**
  * 1 フレームで進めるティックの上限。
  * 解が重くて貯金が膨らんだとき、追いつこうとしてさらに重くなる
@@ -67,7 +72,26 @@ let skipTarget = 0
  */
 const MAX_TICKS_PER_FRAME = 8
 
+/**
+ * ★**ティックの中で投げたら、必ず外へ出してからループを続ける。**
+ *
+ * `tick` は `setTimeout` で自分を予約し直す。途中で投げると**予約が走らず、
+ * ループごと静かに死ぬ**。画面は最後の値のまま固まるだけなので、
+ * 「重い」のか「壊れた」のかが分からない（`docs/04-6` の
+ * 「解けなかったことは必ず外へ出す」を、例外にも適用する）。
+ */
 async function tick(): Promise<void> {
+  try {
+    await tickInner()
+  } catch (e) {
+    console.error("[sim] tick が投げました", e)
+    self.postMessage({ type: "progress", years: 0, target: 0, done: true,
+      label: `内部エラー: ${e instanceof Error ? e.message : String(e)}` })
+    throw e
+  }
+}
+
+async function tickInner(): Promise<void> {
   if (!world) return
 
   // --- 章立ての早送り -------------------------------------------------
@@ -86,6 +110,23 @@ async function tick(): Promise<void> {
       type: "progress", years: world.globals.yearsElapsed, target: skipTarget,
       label: world.epoch.label, done,
     })
+    // ★**早送りの間も状態を返す。**
+    //
+    // 進捗バーしか出していなかったので、**上の数字が全部止まって見えた** ——
+    // 気温も CO2 も O2 も、着くまでの十数分ずっと初期値のまま。
+    // 「酸素がまったく増えない」という報告の見え方そのものである。
+    // 惑星は動いているのに、画面がそう言っていなかった。
+    //
+    // 毎歩返すと postMessage が支配的になるので 0.5 秒に 1 回に間引く
+    const nowMs = performance.now()
+    if (done || nowMs - lastSkipReport > 500) {
+      lastSkipReport = nowMs
+      // ★出来事も一緒に返す。早送り中に起きた出来事（最初の海・生命の起源・
+      //   大酸化事変…）を捨てると、着いたときに年代記が空になる
+      newEvents = world.events.slice(sentEvents)
+      sentEvents = world.events.length
+      postState(0)
+    }
     if (done) skipTarget = 0
     timer = setTimeout(() => { void tick() }, 0)
     return
@@ -140,12 +181,11 @@ async function tick(): Promise<void> {
   if (!advanced) await world.refreshAsync(INTERACTIVE)
   const stats = world.stats!
   const solveMs = performance.now() - t0
-  generation++
 
   // ★解けていなければ速度を落とす（`adaptSpeed` の説明を読むこと）
   adaptSpeed(stats.clampedCells)
 
-  const newEvents = world.events.slice(sentEvents)
+  newEvents = world.events.slice(sentEvents)
   // ★出来事が起きたら止める。**進めることと通知することは分けてある**ので、
   // ここで速度を 0 にしても、この tick の通知はそのまま出る
   if (untilEvent && newEvents.length > 0) {
@@ -158,7 +198,23 @@ async function tick(): Promise<void> {
     yearBank = 0
   }
   sentEvents = world.events.length
+  postState(solveMs)
 
+  // 解に時間がかかるときは間隔を空けて、Worker を飽和させない
+  const delay = yearsPerSecond > 0 ? Math.max(0, 33 - solveMs) : 250
+  timer = setTimeout(() => { void tick() }, delay)
+}
+
+/**
+ * ★**画面へ状態を返す。早送り中もここを通す。**
+ *
+ * 切り出す前は `tick` の中にべた書きだったので、早送りの分岐が
+ * **状態を 1 回も返さないまま数十分回っていた**（画面は初期値のまま固まる）。
+ */
+function postState(solveMs: number): void {
+  if (!world) return
+  const stats = world.stats!
+  generation++
   post({
     type: "tick",
     generation,
@@ -201,10 +257,9 @@ async function tick(): Promise<void> {
       })),
     },
   })
-
-  // 解に時間がかかるときは間隔を空けて、Worker を飽和させない
-  const delay = yearsPerSecond > 0 ? Math.max(0, 33 - solveMs) : 250
-  timer = setTimeout(() => { void tick() }, delay)
+  // ★出来事は 1 回だけ送る。早送り中も同じ関数を通るので、
+  //   ここで消化しないと同じ出来事が何度も画面に出る
+  newEvents = []
 }
 
 /**
@@ -357,6 +412,13 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case "skipTo":
       if (world) {
         yearsPerSecond = 0; speedMultiplier = 0; yearBank = 0
+        // ★**結合間隔も ×20 のものに揃える。**
+        //
+        // 既定の 5 万年のまま回していたので、**早送りで着いた惑星と、
+        // ×20 で遊んで着いた惑星が別物**になっていた（章立ての約束が嘘になる）。
+        // 揃えると正しくなり、同時に `chunked` の solve が半分になって
+        // **2 倍速くなる**（`CLAUDE.md` の 31: 費用は刻みではなく結合で決まる）
+        world.climateCouplingYears = couplingForSpeed(20)
         skipTarget = m.years
       }
       break

@@ -224,6 +224,28 @@ export class PlanetView {
     }
   }
 
+  /**
+   * ★**ホイール 1 段で必ず 1 段動かす。**
+   *
+   * `snapScale` は「アート 1px = 画面 n px」の整数に丸める。ところが
+   * ホイール 1 段は約 1.17 倍しかないので、**次の整数に届かず同じ段へ
+   * 丸め戻され、拡大が効かなくなる**（実測: 縮小しきったあと拡大できない）。
+   *
+   * 丸めた結果が動かなかったら、**段そのものを 1 つ進める**。
+   * 1 を下回る側（1 セルが 1 画面ピクセル未満）は連続なので、そのまま返す。
+   */
+  private zoomStep(factor: number, minScale: number): number {
+    const raw = Math.max(minScale, Math.min(48, this.scale * factor))
+    const snapped = this.snapScale(raw)
+    if (snapped !== this.scale) return snapped
+    const dpr = Math.max(1, window.devicePixelRatio || 1)
+    const artPx = this.scale / this.ss * dpr
+    if (artPx < 1) return raw
+    const n = Math.round(artPx) + (factor > 1 ? 1 : -1)
+    if (n < 1) return raw
+    return Math.max(minScale, Math.min(48, (n * this.ss) / dpr))
+  }
+
   private snapScale(v: number): number {
     const dpr = Math.max(1, window.devicePixelRatio || 1)
     const artPx = v / this.ss * dpr
@@ -638,8 +660,7 @@ export class PlanetView {
           this.viewportSize().width / this.grid.W,
           this.viewportSize().height / this.grid.H,
         ) * 0.5
-        this.scale = this.snapScale(
-          Math.max(minScale, Math.min(48, this.scale * factor)))
+        this.scale = this.zoomStep(factor, minScale)
         const after = this.screenToGridF(sx, sy)
         // カーソル位置のグリッド座標が動かないようにカメラを補正する
         this.cx += before.x - after.x

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "archean",
+    "label": "太古代",
+    "ga": 4,
+    "seed": "terra-ridge-15",
+    "width": 96,
+    "height": 48,
+    "bytes": 14591517,
+    "years": 540000000,
+    "meanT": -0.8,
+    "co2": 11306,
+    "o2": 0.000001,
+    "clades": 0,
+    "goeYear": -1,
+    "events": 11
+  },
+  {
+    "id": "proterozoic",
+    "label": "原生代",
+    "ga": 2.5,
+    "seed": "terra-ridge-15",
+    "width": 96,
+    "height": 48,
+    "bytes": 15091146,
+    "years": 2040000000,
+    "meanT": 1.2,
+    "co2": 7527,
+    "o2": 1e-7,
+    "clades": 4,
+    "goeYear": -1,
+    "events": 30
+  },
+  {
+    "id": "phanerozoic",
+    "label": "顕生代",
+    "ga": 0.54,
+    "seed": "terra-ridge-15",
+    "width": 96,
+    "height": 48,
+    "bytes": 15376709,
+    "years": 4000000000,
+    "meanT": 14.2,
+    "co2": 710,
+    "o2": 15.704888365633115,
+    "clades": 16,
+    "goeYear": 3218175000,
+    "events": 68
+  }
+]
