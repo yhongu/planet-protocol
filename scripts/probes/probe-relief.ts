@@ -59,6 +59,13 @@ const w = new World({
   climateCouplingYears: 200_000, tectonics: tec as never,
   ...(Number.isNaN(MANTLE) ? {} : { initialMantleTempC: MANTLE }),
 })
+// ★**分散の台帳を有効にする。**
+//
+// 台帳は粒子から毎回ラスタライズし直さないと意味が無い ——
+// `crustThickness` の【場】はステップの最後に 1 回しか作られないので、
+// 途中でそれを測ると**差が全部 0 になる**（実測でそうなっていた）。
+// 費用は掛かるが、この測定の主目的が台帳なので必ず立てる
+w.tectonics.varLedgerEnabled = true
 // 惑星の水の量を振る。冥王代の開始時は全部が水蒸気なのでそちらを掛ける
 if (WATER !== 1) {
   w.globals.steamFraction *= WATER
@@ -127,13 +134,18 @@ console.log(`   珪長質の体積 ${(felsicVolume(w) / 1e9).toFixed(2)}e9 km³�
 
 // 機構別の分散の台帳と、動かした体積あたりの効率
 const moved: Record<string, number> = {
-  advection: Math.abs(b.advection), boundary: Math.abs(b.orogeny) + Math.abs(b.rift),
-  arc: Math.abs(b.arc), erosion: Math.abs(b.erosion), clamp: Math.abs(b.clamp),
+  // ★粒子モデルの段に合わせる。造山とリフトは【機構として存在しない】ので、
+  //   境界のプロセスは沈み込みで測る
+  advection: Math.abs(b.advection), boundary: Math.abs(b.subduction),
+  arc: Math.abs(b.arc), spreading: Math.abs(b.spreading),
+  delamination: Math.abs(b.delamination),
+  erosion: Math.abs(b.erosion), clamp: Math.abs(b.clamp),
 }
 console.log(`  ★分散の台帳（機構別の Δ分散の積算 [km²]）と、体積あたりの効率`)
 console.log(`     機構            Δ分散    動かした体積[1e9km³]   効率[km²/e9km³]`)
 let net = 0
-for (const k of ["advection", "boundary", "arc", "erosion", "clamp"] as const) {
+for (const k of ["advection", "boundary", "arc", "spreading", "delamination",
+  "erosion", "clamp"] as const) {
   const dv = vl[k]
   net += dv
   const mv = moved[k] / 1e9

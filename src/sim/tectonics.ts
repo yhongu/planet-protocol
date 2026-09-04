@@ -1131,8 +1131,14 @@ export class Tectonics implements Subsystem {
    * どの操作が分散を作り、どの操作が潰しているかを直接測る。
    * 記録するのは面積重み付き分散の変化 [km^2]。
    */
+  /**
+   * ★**どの機構が起伏を作り、どれが潰しているか**の台帳 [km²]。
+   * 粒子モデルの段（回転・沈み込み・島弧・海嶺・デラミネーション・侵食）に対応する。
+   * `varLedgerEnabled` を立てたときだけ積算する
+   */
   readonly varLedger = {
-    advection: 0, boundary: 0, arc: 0, erosion: 0, clamp: 0,
+    advection: 0, boundary: 0, arc: 0, spreading: 0, delamination: 0,
+    erosion: 0, clamp: 0,
   }
   readonly diag = {
     saturation: 1, clampK: 0,
@@ -2094,6 +2100,21 @@ export class Tectonics implements Subsystem {
     const div = world.store.f32("divergence").read
     const volc = world.store.f32("volcanism").read
 
+    // ★**分散の台帳（粒子モデル側）。**
+    //
+    // 台帳はもともと格子ベースの地殻モデルの中にしかなく、
+    // **粒子モデルは手前で return していた**ので、地殻を粒子にした日
+    // （2026-08-29）から**ずっと全部 0 だった**（`CLAUDE.md` の 46）。
+    // 「どの機構が起伏を作り、どれが潰しているか」という M4 の主指標が、
+    // 1 年近く何も言っていなかったことになる。
+    let vPrev = this.varLedgerEnabled ? this.freshVariance(world) : 0
+    const mark = (key: keyof typeof this.varLedger): void => {
+      if (!this.varLedgerEnabled) return
+      const v = this.freshVariance(world)
+      this.varLedger[key] += v - vPrev
+      vPrev = v
+    }
+
     // --- 1. 回転と加齢 ---
     if (traits.mobile) {
       for (const pl of this.plates) {
@@ -2115,6 +2136,8 @@ export class Tectonics implements Subsystem {
     // 冥王代のマグマオーシャン（マントル 2250℃）では海洋地殻の厚さが 40km に
     // なるので、門を置かないと全球が 40km で埋まって陸が 99% になる（実際にやった）。
     if (!traits.mobile) return 0
+
+    mark("advection")
 
     // --- 2. 沈み込み ---
     // 重なったセルから玄武岩質の粒子を消す。**珪長質は消さない**ので、
@@ -2243,6 +2266,8 @@ export class Tectonics implements Subsystem {
       }
     }
 
+    mark("boundary")
+
     // --- 3. 島弧 ---
     // **沈み込みフラックスに比例させること。** 全球で固定するとプレート数に
     // 応答しない（`arcFluxEfficiency` のコメント）。
@@ -2293,6 +2318,8 @@ export class Tectonics implements Subsystem {
         }
       }
     }
+
+    mark("arc")
 
     // --- 4. 海嶺 ---
     const sprRate = this.spreadRate!
@@ -2353,6 +2380,8 @@ export class Tectonics implements Subsystem {
     this.diag.cumSpreadEmpty += spreadEmpty
     this.spreadRateValid = true
 
+    mark("spreading")
+
     // --- 4.5 デラミネーション ---
     // 厚くなった下部地殻はエクロジャイト化してマントルより重くなり、剥がれ落ちる。
     // **粒子ごとに判定すること**（セル平均だと粒子が疎なだけのセルを薄いと誤読する）。
@@ -2381,6 +2410,8 @@ export class Tectonics implements Subsystem {
       }
     }
 
+    mark("delamination")
+
     // --- 5. 侵食と堆積 ---
     // ここで bin を回し直す（島弧と海嶺で粒子が増えたため）。
     // **bin は 1 ティックに 2 回まで。** asin/atan2 が粒子の数だけ走るので、
@@ -2403,6 +2434,7 @@ export class Tectonics implements Subsystem {
     // 気候・水循環・描画へ渡す最後の 1 回だけ。
     ps.rasterize(grid, thick, fel, ageF, pid, 0)
     this.erodeParcels(world, dtYears, hOc)
+    mark("erosion")
     ps.rasterize(grid, thick, fel, ageF, pid, p.rasterSmoothing)
 
     // サブグリッドの陸の割合。**標高を出した後・海面を解いた後**に更新するので、
@@ -2979,8 +3011,51 @@ export class Tectonics implements Subsystem {
    * 厚さの面積重み付き分散 [km^2]。
    * cont=true なら大陸地殻（continentThreshold 以上）だけで測る。
    */
+  /**
+   * ★**分散の台帳を有効にする。既定は切ってある。**
+   *
+   * 台帳は「どの機構が起伏を作り、どれが潰しているか」を測るためのもので、
+   * **粒子から毎回ラスタライズし直す**必要がある（下の説明）。
+   * 費用がかかるので、測るときだけ `probe-relief.ts` が立てる。
+   */
+  varLedgerEnabled = false
+  private varThick: Float32Array | null = null
+  private varFel: Float32Array | null = null
+  private varAge: Float32Array | null = null
+  private varPid: Uint8Array | null = null
+
+  /**
+   * ★**台帳のための、その場のラスタライズ。**
+   *
+   * `crustThickness` の【場】は**ステップの最後に 1 回だけ**粒子から作られる。
+   * 機構が動かしているのは粒子の方なので、途中でその場を測っても値は変わらず、
+   * **台帳の差が全部 0 になっていた**（実測で advection も arc も erosion も 0。
+   * `CLAUDE.md` の 46:「機構がある」と「機構が効いている」は別）。
+   *
+   * だから台帳の各点では**粒子から作り直して**測る。
+   * ★平滑化は掛けない（`rasterSmoothing` は見せ方であって物理ではない）。
+   */
+  private freshVariance(world: World): number {
+    const ps = this.parcels
+    if (!ps) return 0
+    const n = world.grid.cellCount
+    if (!this.varThick || this.varThick.length !== n) {
+      this.varThick = new Float32Array(n)
+      this.varFel = new Float32Array(n)
+      this.varAge = new Float32Array(n)
+      this.varPid = new Uint8Array(n)
+    }
+    ps.bin(world.grid)
+    ps.rasterize(world.grid, this.varThick, this.varFel!, this.varAge!, this.varPid!, 0)
+    return this.varianceOf(world, this.varThick, true)
+  }
+
   private thicknessVariance(world: World, cont: boolean): number {
-    const th = world.store.f32("crustThickness").read
+    if (cont && this.varLedgerEnabled) return this.freshVariance(world)
+    return this.varianceOf(world, world.store.f32("crustThickness").read, cont)
+  }
+
+  private varianceOf(world: World, th: Float32Array, cont: boolean): number {
     const { W, H } = world.grid
     const thr = this.params.continentThreshold
     let sw = 0, sx = 0, sxx = 0
