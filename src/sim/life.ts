@@ -547,6 +547,18 @@ export class Life implements Subsystem {
   readonly diag = {
     proposed: new Uint32Array(GENE_KINDS.length),
     adopted: new Uint32Array(GENE_KINDS.length),
+    /**
+     * ★**提案された遺伝子が、適応度をどれだけ動かしたか**の積算（相対）。
+     *
+     * 「引けたか（`proposed`）」と「立ったか（`adopted`）」の間には
+     * **もう 1 段ある** —— 引いたのに**選択が採らない**場合である
+     * （`CLAUDE.md` の 41: 下げることしかできない量は選択が絶対に採らない）。
+     * 実測で `capSymbolic` は 12 seed すべてで提案があるのに**採用 0**だった。
+     *
+     * ここに `(候補の点数 − 元の点数) / 元の点数` を積む。
+     * **負ならその能力は「損」である。**どれだけ損かまで分かる。
+     */
+    margin: new Float64Array(GENE_KINDS.length),
   }
   private sumBuf: Float32Array | null = null
   private maxBuf: Float32Array | null = null
@@ -817,6 +829,9 @@ export class Life implements Subsystem {
       decodeGenome(cand, scratch)
       const sc = this.fitness(world, scratch, null, 0, K, stride, othSum, othMax,
         prey, othSumC, othMaxC, this.nitrogen)
+      // ★**提案が適応度をどう動かしたかを記録する。**
+      //   「引けたのに採られない」のか「そもそも引けない」のかを分ける
+      if (neo >= 0 && base > 0) this.diag.margin[neo] += (sc - base) / base
       if (sc > bestScore) { bestScore = sc; bestGenome = cand; bestNeo = neo }
     }
     if (bestGenome) {
@@ -984,6 +999,34 @@ export class Life implements Subsystem {
    * 適応度 f(k, c) ∈ [0,1]。**すべて 0..1 の掛け算**（§2.3）。
    * ひとつでも 0 なら住めない —— リービッヒの最小律と同じ形。
    */
+  /**
+   * ★**その能力を「立てるだけ」で適応度がどう動くかを測る（診断専用）。**
+   *
+   * `diag.margin` は変異の候補全体の差を記録するが、`mutate` は 1 回で
+   * **点変異（確率 0.30・幅 24）も欠失も同時に**起こすので、
+   * **雑音がその能力の効果を覆い隠す**（実測で `capSymbolic` の 12 標本が
+   * −23% と出たが、コストは −10% しか無く説明がつかなかった）。
+   *
+   * ここでは**能力ビットだけを立てて、他は 1 ビットも変えずに**比べる。
+   * 返すのは生きているクレードごとの `(立てた点数 − 元の点数) / 元の点数`。
+   * ★`update` の経路からは呼ばないので、決定論に影響しない。
+   */
+  capabilityMargin(world: World, capBit: number): number[] {
+    const out: number[] = []
+    const stride = this.params.selectionStride
+    const ph = createPhenotype()
+    for (const c of this.clades) {
+      if ((c.phenotype.capabilities & capBit) !== 0) continue      // 既に持っている
+      const base = this.fitness(world, c.phenotype, null, 0, null, stride)
+      if (!(base > 0)) continue
+      ph.traits.set(c.phenotype.traits)
+      ph.capabilities = c.phenotype.capabilities | capBit
+      const with_ = this.fitness(world, ph, null, 0, null, stride)
+      out.push((with_ - base) / base)
+    }
+    return out
+  }
+
   private fitness(
     world: World, ph: Phenotype, out: Float32Array | null, off: number,
     K: Float32Array | null, stride: number,

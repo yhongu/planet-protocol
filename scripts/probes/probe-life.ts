@@ -93,5 +93,11 @@ console.log(`  好気呼吸の前提到達 ${fmt(firstO2Demand)}  ★真核 ${fm
 console.log("  種類別の提案 / 採用（提案 0 = 一度も引かれていない）")
 for (let k = 0; k < GENE_KINDS.length; k++) {
   if (d.proposed[k] === 0 && d.adopted[k] === 0) continue
-  console.log(`    ${GENE_KINDS[k].padEnd(28)} 提案 ${String(d.proposed[k]).padStart(5)}  採用 ${String(d.adopted[k]).padStart(5)}`)
+  // ★**「引けたか」と「立ったか」の間の 1 段を出す。**
+  //   平均の余白が負なら、その能力は選択にとって「損」である（罠 41）
+  const mg = d.proposed[k] > 0 ? d.margin[k] / d.proposed[k] : 0
+  console.log(`    ${GENE_KINDS[k].padEnd(28)} 提案 ${String(d.proposed[k]).padStart(5)}`
+    + `  採用 ${String(d.adopted[k]).padStart(5)}`
+    + `  適応度の余白 ${(mg * 100).toFixed(1).padStart(7)}%`
+    + (d.proposed[k] > 0 && d.adopted[k] === 0 ? "  ★引けたのに採られない" : ""))
 }
