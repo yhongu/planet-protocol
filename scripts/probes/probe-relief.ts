@@ -45,7 +45,11 @@ for (const k of ["orogenyReach", "orogenyDonor", "crustComposition",
   "accretionBonus", "arcThicknessBias", "orogenyForelandCap",
   "orogenyForelandOnly", "orogenyRate", "divergenceMeridionalSign", "arcFocus", "crustGrowthRate",
   "felsicResistThinKm", "felsicResistThickKm", "crustRecycleRate",
-  "plateSpeed", "plateCount", "crustModel", "parcelCount", "arcFluxEfficiency", "initialContinentFraction"]) {
+  "plateSpeed", "plateCount", "crustModel", "parcelCount", "arcFluxEfficiency",
+  // ★島弧を「既にある大陸の縁」へ偏らせる強さ。既定 0（一様）。
+  //   アンデス型の大陸成長を表す量で、0 だと海底全面に薄く塗られる
+  "arcContinentBias", "rasterSmoothing", "marginErosionRatio",
+  "initialContinentFraction"]) {
   const v = arg(k.toLowerCase(), NaN)
   if (!Number.isNaN(v)) tec[k] = v
 }
@@ -99,15 +103,32 @@ function landPct(): number {
   return 100 * a
 }
 
-const vars: number[] = [], lands: number[] = []
+/**
+ * ★**まとまった陸**（`landFraction >= 0.75`）の面積割合 [%]。
+ *
+ * 分散だけでは「集まっているか」が分からない —— 面積が同じでも、
+ * **まとまった大陸**と**一面に薄く塗られた陸**では分散も陸地面積も似た値になる。
+ * 実測で面積 22.8% に対しまとまった陸は 2.3% しかなかった。
+ */
+function solidPct(): number {
+  const lf = w.store.f32("landFraction").read
+  let a = 0, tot = 0
+  for (let y = 0; y < H; y++) {
+    const aw = w.grid.areaWeight[y]
+    for (let x = 0; x < W; x++) { if (lf[y * W + x] >= 0.75) a += aw; tot += aw }
+  }
+  return tot > 0 ? (100 * a) / tot : 0
+}
+
+const vars: number[] = [], lands: number[] = [], solids: number[] = []
 const end = Math.min(PLANET_AGE_YEARS, GYR * 1e9)
 while (w.globals.yearsElapsed < end) {
   w.advance(400_000, OPT)
-  vars.push(variance()); lands.push(landPct())
+  vars.push(variance()); lands.push(landPct()); solids.push(solidPct())
 }
 // 前半は初期地形の記憶が残るので、後半だけを定常とみなす
 const half = vars.length >> 1
-const vs = vars.slice(half), ls = lands.slice(half)
+const vs = vars.slice(half), ls = lands.slice(half), ss = solids.slice(half)
 
 const vl = w.tectonics.varLedger
 const b = w.tectonics.budget
@@ -117,6 +138,9 @@ console.log(`\n【${LABEL}】 ${W}x${H}  ${(end / 1e9).toFixed(2)}Gyr  seed ${SE
 console.log(`  ★厚さの分散 [km²]  中央値 ${med(vs).toFixed(1)}  ` +
   `P5 ${pct(vs, 0.05).toFixed(1)}  P95 ${pct(vs, 0.95).toFixed(1)}   ` +
   `（地球 ${EARTH_VARIANCE}）`)
+console.log(`  ★まとまった陸 [%]  中央値 ${med(ss).toFixed(1)}  ` +
+  `P5 ${pct(ss, 5).toFixed(1)}  P95 ${pct(ss, 95).toFixed(1)}` +
+  `   （landFraction>=0.75。地球はほぼ全部）`)
 console.log(`   陸地面積 [%]      中央値 ${med(ls).toFixed(1)}  ` +
   `P5 ${pct(ls, 0.05).toFixed(1)}  P95 ${pct(ls, 0.95).toFixed(1)}   ` +
   `（地球 ${EARTH_LAND}。**ノイズが大きいので主指標にしない**）`)
