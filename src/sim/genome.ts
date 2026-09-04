@@ -70,6 +70,7 @@ export const CAPABILITY_COUNT = GENE_KINDS.length - FIRST_CAPABILITY
 export const HARD_STEP_KINDS: readonly string[] = [
   "capEukaryotic", "capOxygenicPhotosynthesis", "capSymbolic",
 ]
+const K_OXYGENIC = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
 const HARD_STEP = new Uint8Array(GENE_KINDS.length)
 for (const n of HARD_STEP_KINDS) HARD_STEP[GENE_KINDS.indexOf(n as never)] = 1
 
@@ -238,6 +239,38 @@ export interface MutationParams {
    * ——**前提を得なかった惑星では永久に起きない。**
    */
   pHardStep: number
+  /**
+   * ★**酸素発生型光合成だけの通過確率。**
+   *
+   * 地球の科学では、**発明の時期と大酸化事変の時期は別の事件**である
+   * （`docs/06` §2.3）。光化学系 II の水分解は 35 億年前より古い可能性があり
+   * （Cardona et al.）、3.0Ga と 2.5Ga の "whiffs of oxygen" は
+   * **シアノバクテリアが既にいて、出した酸素が還元剤に食われていた**ことを示す。
+   * GOE が 2.4Ga なのは、**マントルが冷えて還元剤の吸い込みが尽きた**から
+   * （Kump & Barley 2007、Holland）。
+   *
+   * いまのモデルは乱数を【発明】に置いていて、獲得するまで一次生産が厳密に 0。
+   * その結果、実測（12 seed）で **GOE の平均が 1.69Ga（地球 2.4Ga）と 0.7 Gyr 遅く**、
+   * 幅も 0.79〜2.64Ga あった。
+   *
+   * ★**1.0 を既定にした（2026-09-04）。** 12 seed の対応比較:
+   *
+   * | | GOE の平均 | SD | 変動係数 | 12 対中 地球側へ動いた本数 |
+   * |---|---|---|---|---|
+   * | 0.35（前） | 1.69Ga | 0.70 | 0.42 | — |
+   * | **1.0（いま）** | **2.40Ga** | 0.76 | **0.32** | **10 / 12** |
+   * | 地球 | **2.40Ga** | | | |
+   *
+   * ★**偏りが消えただけでなく、散らばりも締まった。** 乱数を【発明】に置いて
+   * 時期まで決めさせるのをやめ、**発明は早く起こして、GOE の時期は
+   * 還元剤の収支から出す**ようにしたため。還元剤は
+   * `reductantPresent × exp((Tm − 1350) / reductantTempScale)` で
+   * **マントルの冷却とともに単調に減る**ので、時期が seed によらなくなる。
+   *
+   * ★実測で **"whiffs of oxygen"**（酸素を出しているのに還元剤に食われて
+   * 大気が酸化しない期間）が自然に現れる。地球の 3.0Ga・2.5Ga の記録と同じ形。
+   */
+  pHardStepPhoto: number
 }
 
 export const EARTH_MUTATION: MutationParams = {
@@ -248,6 +281,7 @@ export const EARTH_MUTATION: MutationParams = {
   pointStep: 24,
   maxGenes: 96,
   pHardStep: 0.35,
+  pHardStepPhoto: 1.0,
 }
 
 /**
@@ -294,8 +328,10 @@ export function mutate(
       // ハードステップは 3〜4 桁通りにくい（§2.1b）。
       // **引いたけれど通らなかったときは、重複だけが残る**（材料は溜まる）
       // ハードステップは【前提能力を持つ系統だけ】が引ける（§2.1b の履歴依存）
+      // ★酸素発生型光合成だけ別のつまみで通す（`pHardStepPhoto` の説明）
+      const pStep = k2 === K_OXYGENIC ? p.pHardStepPhoto : p.pHardStep
       const ok = HARD_STEP[k2] === 0
-        || (hasPrereq(g, k2) && rng.nextFloat() < p.pHardStep)
+        || (hasPrereq(g, k2) && rng.nextFloat() < pStep)
       if (ok) {
         kind = k2
         origin = origins.issue()

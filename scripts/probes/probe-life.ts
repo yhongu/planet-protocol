@@ -11,7 +11,10 @@
  */
 import { World, PLANET_AGE_YEARS } from "../../src/sim/world"
 import { EARTH_OXYGEN } from "../../src/sim/oxygen"
-import { EARTH_LIFE, EARTH_MUTATION } from "../../src/sim/life"
+import { EARTH_LIFE } from "../../src/sim/life"
+// ★`life.ts` 経由の再エクスポートだと、`--set` を処理する時点でまだ
+//   束縛が解決しておらず `undefined` になる（実測で落ちた）。元から取る
+import { EARTH_MUTATION } from "../../src/sim/genome"
 import { GENE_KINDS, CAPABILITY_THRESHOLD } from "../../src/sim/genome"
 
 const argv = process.argv.slice(2)
