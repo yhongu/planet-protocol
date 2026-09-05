@@ -42,7 +42,7 @@ export const GENE_LABELS: Record<string, GeneLabel> = {
     what: "★この時間刻み（100 万年）では効かない。障壁は基質で表す設計",
     unused: true,
   },
-  bodySize: { ja: "体サイズ", what: "大きいほど餌を捕まえられるが、必要な資源も増える" },
+  bodySize: { ja: "体サイズ", what: "大きいほど餌を捕まえられ、食われにくくもなる。ただし必要な資源が増える" },
   weatheringBoost: { ja: "風化の促進", what: "根や酸で岩を砕き、CO₂ を引き下げる", unused: true },
   recalcitrance: { ja: "遺骸の分解されにくさ", what: "埋まって戻らない割合。酸素が残る量を決める" },
   brain: { ja: "脳", what: "捕獲が上手くなり、温度の許容幅も広がる。ただし代謝を食う。★象徴の前提" },

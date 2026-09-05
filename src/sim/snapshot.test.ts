@@ -86,6 +86,44 @@ describe("セーブとロード", () => {
     expect(JSON.stringify(b.life.snapshot())).toEqual(JSON.stringify(a.life.snapshot()))
   }, 180_000)
 
+  it("★移住を有効にしても往復して 1 ビットも違わない（到達の場）", () => {
+    // ★**既定が無効な機構は、既定のままではテストを一度も通らない**
+    //   （`CLAUDE.md` の 39）。`reach` はレーン付きの新しい場なので、
+    //   保存し忘れると「復元後に系統が別の場所にいる」形で壊れる
+    const mk = () => {
+      const w = new World({
+        width: 48, height: 24, seed: "hadean-01", shared: false,
+        startEpoch: "hadean", climateCouplingYears: 200_000,
+      })
+      w.life.params.dispersalKmPerYear = 0.001
+      w.life.params.dispersalBarrierLeak = 0.05
+      w.life.params.dispersalCost = 0.04
+      return w
+    }
+    const a = mk()
+    for (let i = 0; i < 1200 && a.life.clades.length === 0; i++) a.advance(400_000, OPT)
+    expect(a.life.clades.length).toBeGreaterThan(0)
+    for (let i = 0; i < 60; i++) a.advance(400_000, OPT)
+    // 到達の場が**全球 1 ではない**こと（1 なら機構が効いていない）
+    const reach = a.store.f32("reach").read
+    let ones = 0, zeros = 0
+    for (let i = 0; i < a.grid.cellCount; i++) {
+      const v = reach[a.life.clades[0]!.lane * a.grid.cellCount + i]!
+      if (v > 0.999) ones++
+      else if (v < 1e-6) zeros++
+    }
+    expect(ones + zeros).toBeGreaterThan(0)
+    expect(ones).toBeLessThan(a.grid.cellCount)   // ★どこかには届いていない
+
+    const b = loadWorld(saveWorld(a))
+    b.life.params.dispersalKmPerYear = 0.001
+    b.life.params.dispersalBarrierLeak = 0.05
+    b.life.params.dispersalCost = 0.04
+    expect(fingerprint(b)).toEqual(fingerprint(a))
+    for (let i = 0; i < 40; i++) { a.advance(400_000, OPT); b.advance(400_000, OPT) }
+    expect(fingerprint(b)).toEqual(fingerprint(a))
+  }, 180_000)
+
   it("形式が違うセーブは黙って読み込まない", () => {
     const w = new World({ width: 32, height: 16, seed: "snap-ver", shared: false })
     const bytes = saveWorld(w)

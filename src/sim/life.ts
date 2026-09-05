@@ -53,6 +53,7 @@ import type { World } from "./world"
 import { siteLabel } from "./prebiotic"
 import type { Subsystem } from "./loop"
 import type { FieldSpec } from "../core/fields"
+import { EARTH_RADIUS_M } from "../core/grid"
 import { Rng, Stream } from "../core/rng"
 import { type BodyPlan, basalPlan, clonePlan, mutatePlan } from "./bodyPlan"
 import { fastExp } from "../core/fastmath"
@@ -83,6 +84,49 @@ const FIRST_LABEL: Record<string, { ja: string; icon: string }> = {
   capSymbolic: { ja: "言語を持つもの", icon: "cap-symbolic" },
 }
 
+/**
+ * **到達の場の 1 掃き**（`dispersal`）。テストのために切り出してある。
+ *
+ * ★**入力と出力を別の配列にすること。** 同じ配列で書き換えると
+ * 次のセルが更新後の値を読み（Gauss-Seidel）、**南と東だけ速く広がる**。
+ * 実際に一度そう書いた。対称性はテストで見張る（`reach.test.ts`）。
+ *
+ * @param reach  いまの到達（`off` からの 1 レーン）
+ * @param fit    適応度（同じ添字）。> 0 なら住める
+ * @param sx     緯度ごとの東西の広がりやすさ（0..1）
+ * @param sy     南北の広がりやすさ（0..1）
+ * @param leak   住めないセルに残る割合。0 なら海で完全に途切れる
+ * @param settle 住めるセルで 1 へ近づく割合
+ * @param out    書き込み先（レーンの先頭を 0 とした添字）
+ */
+export function spreadReach(
+  reach: Float32Array, fit: Float32Array, off: number,
+  W: number, H: number, sx: ArrayLike<number>, sy: number,
+  leak: number, settle: number, out: Float32Array,
+): void {
+  for (let y = 0; y < H; y++) {
+    const sxy = sx[y]!
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+      const here = reach[off + i]!
+      // 4 近傍（経度は巻き、緯度は端で止める）
+      const xw = x === 0 ? W - 1 : x - 1, xe = x === W - 1 ? 0 : x + 1
+      let inflow = sxy * Math.max(reach[off + y * W + xw]!, reach[off + y * W + xe]!)
+      if (y > 0) inflow = Math.max(inflow, sy * reach[off + (y - 1) * W + x]!)
+      if (y < H - 1) inflow = Math.max(inflow, sy * reach[off + (y + 1) * W + x]!)
+      let r = here > inflow ? here : inflow
+      // ★**増えるのは「既にいる分」から**（ロジスティック）。
+      //   最初 `r = r + settle * (1 - r)` と書いたので、**到達していない
+      //   セルでも住めさえすれば 1 になった** —— 機構が丸ごと無効で、
+      //   コストだけが残り、実測で `dispersal` の SD が 0.349 → 0.000 に潰れた。
+      //   0 から増えないことが、この機構の全部（2026-09-05）
+      if (fit[off + i]! > 0) r = r + settle * r * (1 - r)
+      else if (r > leak) r = leak
+      out[i] = r < 0 ? 0 : r > 1 ? 1 : r
+    }
+  }
+}
+
 export const MAX_CLADES = 16
 
 export const LIFE_FIELDS: readonly FieldSpec[] = [
@@ -94,6 +138,11 @@ export const LIFE_FIELDS: readonly FieldSpec[] = [
     name: "biomassTotal", kind: "f32", doubleBuffered: false,
     comment: "0..1。全クレードの合計。地図と診断用",
   },
+  {
+    name: "reach", kind: "f32", doubleBuffered: false, lanes: MAX_CLADES,
+    comment: "0..1。そのクレードがそのセルに【到達しているか】。"
+      + "添字は lane * cellCount + cell。dispersalKmPerYear > 0 のときだけ動く",
+  },
 ]
 
 /** 形質の添字（`GENE_KINDS` の順）。ホットループで引かないよう定数にする */
@@ -104,6 +153,13 @@ const T_O2_DEMAND = GENE_KINDS.indexOf("oxygenDemand")
 const T_O2_TOX = GENE_KINDS.indexOf("oxygenToxicity")
 const T_PHOTO = GENE_KINDS.indexOf("photosynthesis")
 const T_NUTRIENT_P = GENE_KINDS.indexOf("nutrientP")
+// ★風化の促進（2026-09-05）。これを入れるまで、この形質は
+// **物理にも適応度にも一度も現れていなかった**（`probe-wiring.ts`）
+const T_WEATHER = GENE_KINDS.indexOf("weatheringBoost")
+const T_DISPERSAL = GENE_KINDS.indexOf("dispersal")
+const T_SOCIAL = GENE_KINDS.indexOf("sociality")
+const T_CCN = GENE_KINDS.indexOf("ccnProduction")
+const T_ALBEDO = GENE_KINDS.indexOf("albedoEffect")
 const C_LAND = GENE_KINDS.indexOf("capLandTolerance")
 const C_OXYGENIC = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
 // ★栄養段階（2026-09-02）。これを入れるまで、この 4 つは
@@ -277,6 +333,149 @@ export interface LifeParams {
    */
   aridityCost: number
   /**
+   * **根と有機酸が岩からリンを掘り出す量**（陸のセルだけ）。
+   *
+   * ★罠 41 の対策。`weatheringBoost` の見返りが「全球の CO2 が下がる」
+   * だけだと、それは**公共財**であって本人は得をしない ——
+   * むしろ CO2 が下がると光合成が苦しくなるので**純粋な損**になり、
+   * 選択は絶対に採らない（好気呼吸で同じことを踏んだ）。
+   *
+   * 実際の陸上植物は、根と菌根と有機酸で**岩を割ってリンを取り出す**
+   * （Berner 1997、Lenton & Watson 2004）。だから見返りは
+   * **自前の栄養**にする。貧栄養の陸ほど効く。
+   */
+  /**
+   * **DMSP は抗酸化物質である**（Sunda et al. 2002, Nature）。
+   * `ccnProduction` が酸素の毒性から守る割合。
+   *
+   * ★これが無いと `ccnProduction` は**副産物にしかならず、選択が働かない**
+   * （`CLAUDE.md` の 54 で踏んだ通り、0 へ漂って
+   * 「生命がいれば常に −0.03」という生命と無関係の定数になった）。
+   * **雲凝結核になるのは副産物の方**で、細胞にとっての意味は
+   * 浸透圧調節と抗酸化。順序を科学に合わせる。
+   */
+  ccnAntioxidant: number
+  /**
+   * **好気的な生物が等しく受ける酸化損傷**（活性酸素）。
+   *
+   * ★これが無いと `ccnProduction`（抗酸化）は**守る相手を失う** ——
+   * `oxygenToxicity` は「持つと損」だけの形質なので選択が 0 に落とし、
+   * 抗酸化は何も守らないコストになる（実測で SD 0.316 → 0.000）。
+   * 鶏と卵（罠 49）。実際の生物は、嫌気性でなくても ROS 損傷を受け、
+   * だからカタラーゼもスーパーオキシドディスムターゼも普遍的に持っている。
+   */
+  oxygenRosBaseline: number
+  /** 抗酸化物質を作る代償。★見返り（酸素が高い時代）が限られるので常時払う */
+  ccnCost: number
+  /**
+   * **黒い体は日を吸って自分を温める** [K]。`albedoEffect` の最大効果。
+   *
+   * 実在する: 雪氷藻類は氷のアルベドを 13% 下げる（Ganey et al. 2017）。
+   * ★**トレードオフは式に内蔵されている** —— 適応度の温度依存は
+   * 最適温度まわりのガウス型なので、**寒い所では得・暑い所では損**。
+   * だから場所と時代で分かれる。
+   *
+   * ★**全球のアルベドには入れない**（`CLAUDE.md` の 58）。
+   * 生物圏 → アルベド → 気温 → 生物圏 の輪が Newton の外にあると
+   * 放射の不平衡が 5.6e-3 → 1.6 W/m² まで悪化する。
+   * 入れるならソルバの内側で解くしかない。ここでは**生物が自分を
+   * 温める分だけ**（局所・生物側）に留める
+   */
+  albedoWarmK: number
+  /**
+   * **氷の上では、色の白い生物が不利になる割合。**
+   *
+   * ★`albedoWarmK`（自分を温める）だけでは**見返りが冗長**だった ——
+   * 体を黒くして温まるより `tempOptimum` を下げる方がタダなので、
+   * ガウスの頂点では常に損になり、実測で SD 0.282 → 0.000 に潰れた。
+   *
+   * 雪氷藻類が実際にしているのは**融かして液体の水を作ること**で、
+   * これは最適温度では代替できない（Ganey et al. 2017）。
+   * ★**不利側の減点**で書く（罠 42）
+   */
+  albedoIcePenalty: number
+  /** 色素を作る代償 */
+  albedoCost: number
+  /**
+   * **群れ狩り**。社会性が捕獲効率を上げる（オオカミ・シャチ・アリ）。
+   * ★捕食者にしか効かないので、捕食者のいない時代には**ただのコスト**になる。
+   * だから全系統が上限に張り付かない（罠 44）
+   */
+  /**
+   * **捕食圧**。捕食者の現存量 1 あたり、生産者の適応度が何割減るか。
+   * ★0 なら「食われる不利」が存在しない＝**防御形質は全部ただのコスト**。
+   */
+  predationPressure: number
+  socialityCapture: number
+  /**
+   * **群れの防御**。社会性が食われにくさを上げる（魚群・ムクドリ・ジャコウウシ）。
+   * ★`buildPrey` の `guard` に入れる（骨格・多細胞・体サイズと同じ書き方）
+   */
+  socialityDefence: number
+  /**
+   * 群れることの代償（病気・寄生・群れ内の競合）。全球で払う。
+   * ★**見返りが時代依存なので、コストは常時**にしないと分化しない
+   */
+  socialityCost: number
+  /**
+   * **文化が成り立つには群れが要る。** `symbolicBrainRelief`（象徴が脳の
+   * 維持費を薄める効果）に社会性を掛ける割合。
+   *
+   * ★社会的学習は**他個体から学ぶ**ことなので、群れないなら効かない。
+   * これを入れると「知性は社会性のある系統にしか出ない」——
+   * 地球で知性が社会的な系統（霊長類・鯨類・鳥類）に偏るのと同じ形。
+   * 0 なら社会性に関係なく従来どおり。
+   */
+  symbolicNeedsSociality: number
+  /**
+   * **移住の速さ** [km/yr]（形質 `dispersal` を掛ける）。**0 = この機構は無効**。
+   *
+   * ★これは `CLAUDE.md` の 45 が「別に要る」と言っている
+   * **「その形質が効く場所に系統を縛る機構」**そのもの。
+   * それまで `allocateGroup` はセルごとに独立で、適応度が正なら
+   * **その系統は即座に地球の裏側にも現れていた**。だから
+   * 「乾いた土地に特化した系統」は生まれようがなかった。
+   *
+   * 目盛り: 氷期後の樹木の移動は 0.1〜1 km/yr。1 Myr の刻みなら
+   * 10 万〜100 万 km ＝ 全球に届く。**だから距離そのものは障壁にならない。**
+   * 効くのは**住めない場所（海）を越えられるか**（下の `dispersalBarrierLeak`）。
+   */
+  dispersalKmPerYear: number
+  /**
+   * 形質が 0 でも動く分（受動輸送: 水流・風・他の生物にくっつく）。
+   * ★**0 にしてはいけない。** 拡散 0 の系統は起源の 1 セルに閉じ込められて
+   * 即絶滅し、生命が始まらない（罠 51: 新しい制限は既存の生命が
+   * 生き残れるかを先に確かめる）
+   */
+  dispersalBase: number
+  /**
+   * **住めないセルに残る割合**（形質を掛ける）。大陸間を渡れるかを決める。
+   * 0 なら海で完全に途切れ、大陸ごとに系統が分かれる（異所的分化）。
+   */
+  dispersalBarrierLeak: number
+  /** 移住への投資の代償（種子・胞子・幼生の生産）。全球で払う */
+  dispersalCost: number
+  /** 住める場所での定着の速さ [1/yr 相当]。1 刻みで届く割合 */
+  dispersalSettle: number
+  weatheringNutrient: number
+  /**
+   * 根への投資の代償（陸のセルだけで払う）。
+   *
+   * ★**コストは陸だけ**（`aridityCost` で踏んだのと同じ理由）。
+   * 全球の適応度に掛けると、陸の 2 割でしか効かない形質は必ず捨てられる。
+   */
+  weatheringCost: number
+  /**
+   * 全球の風化促進が 1 に達する陸上植物の量（`publishBioticWeathering`）。
+   * ★**現在の地球で 1 になるよう測ってから置くこと**（`CLAUDE.md` の 33）。
+   */
+  landPlantRef: number
+  /**
+   * 陸上植物がいないときの風化倍率（Berner の推定で現代の 1/2〜1/7）。
+   * ★**1.0 は「この機構を切る」の意味**。基準値を測るまでは 1.0。
+   */
+  abioticWeathering: number
+  /**
    * 生態効率。**エネルギーの流れ**の比（Lindeman 1942 の「10% 則」）。
    *
    * ★**これは「流れ」の数字であって「現存量」の比ではない。**
@@ -341,6 +540,18 @@ export interface LifeParams {
   bodyCapture: number
   /** 体サイズが上げる資源要求（大きい個体は多くの資源を要る） */
   bodyNeed: number
+  /**
+   * ★**体が大きいことの防御**（0..1）。捕食者に見える量をこの割合だけ減らす。
+   *
+   * それまで `bodySize` は捕獲効率にしか入っておらず、**得なのは捕食者だけ**
+   * だった。新機能化は 25 種類から一様に引くので「捕食者が体長を引く」
+   * 確率は極小で、実測で**生き残った 16 系統が誰も持っていなかった**
+   * （提案 186 回・採用 14 回あったにもかかわらず）。
+   *
+   * 表面積/体積の低下と捕食からの逃避は、体サイズの利点として実在する。
+   * ★コスト（`bodyNeed` が資源要求を上げる）は既にあるので、対になる。
+   */
+  bodyDefence: number
   /**
    * 脳の代謝コスト。**ヒトの脳は基礎代謝の約 20%** を使う。
    *
@@ -494,6 +705,30 @@ export const EARTH_LIFE: LifeParams = {
   multicellularDefence: 0.4,
   symbolicBrainRelief: 0.7,
   aridityCost: 0,
+  ccnAntioxidant: 0.8,
+  // ★**0.35 は 6 seed 中 2 本の生命を壊した**（クレード 5・生物圏 0.58）。
+  //   片方ずつ変えて切り分けた結果、原因はこれ 1 つで、捕食圧は無関係だった
+  //   （2.0 → 0.5 で 1 桁まで同一）。0.20 なら 6 seed とも生物圏 2.00 で、
+  //   `ccnProduction` の余白も顕生代 +1.2% で正のまま（2026-09-05 実測）
+  oxygenRosBaseline: 0.20,
+  ccnCost: 0.02,
+  albedoWarmK: 0,
+  albedoIcePenalty: 1.0,
+  albedoCost: 0.01,
+  predationPressure: 2.0,
+  socialityCapture: 0.35,
+  socialityDefence: 0.45,
+  socialityCost: 0.03,
+  symbolicNeedsSociality: 0.7,
+  dispersalKmPerYear: 0,
+  dispersalBase: 0.25,
+  dispersalBarrierLeak: 0.05,
+  dispersalCost: 0,
+  dispersalSettle: 1,
+  weatheringNutrient: 0.6,
+  weatheringCost: 0.01,
+  landPlantRef: 1,
+  abioticWeathering: 1,
   trophicEfficiency: 0.1,
   trophicTurnover: 4,
   captureBase: 0.6,
@@ -505,6 +740,7 @@ export const EARTH_LIFE: LifeParams = {
   massExtinctionCount: 3,
   bodyCapture: 0.3,
   bodyNeed: 0.5,
+  bodyDefence: 0.5,
   brainCost: 0.12,
   brainCapture: 0.25,
   brainTolerance: 0.8,
@@ -601,6 +837,12 @@ export class Life implements Subsystem {
   private kBuf: Float32Array | null = null
   /** 餌の場と、捕食者が使える資源（`trophicEfficiency × 餌`） */
   private preyBuf: Float32Array | null = null
+  /** 到達の場の作業用（`updateReach`）。1 レーンぶん */
+  private reachBuf: Float32Array | null = null
+  /** 捕食者の現存量の場（`predatorField`） */
+  private predBuf: Float32Array | null = null
+  /** 緯度ごとの東西の広がりやすさ（`updateReach`） */
+  private sxBuf: Float64Array | null = null
   /** 全球の固定窒素の在庫（`update` が毎ティック作る）。診断にも出す */
   nitrogen = 1
   /**
@@ -773,11 +1015,18 @@ export class Life implements Subsystem {
       + this.params.nitrogenFromFixers * fixers
     if (!this.preyBuf || this.preyBuf.length !== n) this.preyBuf = new Float32Array(n)
     const prey = this.preyBuf
+    // ★**捕食者の現存量**（1 歩前の値）。生産者の適応度に「食われる不利」を
+    //   入れるために要る。同じ歩で解くと循環するので**遅らせる**
+    const pred = this.predatorField(world, consumers)
     // 1 段目
     for (const c of producers) {
       this.fitness(world, c.phenotype, fit, c.lane * n, K, 1, null, null, null, null, null,
-        this.nitrogen)
+        this.nitrogen, pred)
     }
+    // ★**到達の場で適応度を絞る**（`dispersal`）。
+    //   既定（`dispersalKmPerYear = 0`）では何もしないので 1 ビットも動かない
+    this.updateReach(world, fit, producers, dtYears)
+    this.applyReach(world, fit, producers)
     this.allocateGroup(world, K, fit, producers, false)
     // 2 段目（捕食者がいなければ何もしない）
     // ★**捕食者がいなくても餌の場は作ること。**
@@ -795,10 +1044,13 @@ export class Life implements Subsystem {
         this.fitness(world, c.phenotype, fit, c.lane * n, K, 1, null, null, prey,
           null, null, this.nitrogen)
       }
+      this.updateReach(world, fit, consumers, dtYears)
+      this.applyReach(world, fit, consumers)
       this.allocateGroup(world, res, fit, consumers, true)
     }
     this.publishBiosphere(world)
     this.publishCcn(world)
+    this.publishBioticWeathering(world)
     // 頻度依存選択のための「他のクレードの強さ」（自分を除いて渡す）
     if (!this.sumBuf || this.sumBuf.length !== n) {
       this.sumBuf = new Float32Array(n); this.maxBuf = new Float32Array(n)
@@ -837,6 +1089,9 @@ export class Life implements Subsystem {
       // 入れ替わりが増えて初めて表に出た**
       const bioF = world.store.f32("biomass").read
       bioF.fill(0, c.lane * n, c.lane * n + n)
+      // ★到達の場も同じレーンにある。**片方だけ消すと、
+      //   再利用した系統が前の住人の分布を引き継ぐ**（罠 53 の再発）
+      world.store.f32("reach").read.fill(0, c.lane * n, c.lane * n + n)
       this.freeLanes.push(c.lane)
       this.clades.splice(i, 1)
       world.events.push({
@@ -934,6 +1189,16 @@ export class Life implements Subsystem {
     }
     this.clades.push(luca)
     this.history.push(luca)
+    // ★**起源は 1 点から**。到達の場を使うなら、最初から全球にいてはいけない。
+    //   起源のセルが分からない場合は全球に置く（機構が無効なときと同じ）
+    if (this.params.dispersalKmPerYear > 0) {
+      const n2 = world.grid.cellCount
+      const reach = world.store.f32("reach").read
+      reach.fill(0, lane * n2, lane * n2 + n2)
+      const cell = world.prebiotic.state.originCell
+      if (cell !== undefined && cell >= 0 && cell < n2) reach[lane * n2 + cell] = 1
+      else reach.fill(1, lane * n2, lane * n2 + n2)
+    }
     world.events.push({
       year: luca.bornYear, kind: "milestone", code: "ev-luca",
       text: `LUCA: 遺伝子 ${genome.length} 個から始まる`,
@@ -1048,6 +1313,13 @@ export class Life implements Subsystem {
     const n = world.grid.cellCount
     const pOff = parent.lane * n, cOff = child.lane * n
     for (let i = 0; i < n; i++) bio[cOff + i] = bio[pOff + i] * 0.1
+    // ★**到達の場も親から引き継ぐ。** 引き継がないと、分かれた子は
+    //   どこにも到達していないので**生まれた瞬間に絶滅する**。
+    //   ここを忘れると「分岐はしているのにクレードが増えない」になる
+    if (this.params.dispersalKmPerYear > 0) {
+      const reach = world.store.f32("reach").read
+      for (let i = 0; i < n; i++) reach[cOff + i] = reach[pOff + i]!
+    }
     mutatePlan(child.bodyPlan, child.phenotype, this.rng, this.params.bodyPlanChange)
     this.clades.push(child)
     this.history.push(child)
@@ -1097,14 +1369,102 @@ export class Life implements Subsystem {
     const out: number[] = []
     const stride = this.params.selectionStride
     const ph = createPhenotype()
+    // ★餌の場を渡す（`traitMargin` の説明）。渡さないと捕食に関わる能力が
+    //   すべて 0.00% と出て、「効いていない」と誤診する
+    const n = world.grid.cellCount
+    if (!this.preyBuf || this.preyBuf.length !== n) this.preyBuf = new Float32Array(n)
+    const producers = this.clades.filter((c) => !hasCapability(c.phenotype, C_PREDATION))
+    this.buildPrey(world, producers, this.preyBuf)
+    // ★計器にも捕食圧を渡すこと。渡さないと**防御形質の余白が見えない**
+    //   （餌の場を渡し忘れて `bodySize` が 0.00% に見えた件と同じ。罠 91）
+    const predF = this.predatorField(world,
+      this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION)))
+    // ★**文脈を全部渡すこと。** この計器は `fitness()` に
+    //   `null` を渡す引数が多く、**そこを通る形質が丸ごと見えない**。
+    //   2026-09-05 の 1 日で 3 回踏んだ:
+    //     餌の場 → `bodySize` が 0.00% に見えた（罠 91）
+    //     捕食者の場 → 防御形質が全部 0.00% に見えた
+    //     環境収容力 K → `weatheringBoost` が 0.00% に見えた
+    //       （`rootP` は K の枝にしか入らないので、K が null だと素通り）
+    const kb = this.ensureK(world)
     for (const c of this.clades) {
       if ((c.phenotype.capabilities & capBit) !== 0) continue      // 既に持っている
-      const base = this.fitness(world, c.phenotype, null, 0, null, stride)
+      const base = this.fitness(world, c.phenotype, null, 0, kb, stride,
+        null, null, this.preyBuf, null, null, 1, predF)
       if (!(base > 0)) continue
       ph.traits.set(c.phenotype.traits)
       ph.capabilities = c.phenotype.capabilities | capBit
-      const with_ = this.fitness(world, ph, null, 0, null, stride)
+      const with_ = this.fitness(world, ph, null, 0, kb, stride,
+        null, null, this.preyBuf)
       out.push((with_ - base) / base)
+    }
+    return out
+  }
+
+  /**
+   * ★**その形質を上げ下げすると適応度がどう動くかを測る（診断専用）。**
+   *
+   * `capabilityMargin` の連続形質版。**その形質だけを動かして、
+   * 他は 1 ビットも変えない**ので、変異の雑音が混ざらない。
+   *
+   * 実測で `bodySize` が**全 16 系統で厳密に 0.00** に張り付いていた
+   * （罠 44: トレードオフの無い形質は端に張り付く）。上げると損なのか、
+   * 上げても得にならないのかを、これで分ける。
+   *
+   * 返すのはクレードごとの `(上げた点数 − 元の点数) / 元の点数`。
+   */
+  /**
+   * @param from  始点を指定する（省略すると「いまの値から」）。
+   *   ★**「いまの値から +0.25」は、既に高い形質では飽和して 0 に見える。**
+   *   実際 `weatheringBoost` は章の系統が 0.48〜0.99 持っていたので
+   *   余白が 0.0% と出た。**「0 から獲得する価値があるか」は別の問い。**
+   */
+  traitMargin(world: World, traitIndex: number, delta = 0.25,
+    from: number | null = null): number[] {
+    const out: number[] = []
+    const stride = this.params.selectionStride
+    const ph = createPhenotype()
+    // ★**餌の場を渡すこと。** 渡さないと `consumer` が必ず false になり、
+    //   捕食者でも `bodyCapture` の経路を通らない。実測で `bodySize` が
+    //   全系統 0.00% と出たのは**この計器の欠陥**で、モデルの側ではなかった
+    //   （`capabilityMargin` も同じ穴があった。罠 91 の再発）
+    const n = world.grid.cellCount
+    if (!this.preyBuf || this.preyBuf.length !== n) this.preyBuf = new Float32Array(n)
+    const producers = this.clades.filter((c) => !hasCapability(c.phenotype, C_PREDATION))
+    this.buildPrey(world, producers, this.preyBuf)
+    // ★計器にも捕食圧を渡すこと。渡さないと**防御形質の余白が見えない**
+    //   （餌の場を渡し忘れて `bodySize` が 0.00% に見えた件と同じ。罠 91）
+    const predF = this.predatorField(world,
+      this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION)))
+    // ★**文脈を全部渡すこと。** この計器は `fitness()` に
+    //   `null` を渡す引数が多く、**そこを通る形質が丸ごと見えない**。
+    //   2026-09-05 の 1 日で 3 回踏んだ:
+    //     餌の場 → `bodySize` が 0.00% に見えた（罠 91）
+    //     捕食者の場 → 防御形質が全部 0.00% に見えた
+    //     環境収容力 K → `weatheringBoost` が 0.00% に見えた
+    //       （`rootP` は K の枝にしか入らないので、K が null だと素通り）
+    const kb = this.ensureK(world)
+    for (const c of this.clades) {
+      const base = this.fitness(world, c.phenotype, null, 0, kb, stride,
+        null, null, this.preyBuf, null, null, 1, predF)
+      if (!(base > 0)) continue
+      ph.traits.set(c.phenotype.traits)
+      ph.capabilities = c.phenotype.capabilities
+      const start = from ?? c.phenotype.traits[traitIndex]!
+      const v = Math.min(1, start + delta)
+      if (v === start) continue
+      // 始点を指定したときは、基準の方も始点で測り直す
+      let base2 = base
+      if (from !== null) {
+        ph.traits[traitIndex] = start
+        base2 = this.fitness(world, ph, null, 0, kb, stride,
+          null, null, this.preyBuf, null, null, 1, predF)
+        if (!(base2 > 0)) continue
+      }
+      ph.traits[traitIndex] = v
+      const up = this.fitness(world, ph, null, 0, kb, stride,
+        null, null, this.preyBuf, null, null, 1, predF)
+      out.push((up - base2) / base2)
     }
     return out
   }
@@ -1118,6 +1478,16 @@ export class Life implements Subsystem {
     sumOthersC: Float32Array | null = null, maxOthersC: Float32Array | null = null,
     /** 全球の固定窒素の在庫（`update` が作る）。窒素固定者はこれに縛られない */
     nitrogen = 1,
+    /**
+     * **捕食者の現存量**（セルごと）。★これが無かったので、
+     * この模型には**「食われる不利」が適応度に存在しなかった** ——
+     * `skeletonDefence` `multicellularDefence` `bodyDefence`
+     * `socialityDefence` の 4 つとも、**捕食者の餌を減らすだけで
+     * 守った本人は 1 ミリも得をしていなかった**（2026-09-05 の実測で
+     * `sociality` の余白が −1.3%、つまり純粋なコスト）。
+     * 1 歩前の値を使う（同じ歩で解くと循環する）。
+     */
+    predators: Float32Array | null = null,
   ): number {
     const p = this.params
     const { W, H } = world.grid
@@ -1125,6 +1495,7 @@ export class Life implements Subsystem {
     const lf = world.store.f32("landFraction").read
     const soil = world.store.f32("soilMoisture").read
     const vent = world.store.f32("ventFlux").read
+    const ice = world.store.f32("iceFraction").read
     const tr = ph.traits
     const o2 = world.globals.o2
     // 形質 0..1 を物理量に写す
@@ -1139,7 +1510,11 @@ export class Life implements Subsystem {
     const demand = demandTr * p.oxygenDemandScale
     const sat = demand <= 0 ? 0 : Math.min(1, o2 / demand)
     const oxOk = demand <= 0 ? 1 : sat
-    const oxTox = 1 - tr[T_O2_TOX] * Math.min(1, o2 / 21)
+    // ★抗酸化物質（DMSP）が毒性を和らげる。**酸素が高い時代にしか
+    //   見返りが無い**ので、太古代の較正は動かない
+    const antiox = 1 - Math.min(1, p.ccnAntioxidant * tr[T_CCN])
+    const oxTox = 1 - (tr[T_O2_TOX] + p.oxygenRosBaseline)
+      * Math.min(1, o2 / 21) * antiox
     const oxygen = oxOk * (oxTox > 0 ? oxTox : 0)
     // ★**好気呼吸の見返り**（2026-09-01 に追加）。
     //
@@ -1194,6 +1569,19 @@ export class Life implements Subsystem {
     // ★コストは【陸のセルだけ】で払う（下の `dry` を読むこと）。
     // 全球に掛けると、陸の 2 割でしか効かない形質が必ず捨てられる（実測で 0.000 に張り付いた）。
     const aridCost = 1 - p.aridityCost * tr[T_ARIDITY]
+    // ★根と有機酸への投資。**陸のセルだけで払い、陸のセルだけで返る**。
+    //
+    // ★さらに**陸に耐えられる系統だけが発現する**。
+    // 最初これを付けずに書いたら、**海の系統がコストだけを払っていた** ——
+    // 陸の割合が少しでもあるセルで投資を強いられるが、そこには
+    // ほとんど住めない（`habitat = 1 - f`）ので純粋な損。
+    // 結果、遺伝子が早い時代に淘汰され、**後から陸に上がった系統は
+    // もう遺伝子を持っていない**。実測（4 seed・全史）で
+    // 「形質を持つ系統」と「陸上多細胞」の重なりが**全時代で 0**だった。
+    // 根も菌根も陸の適応なので、海の系統に costs を課すのが誤り（罠 49）。
+    const rooted = canLand ? tr[T_WEATHER] : 0
+    const rootCost = 1 - p.weatheringCost * rooted
+    const rootP = p.weatheringNutrient * rooted
     // ★**栄養段階**（`docs/02` §2.3）。捕食の能力を持つクレードは、
     // エネルギーを光や熱水からではなく**他クレードのバイオマス**から取る。
     // 使える資源の量は `trophicEfficiency × 餌`（Lindeman の 10% 則）で、
@@ -1208,8 +1596,15 @@ export class Life implements Subsystem {
         + (hasCapability(ph, C_MOTILITY) ? p.captureMotility : 0)
         + (hasCapability(ph, C_MULTI) ? p.captureMulticellular : 0)
         + p.bodyCapture * tr[T_BODY]
-        + p.brainCapture * tr[T_BRAIN])
+        + p.brainCapture * tr[T_BRAIN]
+        )
       : 0
+    // ★**群れ狩りは「加点」にしてはいけない。** `capture` は
+    //   `min(1, 0.6 + 0.2 + 0.2 + …)` で**既に 1 で飽和**しており、
+    //   足しても何も起きない（`CLAUDE.md` の 42）。実測で `sociality` の
+    //   SD が 0.299 → 0.000 に潰れた ——「見返りが無いコスト」だった。
+    //   **単独で狩る側の減点**にすれば、飽和の外で効く
+    const captured = capture * (1 - p.socialityCapture * (1 - tr[T_SOCIAL]))
     // 脳は高くつく（ヒトの脳は基礎代謝の約 20%）。象徴はさらに上乗せ。
     // ★見返りは捕獲効率と温度の許容幅。文明の見返りは M7 なのでまだ無い
     // ★**象徴（文化）は脳の元を取りやすくする。**
@@ -1227,7 +1622,11 @@ export class Life implements Subsystem {
     // 脳が小さい系統には効かないので、**大きな脳を持つ系統だけが得をする**
     // ——これが「知性が特定の系統に集中する」ことの表現になる。
     const symbolic = hasCapability(ph, C_SYMBOLIC)
-    const brainUnit = p.brainCost * (symbolic ? 1 - p.symbolicBrainRelief : 1)
+    // ★**社会的学習は他個体から学ぶこと。** 群れないなら文化は成り立たない。
+    //   `symbolicNeedsSociality` が 0 なら従来どおり社会性に依らない
+    const relief = p.symbolicBrainRelief
+      * (1 - p.symbolicNeedsSociality * (1 - tr[T_SOCIAL]))
+    const brainUnit = p.brainCost * (symbolic ? 1 - relief : 1)
     const brainCost = 1 - brainUnit * tr[T_BRAIN]
       - (symbolic ? p.symbolicCost : 0)
     // 窒素固定はニトロゲナーゼが高くつく（N2 1 分子に ATP 16 個）
@@ -1239,7 +1638,26 @@ export class Life implements Subsystem {
     const nNeed = 1 + (p.nitrogenNeedMax - 1) * tr[T_NUTRIENT_N]
     const nLimit = fixer ? 1 : Math.min(1, nitrogen / nNeed)
     const bodyNeed = 1 + p.bodyNeed * tr[T_BODY]
+    // ★移住への投資（種子・胞子・幼生）。**全球で払う** ——
+    //   見返りは「住める場所に届くこと」なので、場所を選ばないコストでよい。
+    //   トレードオフが無ければ端に張り付く（罠 44）
+    // ★**機構が無効なときはコストも取らない。** 取ると「下げることしか
+    //   できない量」になって形質が 0 に潰れる（罠 41 を自分で作りかけた）
+    // ★**食われる不利**。`defenceGuard` は「捕食者から見える割合」なので
+    //   **1 が無防備**。捕食者を免除したつもりで `consumer ? 1 : …` と書いたら、
+    //   **捕食者だけが捕食圧を最大で受ける**式になっていた（符号の取り違え）。
+    //   この段では上位捕食者を扱わないので、捕食者は 0（食われない）
+    const guardSelf = consumer ? 0 : this.defenceGuard(ph)
+    const dispCost = p.dispersalKmPerYear > 0
+      ? 1 - p.dispersalCost * tr[T_DISPERSAL] : 1
+    // 群れの代償（病気・寄生・群れ内の競合）。★見返りが時代依存なので常時払う
+    const socCost = 1 - p.socialityCost * tr[T_SOCIAL]
+    // 抗酸化物質と色素の代償
+    const ccnCost = 1 - p.ccnCost * tr[T_CCN]
+    const albCost = 1 - p.albedoCost * tr[T_ALBEDO]
     const overhead = Math.max(0, brainCost) * fixCost
+      * Math.max(0, dispCost) * Math.max(0, socCost)
+      * Math.max(0, ccnCost) * Math.max(0, albCost)
     let score = 0, wsum = 0
     for (let y = 0; y < H; y++) {
       // 光は緯度で決まる（雲は将来。いまは日射の緯度分布で代用）
@@ -1251,7 +1669,9 @@ export class Life implements Subsystem {
         // 住める基質の割合
         const habitat = canLand ? 1 : 1 - f
         if (habitat <= 0) { if (out) out[off + i] = 0; continue }
-        const dT = temp[i] - opt
+        // ★**黒い体は日を吸って自分を温める**（雪氷藻類）。
+        //   トレードオフは式に内蔵 —— 寒い所では得、暑い所では損
+        const dT = temp[i] + p.albedoWarmK * tr[T_ALBEDO] - opt
         const fTemp = fastExp(-dT * dT * inv2t2)
         // 乾燥（陸のセルだけ効く）。★**コストも陸だけで払う。**
         //
@@ -1280,7 +1700,7 @@ export class Life implements Subsystem {
         // ★捕食者は光に依らない。**餌の量は資源側（K）に入っている**ので、
         // ここで餌の量を掛けると二重計上になる
         const energy = consumer
-          ? capture * metabolism
+          ? captured * metabolism
           : ((1 - photo) * chemo + photo * light * donor) * metabolism
         // 栄養の要求（要求が高いほど貧栄養に弱い。K 側で供給を見る）
         // ★**栄養は「制限」であって「増幅」ではない**（リービッヒの最小律）。
@@ -1291,10 +1711,24 @@ export class Life implements Subsystem {
         // 捕食者は栄養を餌から取るので、リンでは律速しない。
         // ★**窒素は別**（リービッヒの最小律。少ない方が効く）。
         // 大きい個体はより多くの資源を要る（`bodyNeed`）
+        // ★**岩から自前で掘り出すリン**（`weatheringNutrient`）。
+        //   陸のセルだけ。貧栄養（K が小さい）ほど効くので、
+        //   **豊かな陸と貧しい陸で系統が分かれる**
         const nutrient = consumer
           ? nLimit
-          : Math.min(nLimit, K ? Math.min(1, K[i] / (nutrientNeed * bodyNeed)) : 1)
+          : Math.min(nLimit, K
+            ? Math.min(1, (K[i] + (f > 0 ? rootP * f : 0)) / (nutrientNeed * bodyNeed))
+            : 1)
+        // 根のコストも陸の割合ぶんだけ払う（海では根を作らない）
+        const root = f > 0 ? 1 - (1 - rootCost) * f : 1
+        // ★氷の上は、黒い生物だけが融かして液体の水を作れる（雪氷藻類）
+        // ★捕食圧。守りが固い（guardSelf が小さい）ほど食われない
+        const eaten = predators === null ? 0
+          : Math.min(0.95, p.predationPressure * predators[i]! * guardSelf)
+        const iceFac = (1 - eaten)
+          * (1 - p.albedoIcePenalty * ice[i]! * (1 - tr[T_ALBEDO]))
         const raw = fTemp * dry * oxygen * energy * habitat * nutrient * overhead
+          * root * (iceFac > 0 ? iceFac : 0)
         const v = raw > p.fitnessFloor ? (raw > 1 ? 1 : raw) : 0
         if (out) out[off + i] = v
         // 点数は【環境収容力で重み付けした平均適応度】。
@@ -1387,6 +1821,46 @@ export class Life implements Subsystem {
    * ★これが「食う側と食われる側の軍拡」を作る唯一の経路。
    * `capSkeleton` はこれを入れるまで適応度のどこにも現れていなかった。
    */
+  /**
+   * **捕食者から身を守れている割合**（0..1。小さいほどよく守っている）。
+   *
+   * ★**定義は 1 箇所に**（`CLAUDE.md` の 65）。同じ式が
+   * 「捕食者に見える量」（`buildPrey`）と「食われる不利」（`fitness`）の
+   * 両方に要る。別々に書くと片方だけ直したときに打ち消し合う。
+   *
+   * ★**加点ではなく不利側の減点**で書く（罠 42）。
+   */
+  defenceGuard(ph: Phenotype): number {
+    const p = this.params
+    return (1 - p.socialityDefence * ph.traits[T_SOCIAL]!)
+      * (hasCapability(ph, C_SKELETON) ? 1 - p.skeletonDefence : 1)
+      * (hasCapability(ph, C_MULTI) ? 1 - p.multicellularDefence : 1)
+      * (1 - p.bodyDefence * ph.traits[T_BODY]!)
+  }
+
+  /** 計器用に環境収容力を用意する（`update` の外から呼ばれるため） */
+  private ensureK(world: World): Float32Array {
+    const n = world.grid.cellCount
+    if (!this.kBuf || this.kBuf.length !== n) this.kBuf = new Float32Array(n)
+    this.carryingCapacity(world, this.kBuf)
+    return this.kBuf
+  }
+
+  /** 捕食者の現存量の場（1 歩前）。★捕食者がいなければ null を返す */
+  private predatorField(world: World, consumers: Clade[]): Float32Array | null {
+    if (this.params.predationPressure <= 0 || consumers.length === 0) return null
+    const n = world.grid.cellCount
+    const bio = world.store.f32("biomass").read
+    if (!this.predBuf || this.predBuf.length !== n) this.predBuf = new Float32Array(n)
+    const out = this.predBuf
+    out.fill(0)
+    for (const c of consumers) {
+      const off = c.lane * n
+      for (let i = 0; i < n; i++) out[i] += bio[off + i]!
+    }
+    return out
+  }
+
   private buildPrey(world: World, producers: Clade[], out: Float32Array): void {
     const n = world.grid.cellCount
     const bio = world.store.f32("biomass").read
@@ -1397,10 +1871,20 @@ export class Life implements Subsystem {
       // 獲得しても生存に一切効いていなかった（罠 46）。
       // 単細胞の捕食者にとって、大きな群体や多細胞体は物理的に手に余る。
       // 骨格と同じ書き方で、**捕食者に見える量を減らす**形にする
-      const guard = (hasCapability(c.phenotype, C_SKELETON)
-        ? 1 - this.params.skeletonDefence : 1)
-        * (hasCapability(c.phenotype, C_MULTI)
-          ? 1 - this.params.multicellularDefence : 1)
+      // ★**体が大きいほど食べられにくい。**
+      //
+      // それまで `bodySize` は**捕獲効率にしか入っていなかった**ので、
+      // 得なのは捕食者だけ（実測で 16 系統中 3）。新機能化は 25 種類から
+      // 一様に引くので「捕食者が体長を引く」確率は極小で、
+      // **提案 186 回・採用 14 回あっても、生き残った 16 系統は誰も持っていなかった**。
+      //
+      // 実際の生物学では、体が大きいことの利点はずっと広い ——
+      // 表面積/体積が下がって熱と水を失いにくく、**何より食べられにくい**。
+      // 捕食が被食者の体を大きくするのは古生物学の基本（軍拡競争）。
+      // 骨格・多細胞と同じ枠に入れる。
+      // ★群れの防御も**不利側の減点**で書く（罠 42）。加点にすると
+      //   クランプで区別が消える
+      const guard = this.defenceGuard(c.phenotype)
       const off = c.lane * n
       for (let i = 0; i < n; i++) out[i] += bio[off + i] * guard
     }
@@ -1485,6 +1969,156 @@ export class Life implements Subsystem {
     // （`world.relaxCcn`）。ここで直接書くと、生命の刻み（100 万年）ごとに
     // 階段状に飛んで、打ち切った Newton が吸収できずに残差が残る。
     world.globals.ccnAlbedoTarget = this.params.ccnAlbedoMax * (index - 1)
+  }
+
+  /**
+   * 到達していないセルの適応度を落とす。
+   * ★**`fit` を書き換える**ので、競争（`allocateGroup` の分母）にも効く ——
+   * 掛け忘れると「いないのに競争相手として数えられる」ことになる
+   */
+  private applyReach(world: World, fit: Float32Array, group: Clade[]): void {
+    if (this.params.dispersalKmPerYear <= 0) return
+    const n = world.grid.cellCount
+    const reach = world.store.f32("reach").read
+    for (const c of group) {
+      const off = c.lane * n
+      for (let i = 0; i < n; i++) fit[off + i]! *= reach[off + i]!
+    }
+  }
+
+  /**
+   * **到達の場を進める**（`dispersal`）。
+   *
+   * ★`CLAUDE.md` の 45 への答え。それまでセルは互いに独立で、
+   * 適応度が正なら系統は**即座に全球に現れて**いた。
+   *
+   * 規則は 2 つだけ:
+   *   1. **住める所では定着する**（適応度 > 0 のセルで 1 へ向かう）
+   *   2. **隣から広がる**。住めないセルには `dispersalBarrierLeak × 形質`
+   *      しか残らないので、**海が大陸を隔てる**（異所的分化）
+   *
+   * ★**解像度独立**（契約）。広がる速さは km/yr で書き、
+   * セル幅で割って「1 刻みに何セル進むか」にする。
+   * ★**決定論**（契約）。走査は添字順、隣は 4 近傍の固定順。
+   */
+  private updateReach(
+    world: World, fit: Float32Array, group: Clade[], dtYears: number,
+  ): void {
+    const p = this.params
+    if (p.dispersalKmPerYear <= 0) return
+    const { W, H } = world.grid
+    const n = world.grid.cellCount
+    const reach = world.store.f32("reach").read
+    if (!this.reachBuf || this.reachBuf.length !== n) this.reachBuf = new Float32Array(n)
+    const next = this.reachBuf
+    // セルの南北幅 [km]（緯度に依らない）。東西幅は緯度で縮む
+    const dyKm = (Math.PI * EARTH_RADIUS_M / H) / 1000
+    for (const c of group) {
+      const tr = c.phenotype.traits[T_DISPERSAL] ?? 0
+      const off = c.lane * n
+      // 住めないセルに残る割合。0 なら海で完全に途切れる
+      const leak = Math.min(1, p.dispersalBarrierLeak * tr)
+      const settle = Math.min(1, p.dispersalSettle)
+      const vKm = p.dispersalKmPerYear
+        * (p.dispersalBase + (1 - p.dispersalBase) * tr) * dtYears
+      // ★**解像度独立**（契約）。1 回の走査では隣の 1 セルにしか広がらないので、
+      //   「1 刻みに何セル進むか」が 1 を超えるときは**その回数だけ走査する**。
+      //   1 回で固定にすると、セルを細かくした瞬間に物理速度が変わる
+      const dxEq = (2 * Math.PI * EARTH_RADIUS_M / W) / 1000
+      const nPass = Math.max(1, Math.min(8, Math.ceil(vKm / dxEq)))
+      if (!this.sxBuf || this.sxBuf.length !== H) this.sxBuf = new Float64Array(H)
+      const sx = this.sxBuf
+      for (let y = 0; y < H; y++) {
+        // 東西のセル幅は cos(緯度) で縮む。**極では隣が近い**
+        const dxKm = Math.max(1e-6,
+          (2 * Math.PI * EARTH_RADIUS_M * Math.cos(world.grid.latRad[y]!) / W) / 1000)
+        sx[y] = Math.min(1, vKm / (nPass * dxKm))
+      }
+      const sy = Math.min(1, vKm / (nPass * dyKm))
+      for (let pass = 0; pass < nPass; pass++) {
+        spreadReach(reach, fit, off, W, H, sx, sy, leak, settle, next)
+        // ★**全面を計算してから書き戻す。** 行ごとに書き戻すと
+        //   次の行が更新後の値を読む（Gauss-Seidel）ので、
+        //   **南向きだけ速く広がる**という向きの偏りが出る
+        for (let i = 0; i < n; i++) reach[off + i] = next[i]!
+      }
+    }
+  }
+
+  /**
+   * **陸上植物による風化の促進を publish する。**
+   *
+   * ★入力を**不活性でない量**にすること（`CLAUDE.md` の 54）。
+   * 駆動するのは `weatheringBoost` の形質だが、その形質は
+   * **本人に見返りがある**（`weatheringNutrient` で岩からリンを取る）ので、
+   * 選択が働いて 0 へ漂わない。CCN で踏んだ失敗の裏返し。
+   *
+   * ★指数は「陸の面積のうち、根を持つ光合成者がどれだけ覆っているか」。
+   * 陸に上がれない系統・光合成しない系統は数えない。
+   *
+   * ★基準状態（現在の地球）で 1 になるよう `landPlantRef` を置く。
+   * **その値は測ってから決める**（`CLAUDE.md` の 33）。
+   * `abioticWeathering` が 1 のあいだ、この機構は**切れている**。
+   */
+  private publishBioticWeathering(world: World): void {
+    const idx = this.landPlantIndex(world)
+    const p = this.params
+    const u = Math.min(1, idx / Math.max(1e-12, p.landPlantRef))
+    world.globals.landPlantIndex = idx
+    world.globals.bioticWeathering = p.abioticWeathering
+      + (1 - p.abioticWeathering) * u
+  }
+
+  /**
+   * 陸を覆う「根を持つ光合成者」の量（0..）。診断にも使う。
+   *
+   * ★**面積の重みを陸の割合で取る**（`landFraction`）。
+   * セルを 0/1 で陸海に切ると、混合セルが丸ごと落ちる（`carbon.ts` と同じ話）
+   */
+  landPlantIndex(world: World): number {
+    const { W, H } = world.grid
+    const lf = world.store.f32("landFraction").read
+    const bio = world.store.f32("biomass").read
+    const n = W * H
+    let num = 0, den = 0
+    for (let y = 0; y < H; y++) {
+      const aw = world.grid.areaWeight[y]!
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x
+        const f = lf[i]! < 0 ? 0 : lf[i]! > 1 ? 1 : lf[i]!
+        den += aw * f
+      }
+    }
+    if (den <= 0) return 0
+    for (const c of this.clades) {
+      const ph = c.phenotype
+      // ★**多細胞を条件にしない。** 維管束植物より前に、地衣・コケ・
+      //   微生物マット（cryptogamic cover）が既に風化を強めていた
+      //   （Schwartzman & Volk 1989、Lenton et al. 2012）。
+      //   最初 `C_MULTI` を要求して書いたら、実測で 4 seed とも
+      //   指数が全時代 0 になった（陸上多細胞は 1〜6 系統いたが、
+      //   その系統が形質を持っていなかった）
+      if (!hasCapability(ph, C_LAND)) continue
+      // ★**指数は形質ではなくバイオマスで駆動する**（罠 54 と同じ作法）。
+      //   形質だけで駆動すると、実測（4 seed）で **0〜0.024 と 2 桁ばらついた**
+      //   ——「1 系統がたまたま遺伝子を引いたか」で決まる量を、
+      //   全球の気候フィードバックの分母にしてはいけない（罠 22）。
+      //   科学的な主張も「陸上生物圏があると風化が強まる」であって、
+      //   特定の形質値の話ではない。形質は**控えめな重み**で残す
+      const w = (0.5 + 0.5 * ph.traits[T_WEATHER]!) * ph.traits[T_PHOTO]!
+      if (w <= 0) continue
+      const off = c.lane * n
+      for (let y = 0; y < H; y++) {
+        const aw = world.grid.areaWeight[y]!
+        for (let x = 0; x < W; x++) {
+          const i = y * W + x
+          const f = lf[i]! < 0 ? 0 : lf[i]! > 1 ? 1 : lf[i]!
+          if (f <= 0) continue
+          num += aw * f * bio[off + i]! * w
+        }
+      }
+    }
+    return num / den
   }
 
   private publishBiosphere(world: World): void {

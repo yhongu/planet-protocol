@@ -264,6 +264,20 @@ export interface PlanetGlobals {
    * `life.ts` が毎ティック書く。**基準状態（現在の地球）では 0** なので
    * 較正は動かない（`n2Forcing` や `ch4Forcing` と同じ作法）。
    */
+  /**
+   * **陸上生物による珪酸塩風化の促進**（Berner 1997、Lenton & Watson 2004）。
+   * `carbon.ts` の速度論的風化に掛かる倍率。
+   *
+   * ★**基準状態（現在の地球）で 1**。だから較正は 1 ビットも動かない
+   * （`ccnAlbedoShift` と同じ作法）。根と有機酸を持つ陸上植物がいない
+   * 世界では 1 を**下回る** —— ★加点ではなく**いない側の減点**で書く
+   * （`CLAUDE.md` の 42）。そうすれば現在の地球の較正が動かない。
+   *
+   * `life.ts` の `publishBioticWeathering` が毎ティック書く。
+   */
+  bioticWeathering: number
+  /** 陸を覆う「根を持つ光合成者」の量（診断。`bioticWeathering` の元） */
+  landPlantIndex: number
   ccnAlbedoShift: number
   /**
    * CCN のずれの**目標値**。`life.ts` が生物圏の大きさから決める。
@@ -339,6 +353,8 @@ export function earthGlobals(): PlanetGlobals {
     co2: 280,
     ch4: 0.7,
     o2: 20.9,
+    bioticWeathering: 1,
+    landPlantIndex: 0,
     ccnAlbedoShift: 0,
     ccnAlbedoTarget: 0,
     biosphereProxy: 1,

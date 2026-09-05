@@ -65,3 +65,27 @@ export function gradeOf(capabilities: number, traits?: readonly number[]): Grade
   if ((capabilities & MOTILITY) !== 0) return "swimmer"
   return "prokaryote"
 }
+
+/**
+ * **体サイズの段**（`bodySize` 0..1 → 5 段）。
+ *
+ * ★**絵そのものを大きくしない。** 1 マスの絵を形質で拡大すると、
+ * 隣のマスへはみ出して**地図が壊れる**（セルの画面ピクセルは
+ * 拡大率で変わるので、はみ出しは倍率依存で出たり出なかったりする）。
+ * だから**絵は 1 種類の大きさのまま、段を横に添える**。
+ *
+ * ★段の名前は**絶対の体長ではない**。`bodySize` は 0..1 の相対量で、
+ * 「捕まえやすさ（`bodyCapture`）・要る資源（`bodyNeed`）・
+ * 食われにくさ（`bodyDefence`）」の 3 つを動かす軸でしかない。
+ */
+export const SIZE_LEVELS = ["微小", "小", "中", "大", "巨大"] as const
+export type SizeLevel = typeof SIZE_LEVELS[number]
+
+export function sizeLevel(bodySize: number): { level: number; ja: SizeLevel } {
+  // ★**`NaN` を先に落とす。** `Math.max(0, Math.min(1, NaN))` は `NaN` のままで、
+  //   `SIZE_LEVELS[NaN - 1]` が `undefined` になって画面に「undefined」と出る
+  const b = Number.isFinite(bodySize) ? Math.max(0, Math.min(1, bodySize)) : 0
+  // 0 は「微小」。1.0 も 5 段目に収める（floor だと 6 になる）
+  const level = Math.min(5, 1 + Math.floor(b * 5))
+  return { level, ja: SIZE_LEVELS[level - 1] }
+}

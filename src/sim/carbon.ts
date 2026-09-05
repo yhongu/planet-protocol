@@ -344,7 +344,10 @@ export function computeWeathering(
   //
   // 海の量に対して滑らかに立ち上げる（不連続にすると気候ソルバが振動する）。
   const liquid = liquidWaterGate(world)
-  const kBase = st.kDensity * fCo2 * cp.biotaFactor * liquid
+  // ★**陸上生物による風化の促進**（`state.ts` の `bioticWeathering`）。
+  //   基準状態で 1 なので較正は動かない。根も有機酸も無い世界で 1 を下回る
+  const kBase = st.kDensity * fCo2 * cp.biotaFactor
+    * world.globals.bioticWeathering * liquid
   const sBase = st.sDensity * cp.erosionFactor * liquid
   const regCap = cp.regolithCapYears * st.kDensity
 
@@ -467,6 +470,9 @@ export class CarbonCycle implements Subsystem {
     if (!near(g.co2, 280, 1)) bad.push(`CO2 ${g.co2.toFixed(0)}ppm（280 のはず）`)
     if (!near(g.ch4, 0.7, 0.01)) bad.push(`CH4 ${g.ch4}ppm（0.7 のはず）`)
     // ★生物起源の CCN は【現在の地球で 0】。0 でないと較正が動く
+    // ★生物による風化の促進は【現在の地球で 1】。1 でないと較正が動く
+    if (!near(g.bioticWeathering, 1, 1e-9))
+      bad.push(`生物の風化促進 ${g.bioticWeathering}（1 のはず。陸上生物が風化を変えている）`)
     if (!near(g.ccnAlbedoShift, 0, 1e-9))
       bad.push(`CCN のアルベドずれ ${g.ccnAlbedoShift}（0 のはず。生命が雲を変えている）`)
     if (!near(g.ccnAlbedoTarget, 0, 1e-9))

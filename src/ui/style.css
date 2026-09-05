@@ -436,6 +436,23 @@ button:active { background: #141b23; }
 .cl-analog.novel { color: #b48fd1; }
 .an-m { color: var(--dim); font-size: 9.5px; font-variant-numeric: tabular-nums; }
 .an-era { color: var(--dim); font-size: 9.5px; margin-left: auto; }
+/* 生き物の絵と大きさの段。
+   ★**絵は形質で拡大しない**（隣のマスへはみ出して地図が壊れる）。
+   大きさは【段】で横に出す（`creatureGrade.ts` の `sizeLevel`） */
+.cl-fig { margin-top: 6px; display: flex; align-items: center; gap: 10px; }
+.cl-pic { width: 32px; height: 32px; flex: 0 0 32px;
+  image-rendering: pixelated; background: rgba(255,255,255,0.04);
+  border-radius: 4px; }
+.cl-fig-t { min-width: 0; }
+.cl-grade { font-size: 11px; color: var(--fg); }
+.cl-size { margin-top: 2px; font-size: 10px; color: var(--dim);
+  display: flex; align-items: center; gap: 6px; }
+.cl-size b { color: var(--dim); font-weight: 400; }
+/* 目盛りは CSS で描く（文字だとフォント依存で数字に見えた） */
+.cl-size .lv { display: inline-flex; gap: 2px; }
+.cl-size .lv i { width: 4px; height: 10px; border-radius: 1px;
+  background: rgba(255,255,255,0.14); }
+.cl-size .lv i.on { background: #8fd18f; }
 /* 体制。★「どんな姿の生き物か」そのもの */
 .cl-plan { margin-top: 4px; font-size: 10px; color: var(--dim); line-height: 1.4; }
 /* 自動で落ちた段。押した段（.active）と区別できる色にする */

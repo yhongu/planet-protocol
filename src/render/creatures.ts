@@ -90,8 +90,28 @@ export function creatureSprite(grade: Grade, cladeId: number): HTMLCanvasElement
   return cv
 }
 
+/** データ URL にした結果。★`toDataURL` は毎ティック呼ぶには重い */
+const urls = new Map<string, string>()
+
+/**
+ * 虫眼鏡や系譜のような **HTML 側**へ渡すための絵。
+ * ★塗り替えないまま `<img src="icons/life-*.png">` を出してはいけない ——
+ * 素材は**塗り替える場所をマゼンタで置いている**ので、そのままだと
+ * ピンクの塊が出る（`magentaKind`）。
+ */
+export function creatureImageUrl(grade: Grade, cladeId: number): string | null {
+  const key = `${grade}|${cladeId}`
+  const hit = urls.get(key)
+  if (hit) return hit
+  const cv = creatureSprite(grade, cladeId)
+  if (!cv) return null            // まだ読み込み中。次のティックで出る
+  const u = cv.toDataURL()
+  urls.set(key, u)
+  return u
+}
+
 /** 惑星を作り直したら捨てる（クレードの id が振り直される） */
-export function clearCreatureCache(): void { tinted.clear() }
+export function clearCreatureCache(): void { tinted.clear(); urls.clear() }
 
 export { gradeOf }
 export type { Grade }

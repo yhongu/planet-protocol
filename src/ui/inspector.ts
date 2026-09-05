@@ -18,6 +18,8 @@ import { cladeColor } from "../render/layers"
 import { earthAnalog } from "./earthAnalog"
 import { describePlan } from "../sim/bodyPlan"
 import { GENE_LABELS } from "./geneLabels"
+import { gradeOf, GRADE_LABEL, sizeLevel } from "./creatureGrade"
+import { creatureImageUrl } from "../render/creatures"
 
 /** 能力ビットの見出しと絵（`public/icons/cap-*.png`） */
 const CAP_ICON: Record<string, string> = {
@@ -146,12 +148,29 @@ export class Inspector {
       // ★**「地球で言えば何に近いか」**（`earthAnalog.ts`）。
       // 種名を引くのではなく、形質と能力から**比較として**出す
       const an = earthAnalog(c.capabilities, c.traits)
+      // ★**絵は 1 種類の大きさのまま。** 体サイズは**段**で添える
+      //   （拡大すると隣のマスへはみ出して地図が壊れる。`creatureGrade.ts`）
+      const grade = gradeOf(c.capabilities, c.traits)
+      const bs = c.traits[GENE_KINDS.indexOf("bodySize")] ?? 0
+      const sz = sizeLevel(bs)
+      const pic = creatureImageUrl(grade, c.id)
+      // ★**目盛りは文字で描かない。** ▮/▯ はフォントによって幅も太さも違い、
+      //   実測では「▮0000」と数字に見えた（`snapshots/ui-inspect.png`）
+      const bars = Array.from({ length: 5 }, (_, k) =>
+        `<i class="${k < sz.level ? "on" : ""}"></i>`).join("")
       html += `<div class="cl">`
         + `<div class="cl-head">`
         + `<i style="background:${rgb(cladeColor(c.id))}"></i>`
         + `<span class="cl-id">クレード ${c.id}</span>` + role
         + `<span class="cl-share">${share.toFixed(1)} %</span>`
         + `</div>`
+        + `<div class="cl-fig">`
+        + (pic ? `<img class="cl-pic" src="${pic}" alt="" />` : `<span class="cl-pic"></span>`)
+        + `<div class="cl-fig-t">`
+        + `<div class="cl-grade">${esc(GRADE_LABEL[grade])}</div>`
+        + `<div class="cl-size" title="体サイズ ${bs.toFixed(2)}">`
+        + `<b>大きさ</b><span class="lv">${bars}</span>${esc(sz.ja)}</div>`
+        + `</div></div>`
         + `<div class="cl-analog${an.novel ? " novel" : ""}" title="${esc(an.era)}">`
         + `${esc(an.name)}`
         + (an.novel ? "" : `<span class="an-m">一致 ${(100 * an.match).toFixed(0)}%</span>`)

@@ -33,6 +33,14 @@ const SHOTS: Record<string, string> = {
       setTimeout(() => document.getElementById("ttStart").click(), 200);
     }, 200);
   })()`,
+  // ★虫眼鏡: 顕生代の章を読み、生き物のいるマスを押して中身を開く
+  "inspect": `(() => {
+    document.querySelector('.ttl-btn[data-go="new"]').click();
+    setTimeout(() => {
+      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      setTimeout(() => document.getElementById("ttStart").click(), 200);
+    }, 200);
+  })()`,
   "chapter": `(() => {
     document.querySelector('.ttl-btn[data-go="new"]').click();
     setTimeout(() => {
@@ -51,7 +59,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "title-new", "chapter", "creatures"])
+const TITLE_SHOTS = new Set(["title", "title-new", "chapter", "creatures", "inspect"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)
@@ -108,7 +116,8 @@ async function main(): Promise<void> {
     await sleep(5000)
   }
   await send("Runtime.evaluate", { expression: expr })
-  await sleep(name === "chapter" || name === "creatures" ? 25000 : 600)
+  await sleep(name === "chapter" || name === "creatures" || name === "inspect"
+    ? 25000 : 600)
   if (name === "creatures") {
     // 優占クレードのレイヤにして、1 セルが十分大きくなるまで拡大する
     await send("Runtime.evaluate", {
@@ -124,6 +133,41 @@ async function main(): Promise<void> {
       })()`,
     })
     await sleep(2500)
+  }
+  if (name === "inspect") {
+    // ★**バイオマスが一番多いマスの画面座標**を app から貰って、そこを押す。
+    //   合成の `PointerEvent` では `setPointerCapture` が投げて
+    //   `pointerup` の途中で止まるので、**CDP の本物のマウス**で押す
+    const at = (await send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `(() => {
+        const c = document.getElementById("view");
+        const r = c.getBoundingClientRect();
+        return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+      })()`,
+    })).result.value as { x: number; y: number }
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await send("Input.dispatchMouseEvent", {
+        type, x: at.x, y: at.y, button: "left", clickCount: 1,
+        pointerType: "mouse", buttons: type === "mousePressed" ? 1 : 0,
+      })
+      await sleep(80)
+    }
+    await sleep(600)
+    const n = (await send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `document.querySelectorAll("#inspector .cl").length`,
+    })).result.value as number
+    // ★**「段が出る」と「段が動く」は別**（`CLAUDE.md` の 52）。
+    //   1 段目しか写らない画面を見て「入った」と言わないよう、実際の値を並べる
+    const sizes = (await send("Runtime.evaluate", {
+      returnByValue: true,
+      expression: `Array.from(document.querySelectorAll("#inspector .cl-size"))
+        .map((e) => e.textContent.replace("大きさ", "").trim()).join(" / ")`,
+    })).result.value as string
+    console.log(`  虫眼鏡に出たクレード: ${n} 系統`)
+    console.log(`  大きさの段: ${sizes}`)
+    if (n === 0) console.log("  ★生き物のいないマスを押した。もう一度か、別の場所で")
   }
   if (name === "chapter") {
     const v = (await send("Runtime.evaluate", {
