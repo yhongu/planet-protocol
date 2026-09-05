@@ -111,6 +111,7 @@ const C_PREDATION = GENE_KINDS.indexOf("capPredation")
 const C_SKELETON = GENE_KINDS.indexOf("capSkeleton")
 const C_MOTILITY = GENE_KINDS.indexOf("capMotility")
 const C_MULTI = GENE_KINDS.indexOf("capMulticellular")
+const C_EUKARYOTIC = GENE_KINDS.indexOf("capEukaryotic")
 const C_NFIX = GENE_KINDS.indexOf("capNitrogenFixation")
 const C_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
 const T_BODY = GENE_KINDS.indexOf("bodySize")
@@ -224,6 +225,31 @@ export interface LifeParams {
    * 1% は大酸化事変の判定値（`oxygen.ts` の GOE）と揃えてある。
    */
   aerobicHalfO2: number
+  /**
+   * ★**原核生物が好気の見返りを取り切れない度合い**（0..1）。
+   *
+   * 原核も好気呼吸はするが、電子伝達系が細胞膜にあり表面積/体積で頭打ちになる。
+   * ミトコンドリアはそれを内部化して 1 細胞あたりの ATP 生産を桁で上げた
+   * （Lane & Martin 2010）。**これが真核であることの見返り**。
+   *
+   * ★これが 0 だと `capEukaryotic` はどこからも読まれない量に戻る
+   * （実測で適応度の余白 0.0%、つまり獲得しても何も起きない）。
+   */
+  prokaryoteAerobicPenalty: number
+  /**
+   * ★**多細胞であることの防御**（0..1）。捕食者に見える量をこの割合だけ減らす。
+   * 骨格（`skeletonDefence`）と同じ書き方。単細胞の捕食者にとって、
+   * 大きな群体や多細胞体は物理的に手に余る。
+   */
+  multicellularDefence: number
+  /**
+   * ★**象徴（文化）が脳の維持費を薄める割合**（0..1）。
+   *
+   * 文化は各個体が一から学び直さなくてよくする（社会的学習）ので、
+   * 脳という高い器官の元を取りやすくなる。
+   * **脳が小さい系統には効かない**ので、大きな脳を持つ系統だけが得をする。
+   */
+  symbolicBrainRelief: number
   /**
    * 乾燥耐性のコスト（0..1）。耐性 1 のクレードが失う適応度の割合。
    *
@@ -463,6 +489,9 @@ export const EARTH_LIFE: LifeParams = {
   anoxygenicDonor: 0.25,
   aerobicAdvantage: 0.75,
   aerobicHalfO2: 1,
+  prokaryoteAerobicPenalty: 0.35,
+  multicellularDefence: 0.4,
+  symbolicBrainRelief: 0.7,
   aridityCost: 0,
   trophicEfficiency: 0.1,
   trophicTurnover: 4,
@@ -478,7 +507,11 @@ export const EARTH_LIFE: LifeParams = {
   brainCost: 0.12,
   brainCapture: 0.25,
   brainTolerance: 0.8,
-  symbolicCost: 0.1,
+  // ★0.1 → 0.02。見返り（文明）が M7 で未実装なのにコストだけ取っていたため、
+  // 選択が絶対に採らなかった（実測で全 16 クレードが −7.7〜−10.7%）。
+  // 脳の維持費を薄める見返り（`symbolicBrainRelief`）と対にして、
+  // **脳の大きい系統だけが得をする**形にする
+  symbolicCost: 0.02,
   symbolicTolerance: 0.35,
   ccnAlbedoMax: 0,
   ccnRelaxYears: 1_000_000,
@@ -1079,7 +1112,21 @@ export class Life implements Subsystem {
     // 掛け算で、`v` は 1 でクランプされる（下の注記）。だから
     // 「好気に加点」ではなく**「酸素のある世界で嫌気に減点」**で表す。
     const oxAvail = Math.min(1, o2 / p.aerobicHalfO2)
-    const metabolism = 1 - p.aerobicAdvantage * oxAvail * (1 - demandTr * sat)
+    // ★**好気の見返りを取り切れるのは真核だけ**（ミトコンドリア）。
+    //
+    // `capEukaryotic` は**ゲノムの定義以外どこからも読まれていなかった**
+    // （`grep` で 0 箇所。`CLAUDE.md` の 46）。獲得しても何も起きないので、
+    // 実測で適応度の余白が 0.0%、つまり**無償で子孫に広がる**状態だった。
+    //
+    // 原核生物も好気呼吸はするが、電子伝達系が細胞膜にあり、
+    // 表面積/体積の比で頭打ちになる。ミトコンドリアはそれを内部化して
+    // **1 細胞あたりの ATP 生産を桁で上げた**（Lane & Martin 2010）。
+    //
+    // ★**加点ではなく、真核でない側の減点**で表す（罠 42）。
+    // 無酸素の世界では `oxAvail = 0` なので**太古代の較正は動かない**。
+    const organelle = hasCapability(ph, C_EUKARYOTIC)
+      ? 1 : 1 - p.prokaryoteAerobicPenalty
+    const metabolism = 1 - p.aerobicAdvantage * oxAvail * (1 - demandTr * sat * organelle)
     // 基質: 陸に耐えられないクレードは陸の割合ぶん住めない
     const canLand = hasCapability(ph, C_LAND)
     const photo = tr[T_PHOTO]
@@ -1116,8 +1163,24 @@ export class Life implements Subsystem {
       : 0
     // 脳は高くつく（ヒトの脳は基礎代謝の約 20%）。象徴はさらに上乗せ。
     // ★見返りは捕獲効率と温度の許容幅。文明の見返りは M7 なのでまだ無い
-    const brainCost = 1 - p.brainCost * tr[T_BRAIN]
-      - (hasCapability(ph, C_SYMBOLIC) ? p.symbolicCost : 0)
+    // ★**象徴（文化）は脳の元を取りやすくする。**
+    //
+    // それまで象徴は**純粋な損**だった —— 実測で適応度の余白が
+    // 顕生代の全 16 クレードで **−7.7〜−10.7%**、原生代でも −8.5%。
+    // 見返りは温度の許容幅だったが、**温度が最適点に近い時代には何も生まない**
+    // （罠 41: 得をする条件が存在するかを確かめること）。
+    // コードのコメント自身が「文明の見返りは M7 なのでまだ無い」と言っていた。
+    // ★ハードステップは**稀であるべき**で、**不可能であるべきではない**。
+    //
+    // 文化は、各個体が一から学び直さなくてよくする（社会的学習）。
+    // つまり**脳という高い器官の維持費を、集団で薄める**。
+    // ★だから見返りは「脳のコストの減点を減らす」形にする（罠 42）。
+    // 脳が小さい系統には効かないので、**大きな脳を持つ系統だけが得をする**
+    // ——これが「知性が特定の系統に集中する」ことの表現になる。
+    const symbolic = hasCapability(ph, C_SYMBOLIC)
+    const brainUnit = p.brainCost * (symbolic ? 1 - p.symbolicBrainRelief : 1)
+    const brainCost = 1 - brainUnit * tr[T_BRAIN]
+      - (symbolic ? p.symbolicCost : 0)
     // 窒素固定はニトロゲナーゼが高くつく（N2 1 分子に ATP 16 個）
     const fixer = hasCapability(ph, C_NFIX)
     const fixCost = fixer ? 1 - p.fixationCost : 1
@@ -1280,8 +1343,15 @@ export class Life implements Subsystem {
     const bio = world.store.f32("biomass").read
     out.fill(0)
     for (const c of producers) {
-      const guard = hasCapability(c.phenotype, C_SKELETON)
-        ? 1 - this.params.skeletonDefence : 1
+      // ★**多細胞も食べられにくい。** `capMulticellular` は
+      // `bodyPlan.ts`（見た目）以外どこからも読まれておらず、
+      // 獲得しても生存に一切効いていなかった（罠 46）。
+      // 単細胞の捕食者にとって、大きな群体や多細胞体は物理的に手に余る。
+      // 骨格と同じ書き方で、**捕食者に見える量を減らす**形にする
+      const guard = (hasCapability(c.phenotype, C_SKELETON)
+        ? 1 - this.params.skeletonDefence : 1)
+        * (hasCapability(c.phenotype, C_MULTI)
+          ? 1 - this.params.multicellularDefence : 1)
       const off = c.lane * n
       for (let i = 0; i < n; i++) out[i] += bio[off + i] * guard
     }
