@@ -194,6 +194,13 @@ function fullHistory(): void {
     imb: [] as number[], landElev: [] as number[], carbonNet: [] as number[],
     ventTW: [] as number[], overturn: [] as number[], upwell: [] as number[],
     deepO2: [] as number[], phosphate: [] as number[],
+    /**
+     * ★**大気の酸素**。地球の現在は 21%、地質記録の最大は石炭紀の 30〜35%。
+     * **35% を超えると山火事が止まらなくなる**（Watson の火災フィードバック）
+     * ので、それ以上は有機物が存在できない水準である。
+     * ★これを見張る項目が無かったので、**70% まで上がっても素通り**していた。
+     */
+    o2: [] as number[],
     // ★**サーモスタットのレジームを時代ごとに見る。**
     // CO2 が高いとき「暑いのに風化が増えない」＝供給律速なのかを
     // 数字で分けるための診断量（`CLAUDE.md` の 15）。
@@ -271,6 +278,7 @@ function fullHistory(): void {
     traj.overturn.push(os.overturningSv)
     traj.upwell.push(os.upwellingSv)
     traj.deepO2.push(os.deepOxygen)
+    traj.o2.push(w.globals.o2)
     traj.phosphate.push(os.phosphateInventory)
     // ★**陸は `landFraction` で測る。物理が食べているのと同じ量にする。**
     //   セル平均の標高で切ると、まとまった陸が消えたとき最大 3.5 倍ずれる
@@ -490,6 +498,14 @@ function fullHistory(): void {
       const ph = med(pick(traj.phosphate, idx))
       check(ph >= 1e15 && ph <= 1e16 ? "PASS" : "WARN", "海洋のリン在庫 [mol]（顕生代）",
         `中央値 ${ph.toExponential(2)}  (地球 2.9e15)`)
+      // ★**大気の酸素**。これを見張る項目が無かったので 70% まで上がっても
+      //   素通りしていた（陸の測り方と同じ形 —— モデルが出しているのに
+      //   誰も見ていない量）。上限 35% は石炭紀の推定最大であり、
+      //   **それを超えると山火事が止まらず有機物が存在できない**
+      const o2 = med(pick(traj.o2, idx))
+      check(o2 >= 5 && o2 <= 35 ? "PASS" : "WARN", "大気の酸素 [%]（顕生代）",
+        `中央値 ${o2.toFixed(1)}  P95 ${pct(pick(traj.o2, idx), 95).toFixed(1)}`
+        + `  (地球 21。石炭紀の最大 30〜35。★35 を超えると山火事が止まらない)`)
     }
   }
 

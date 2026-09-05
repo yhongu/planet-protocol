@@ -70,6 +70,32 @@ export interface OxygenParams {
   oxidativeWeatheringPresent: number
   /** 酸化的風化の O2 依存の指数。0.5 が定番 */
   oxidativeWeatheringExponent: number
+  /**
+   * ★**山火事のフィードバックが立ち上がる O2 [%]。**
+   *
+   * 地球の酸素が 21% に留まっている主因は、酸化的風化ではなく**火災**だと
+   * 考えられている（Watson 1978、Lenton & Watson 2000）。
+   * O2 が高いほど植生は燃えやすく、**35% を超えると湿った植生でも
+   * 燃え広がって止まらない**。燃えた炭素は埋没せず CO2 に戻るので、
+   * **酸素の供給そのものが落ちる**。
+   *
+   * ★**負のフィードバックが「酸化的風化」1 本しか無かった。**しかも
+   * 指数が 0.5（平方根）と弱く、実測（6 seed の全史）で
+   * **埋没が 2.5 倍になると O2 が 8.5 倍**になっていた ——
+   * 5.0% から 42.7% まで散らばり、2 本が石炭紀の上限 35% を超えた。
+   *
+   * 【21 と 35 の根拠】現在の地球が 21%、石炭紀の推定最大が 30〜35%。
+   * その間で効き始め、35% 付近で強く効くようにする。
+   */
+  fireOnsetPercent: number
+  /** 火災が立ち上がる幅 [%]。この幅で 0 → 1 に移る */
+  fireWidthPercent: number
+  /**
+   * 火災が止められる埋没の割合（0..1）。1 なら高酸素で埋没が完全に止まる。
+   * ★**1 にしないこと。** 海の有機物は燃えないので、陸が全部燃えても
+   * 埋没はゼロにならない
+   */
+  fireBurialLoss: number
   /** O2 の下限 [%]。0 にすると CH4 の式が発散する */
   floorPercent: number
   /**
@@ -115,6 +141,9 @@ export const EARTH_OXYGEN: OxygenParams = {
   reductantTempScale: 80,
   oxidativeWeatheringPresent: 8.0e12,
   oxidativeWeatheringExponent: 0.5,
+  fireOnsetPercent: 25,
+  fireWidthPercent: 8,
+  fireBurialLoss: 0.85,
   floorPercent: 1e-7,
   co2DrawdownCoupling: 0,
   enabled: 1,
@@ -129,6 +158,11 @@ export interface OxygenState {
   reductant: number
   /** 酸化的風化 [mol/yr] */
   oxidativeWeathering: number
+  /**
+   * ★**山火事で失われた埋没の割合**（0..1）。
+   * 診断量。0 でない時代は「酸素が高すぎて植生が燃えている」ことを意味する
+   */
+  fireLoss: number
   /** 埋没した有機炭素の総量 [mol]。収支の相手 */
   buriedOrganicC: number
   /** 大酸化事変が起きた年（O2 が 1% を超えた最初の年）。まだなら -1 */
@@ -143,7 +177,7 @@ export class Oxygen implements Subsystem {
   readonly params: OxygenParams
   readonly state: OxygenState = {
     primaryProduction: 0, burial: 0, reductant: 0, oxidativeWeathering: 0,
-    buriedOrganicC: 0, goeYear: -1,
+    buriedOrganicC: 0, goeYear: -1, fireLoss: 0,
   }
 
   constructor(params?: Partial<OxygenParams>) {
@@ -203,6 +237,22 @@ export class Oxygen implements Subsystem {
         }
       }
     }
+    // ★**山火事のフィードバック**（Watson 1978、Lenton & Watson 2000）。
+    //
+    // O2 が高いほど植生は燃えやすく、35% を超えると湿った植生でも
+    // 燃え広がって止まらない。燃えた炭素は埋没せず CO2 に戻るので、
+    // **酸素の供給そのものが落ちる** —— これが地球の O2 を 21% に
+    // 留めている主因だと考えられている。
+    //
+    // ★**加点ではなく、供給の減点で書く**（`CLAUDE.md` の 42）。
+    // ★O2 が低い時代は `fire = 0` なので、**太古代と原生代の較正は動かない**。
+    const o2Now = Math.max(p.floorPercent, world.globals.o2)
+    const u = Math.max(0, Math.min(1,
+      (o2Now - p.fireOnsetPercent) / Math.max(1e-6, p.fireWidthPercent)))
+    const fire = u * u * (3 - 2 * u)                 // smoothstep
+    st.fireLoss = fire * p.fireBurialLoss
+    burialC *= 1 - st.fireLoss
+
     st.primaryProduction = npp
     st.burial = burialC
 
