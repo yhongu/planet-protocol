@@ -25,6 +25,14 @@ const SHOTS: Record<string, string> = {
   "title": `void 0`,
   "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
+  // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
+  "creatures": `(() => {
+    document.querySelector('.ttl-btn[data-go="new"]').click();
+    setTimeout(() => {
+      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      setTimeout(() => document.getElementById("ttStart").click(), 200);
+    }, 200);
+  })()`,
   "chapter": `(() => {
     document.querySelector('.ttl-btn[data-go="new"]').click();
     setTimeout(() => {
@@ -43,7 +51,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "title-new", "chapter"])
+const TITLE_SHOTS = new Set(["title", "title-new", "chapter", "creatures"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)
@@ -100,7 +108,23 @@ async function main(): Promise<void> {
     await sleep(5000)
   }
   await send("Runtime.evaluate", { expression: expr })
-  await sleep(name === "chapter" ? 25000 : 600)
+  await sleep(name === "chapter" || name === "creatures" ? 25000 : 600)
+  if (name === "creatures") {
+    // 優占クレードのレイヤにして、1 セルが十分大きくなるまで拡大する
+    await send("Runtime.evaluate", {
+      expression: `(() => {
+        const s = document.getElementById("layer");
+        s.value = "dominantClade"; s.dispatchEvent(new Event("change"));
+        const c = document.getElementById("view");
+        const r = c.getBoundingClientRect();
+        for (let i = 0; i < 14; i++) {
+          c.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, clientX: r.width/2,
+            clientY: r.height/2, bubbles: true, cancelable: true }));
+        }
+      })()`,
+    })
+    await sleep(2500)
+  }
   if (name === "chapter") {
     const v = (await send("Runtime.evaluate", {
       returnByValue: true,

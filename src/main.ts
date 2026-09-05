@@ -24,6 +24,7 @@ import { TitleScreen, type NewGameOptions } from "./ui/titleScreen"
 import { NOTE_FOR_LAYER } from "./ui/science"
 import { putSave, getSave, gzip, gunzip, whenLabel } from "./ui/saves"
 import { fetchChapter } from "./ui/chapters"
+import { clearCreatureCache } from "./render/creatures"
 import { track, trend, drawSparkline, resetSparklines } from "./ui/sparkline"
 import type { CladeInfo } from "./worker/protocol"
 import type { WorldEvent } from "./sim/world"
@@ -122,6 +123,7 @@ function boot(): void {
   eventPopup.clear()
   // ★前の惑星の線が残ると誤読する。作り直したら履歴も捨てる
   resetSparklines()
+  clearCreatureCache()
   renderEventLog()
   // ★**Worker の例外を握りつぶさない。**
   //
@@ -164,6 +166,7 @@ function boot(): void {
         skipLabel = ch.label
         post({ type: "skipTo", years: PLANET_AGE - ch.ga * 1e9 })
       }
+      applyCreatureSetting()
       const warn = $("warn")
       if (!m.shared) {
         warn.hidden = false
@@ -250,7 +253,10 @@ function boot(): void {
         oceanWaterFraction: m.globals.oceanWaterFraction,
         steamFraction: m.globals.steamFraction,
         mantleTempC: m.mantleTempC,
-        clades: roster.map((c) => ({ id: c.id, lane: c.lane })),
+        // ★能力と形質も渡す。生き物の絵を選ぶのに要る（`creatureGrade.ts`）
+        clades: roster.map((c) => ({
+          id: c.id, lane: c.lane, capabilities: c.capabilities, traits: c.traits,
+        })),
       })
       // 虫眼鏡は開いていれば毎ティック追従する（生命は動く）
       if (grid && store) inspector.refresh(grid, store, roster)
@@ -837,8 +843,31 @@ function refreshLegendIfNeeded(): void {
   renderLegend()
 }
 
+/**
+ * ★**生き物の絵を出すレイヤ。**
+ *
+ * 標高や風化レジームの上に生き物を置いても、その図が言いたいことを
+ * 邪魔するだけ。**生命を見るためのレイヤと、惑星そのものの絵**にだけ出す。
+ */
+const CREATURE_LAYERS = new Set(["natural", "biomass", "dominantClade", "diversity"])
+
+/**
+ * ★**既定は切。** 絵の配線は入っているが、地図に出すかは選ばせる ——
+ * 「1 マスに 1 種族」という嘘を強くする表示なので、
+ * **見たい人が明示的に入れる**形にしてある。
+ */
+const creatureToggle = $<HTMLInputElement>("showCreatures")
+function applyCreatureSetting(): void {
+  if (view) {
+    view.showCreatures = creatureToggle.checked && CREATURE_LAYERS.has(layerSelect.value)
+    view.invalidate()
+  }
+}
+creatureToggle.addEventListener("change", applyCreatureSetting)
+
 layerSelect.addEventListener("change", () => {
   view?.setLayer(layerById(layerSelect.value).render)
+  applyCreatureSetting()
   $("layerName").textContent = layerById(layerSelect.value).label
   renderLegend()
 })

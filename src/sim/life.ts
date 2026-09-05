@@ -50,6 +50,7 @@
  *   障壁は基質で表す設計なので、形質としては空のまま
  */
 import type { World } from "./world"
+import { siteLabel } from "./prebiotic"
 import type { Subsystem } from "./loop"
 import type { FieldSpec } from "../core/fields"
 import { Rng, Stream } from "../core/rng"
@@ -614,6 +615,13 @@ export class Life implements Subsystem {
   private recentExtinctions: number[] = []
   /** 最後に大量絶滅を刻んだ年。同じ episode を二重に刻まないため */
   private lastMassExtinction = -Infinity
+  /**
+   * ★最後に LUCA を生んだ起源の年。**二度目の起源を見分けるため。**
+   * `-Infinity` は「まだ一度も生んでいない」
+   */
+  private lastOriginYear = -Infinity
+  /** 前の歩に生命がいたか。**全滅した瞬間**を捕まえるため */
+  private hadLife = false
 
   /**
    * ★**セーブ用。** クレードは**生きているものと絶滅したもの両方**を持つ
@@ -631,6 +639,8 @@ export class Life implements Subsystem {
       firstSeen: [...this.firstSeen],
       recentExtinctions: this.recentExtinctions,
       lastMassExtinction: this.lastMassExtinction,
+      lastOriginYear: this.lastOriginYear,
+      hadLife: this.hadLife,
       rng: this.rng.getState(),
     }
   }
@@ -640,6 +650,7 @@ export class Life implements Subsystem {
       clades: Clade[]; history: Clade[]; nextId: number; freeLanes: number[]
       nitrogen: number; origins: number; firstSeen: [number, number][]
       recentExtinctions: number[]; lastMassExtinction: number
+      lastOriginYear: number; hadLife: boolean
       rng: [number, number, number, number]
     }
     this.clades.length = 0; this.clades.push(...g.clades)
@@ -660,6 +671,8 @@ export class Life implements Subsystem {
     for (const [k, y] of g.firstSeen) this.firstSeen.set(k, y)
     this.recentExtinctions = g.recentExtinctions
     this.lastMassExtinction = g.lastMassExtinction
+    this.lastOriginYear = g.lastOriginYear ?? -Infinity
+    this.hadLife = g.hadLife ?? this.clades.length > 0
     this.rng.setState(g.rng)
   }
   /** 捕食者どうしの競争（生産者とは別の土俵） */
@@ -689,8 +702,44 @@ export class Life implements Subsystem {
     const { W, H } = world.grid
     const n = W * H
 
-    if (this.clades.length === 0 && this.history.length === 0) {
+    // ★**二度目の起源。** 全滅しても、前生命化学がまた起源を出せば生命は戻る。
+    //
+    // それまでは `history.length === 0` も要求していたので、
+    // **一度でも生命がいた惑星では二度と LUCA が生まれなかった**
+    // （`history` は絶滅したクレードを残すので空にならない）。
+    // つまり**全滅 = 45.4 億年の行き止まり**だった。
+    //
+    // `Prebiotic.isActive` が「いま生命がいないなら働く」に直ったので、
+    // ここは **`originYear` が新しくなったか**だけ見ればよい。
+    // ★**全滅した瞬間に、有機物のスープを空にする。**
+    //
+    // これが無いと、最初の起源の直前まで溜まっていた材料がそのまま残っていて
+    // **全滅の次の歩で二度目が起きてしまう**（劇にならない）。
+    // 物理的にも正しい —— 生命は 45 億年かけて有機物を食べ尽くしている。
+    // 空にしてから溜め直すので、**二度目までに数億年かかる**
+    if (this.clades.length > 0) this.hadLife = true
+    else if (this.hadLife) {
+      this.hadLife = false
+      world.store.f32("prebioticMonomer").read.fill(0)
+      world.store.f32("prebioticOligomer").read.fill(0)
+      world.events.push({
+        year: world.globals.yearsElapsed, kind: "milestone", code: "ev-extinction",
+        text: "★生命が全滅した。有機物のスープは食べ尽くされている ——"
+          + " また溜まれば、別の生命が生まれるかもしれない",
+      })
+    }
+    if (this.clades.length === 0 && st.originYear !== this.lastOriginYear) {
+      this.lastOriginYear = st.originYear
+      // ★**新しい系統樹にする。** 前の惑星の系譜を引き継がない
+      //   （由来 id は世界にひとつなので、相同と収斂の区別はそのまま生きる）
       this.birthLuca(world, st.originSite ?? "vent")
+      if (this.history.length > 1) {
+        world.events.push({
+          year: st.originYear, kind: "milestone", code: "ev-origin",
+          text: `★二度目の生命の起源: ${this.history.length - 1} 系統が絶滅したあと、`
+            + `${siteLabel(st.originSite)}でやり直した`,
+        })
+      }
     }
     if (this.clades.length === 0) return
 

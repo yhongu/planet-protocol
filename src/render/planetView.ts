@@ -7,6 +7,7 @@
  */
 
 import type { Grid } from "../core/grid"
+import { creatureSprite, gradeOf, MIN_CELL_PX } from "./creatures"
 import type { FieldStore } from "../core/fields"
 
 /**
@@ -26,7 +27,12 @@ export interface LayerEnv {
    * ★**色は id で決める。** レーンは絶滅すると再利用されるので、
    * レーンで色を決めると**別の系統が前の色を継ぐ**。
    */
-  clades?: readonly { id: number; lane: number }[]
+  clades?: readonly {
+    id: number; lane: number
+    /** ★生き物の絵を選ぶのに要る（`creatureGrade.ts`）。無ければ絵は出さない */
+    capabilities?: number
+    traits?: readonly number[]
+  }[]
 }
 
 export type LayerFn = (
@@ -327,11 +333,100 @@ export class PlanetView {
         ox + k * dw, oy, dw, dh)
     }
 
+    this.drawCreatures(ctx, ox, oy, dw, first, last)
     this.drawGraticule(ctx, ox, oy, dw, dh, first, last)
     if (this.targeting && this.hoverCell) {
       this.drawTarget(ctx, ox, oy, this.hoverCell)
     }
   }
+
+  /**
+   * ★**生き物の絵をマスに置く**（`docs/07-art-spec.md` §7.6）。
+   *
+   * ★**1 マスに 1 種族ではない。** 最大 16 クレードが取り分で同居しているので、
+   * 置けるのは**そのセルで一番多いクレード**だけ。だから
+   * **セルが十分大きいときにしか出さない**（`MIN_CELL_PX`）——
+   * 小さいと点にしかならず、しかも「1 マス 1 種族」という嘘が強くなる。
+   * 中身を読むのは虫眼鏡の役目。
+   *
+   * ★**レイヤが許したときだけ**出す。標高や風化レジームの上に生き物を
+   * 置いても、その図が言いたいことを邪魔するだけ。
+   */
+  private drawCreatures(
+    ctx: CanvasRenderingContext2D,
+    ox: number, oy: number, dw: number, first: number, last: number,
+  ): void {
+    if (!this.showCreatures || this.scale < MIN_CELL_PX) return
+    const clades = this.env.clades
+    if (!clades || clades.length === 0) return
+    if (!this.store.has("biomass") || !this.store.has("biomassTotal")) return
+    const bio = this.store.f32("biomass").read
+    const tot = this.store.f32("biomassTotal").read
+    const { W, H } = this.grid
+    const n = W * H
+    const { width, height } = this.viewportSize()
+    // 画面に入っているセルだけ回す
+    const x0 = Math.max(0, Math.floor((-ox - first * dw) / this.scale) - 1)
+    const y0 = Math.max(0, Math.floor(-oy / this.scale) - 1)
+    const y1 = Math.min(H - 1, Math.ceil((height - oy) / this.scale) + 1)
+    const size = Math.round(this.scale * 0.82)
+    ctx.imageSmoothingEnabled = false
+    // ★**全マスに置かない。** 同じ絵が整然と並ぶと「壁紙」に見えて、
+    //   地図が読めなくなる（罠 32: 表示は可視化であって転写ではない）。
+    //   セルが小さいうちは間引き、大きくなるほど密に置く
+    const step = this.scale >= MIN_CELL_PX * 2.4 ? 1 : 2
+    for (let y = y0; y <= y1; y++) {
+      for (let x = 0; x < W; x++) {
+        // ★間引きは**セルの座標で決める**（画面座標だと動かすたびに絵が瞬く）
+        if (step > 1 && ((x + y) % step !== 0)) continue
+        const i = y * W + x
+        const t = tot[i]
+        if (!(t > 1e-5)) continue
+        // そのセルで一番多いクレードを選ぶ
+        let best = -1, bestV = 0
+        for (const c of clades) {
+          const v = bio[c.lane * n + i]
+          if (v > bestV) { bestV = v; best = c.id }
+        }
+        // ★**閾値を置かない。優占クレードのレイヤと同じ規則にする**
+        //   （罠 23: 離散側の基準を隣の機構と揃える）。
+        //   16 クレードが均等に同居していると、一番多い系統でも取り分は
+        //   1 割程度しかない。20% の閾値を置いたら**ほとんどのマスに
+        //   絵が出なかった**（実測）。地図の色と絵が食い違ってはいけない
+        if (best < 0) continue
+        const c = clades.find((q) => q.id === best)!
+        if (c.capabilities === undefined) continue
+        const sprite = creatureSprite(gradeOf(c.capabilities, c.traits), c.id)
+        if (!sprite) continue
+        for (let k = first; k <= last; k++) {
+          const sx = ox + k * dw + (x + 0.5) * this.scale - size / 2
+          const sy = oy + (y + 0.5) * this.scale - size / 2
+          if (sx > width || sx + size < 0 || sy > height || sy + size < 0) continue
+          // 薄いところは薄く描く（バイオマスが 0 に近いセルに濃い絵を置かない）
+          ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * Math.min(1, t * 4))
+          // ★**背景から浮かせる。**
+          //   生き物は地図と同じ系統色に塗ってあるので、その色のセルに
+          //   置くと**沈んで見えない**（実測: 緑のセルに緑の生き物）。
+          //   1 ドットぶん暗い影を先に敷いて、輪郭を作る
+          // 影は**薄く・1 ドットだけ**。濃くすると生き物が真っ黒になって
+          // 系統の色が消える（実測でそうなった）
+          const a = ctx.globalAlpha
+          ctx.globalAlpha = a * 0.45
+          const prev = ctx.filter
+          ctx.filter = "brightness(0.15)"
+          ctx.drawImage(sprite, sx + 1.5, sy + 1.5, size, size)
+          ctx.filter = prev
+          ctx.globalAlpha = a
+          ctx.drawImage(sprite, sx, sy, size, size)
+        }
+      }
+    }
+    ctx.globalAlpha = 1
+    void x0
+  }
+
+  /** ★生き物の絵を出すか。レイヤ側が決める（`main.ts` が刺す）*/
+  showCreatures = false
 
   /**
    * 照準の輪。**効く範囲（3x3 セル）をそのまま描く。**

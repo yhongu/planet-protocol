@@ -286,9 +286,26 @@ export class Prebiotic implements Subsystem {
     this.rng = new Rng(seed, Stream.Evolution)
   }
 
+  /**
+   * ★**前生命化学が働くのは「いま生命がいないとき」。**
+   *
+   * それまでは `originYear < 0`、つまり**一度でも生命が生まれたら永久に停止**
+   * していた。だから**全滅すると 45.4 億年の行き止まり**になっていた
+   * （`life.ts` の LUCA 再誕も `history` が空のときだけなので、二度と戻らない）。
+   *
+   * ★**止める理由が間違っていた。** 地球の起源が 1 回きりに見える本当の理由は
+   * 「一度起きたから」ではなく、**既にいる生命が有機物を食べてしまうから**である
+   * （ダーウィンの "warm little pond" の議論）。新しく合成された単量体は
+   * 既存の生物に消費されて濃縮しない。
+   *
+   * 条件を**「いま生命がいるか」**に直すと:
+   *   生命がいる → 起源は起きない（**理由が正しくなる**）
+   *   全滅した   → スープがまた溜まる → **二度目の起源がありうる**
+   */
   isActive(world: World): boolean {
-    return this.params.enabled > 0 && this.state.originYear < 0
-      && world.globals.oceanWaterFraction > 0
+    if (this.params.enabled <= 0) return false
+    if (!(world.globals.oceanWaterFraction > 0)) return false
+    return this.state.originYear < 0 || world.life.clades.length === 0
   }
 
   update(world: World, dtYears: number): void {
