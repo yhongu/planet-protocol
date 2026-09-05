@@ -153,7 +153,9 @@ export class Inspector {
       const grade = gradeOf(c.capabilities, c.traits)
       const bs = c.traits[GENE_KINDS.indexOf("bodySize")] ?? 0
       const sz = sizeLevel(bs)
-      const pic = creatureImageUrl(grade, c.id)
+      // ★体の色の濃さ（`albedoEffect`）を絵に出す。**実際に分化している形質**
+      const shade = c.traits[GENE_KINDS.indexOf("albedoEffect")] ?? 0.5
+      const pic = creatureImageUrl(grade, c.id, shade)
       // ★**目盛りは文字で描かない。** ▮/▯ はフォントによって幅も太さも違い、
       //   実測では「▮0000」と数字に見えた（`snapshots/ui-inspect.png`）
       const bars = Array.from({ length: 5 }, (_, k) =>
@@ -170,6 +172,11 @@ export class Inspector {
         + `<div class="cl-grade">${esc(GRADE_LABEL[grade])}</div>`
         + `<div class="cl-size" title="体サイズ ${bs.toFixed(2)}">`
         + `<b>大きさ</b><span class="lv">${bars}</span>${esc(sz.ja)}</div>`
+        + `<div class="cl-size" title="体の色の濃さ ${shade.toFixed(2)}">`
+        + `<b>色の濃さ</b><span class="lv">`
+        + Array.from({ length: 5 }, (_, k) =>
+          `<i class="${k < Math.max(1, Math.round(shade * 5)) ? "on" : ""}"></i>`).join("")
+        + `</span>${shade >= 0.6 ? "濃い" : shade >= 0.3 ? "中" : "淡い"}</div>`
         + `</div></div>`
         + `<div class="cl-analog${an.novel ? " novel" : ""}" title="${esc(an.era)}">`
         + `${esc(an.name)}`

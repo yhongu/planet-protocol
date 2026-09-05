@@ -8,6 +8,9 @@
 
 import type { Grid } from "../core/grid"
 import { creatureSprite, gradeOf, MIN_CELL_PX } from "./creatures"
+import { GENE_KINDS } from "../sim/genome"
+/** 体の色の濃さの添字。★ホットループで `indexOf` を引かない */
+const ALBEDO_INDEX = GENE_KINDS.indexOf("albedoEffect")
 import type { FieldStore } from "../core/fields"
 
 /**
@@ -396,7 +399,9 @@ export class PlanetView {
         if (best < 0) continue
         const c = clades.find((q) => q.id === best)!
         if (c.capabilities === undefined) continue
-        const sprite = creatureSprite(gradeOf(c.capabilities, c.traits), c.id)
+        // ★体の色の濃さ（`albedoEffect`）。段に丸めて渡すので絵は使い回せる
+        const sprite = creatureSprite(gradeOf(c.capabilities, c.traits), c.id,
+          c.traits?.[ALBEDO_INDEX] ?? 0.5)
         if (!sprite) continue
         for (let k = first; k <= last; k++) {
           const sx = ox + k * dw + (x + 0.5) * this.scale - size / 2

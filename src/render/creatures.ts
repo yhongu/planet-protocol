@@ -57,8 +57,18 @@ function magentaKind(r: number, g: number, b: number): 0 | 1 | 2 | 3 {
  * その段階・その系統の絵を返す。まだ読めていなければ `null`。
  * ★塗り替えた結果は使い回す（毎フレーム塗ると 60fps が出ない）
  */
-export function creatureSprite(grade: Grade, cladeId: number): HTMLCanvasElement | null {
-  const key = `${grade}|${cladeId}`
+/**
+ * @param shade  体の色の濃さ（`albedoEffect` 0..1）。**1 で暗い**。
+ *   ★実測で 4 seed 中央値 平均 0.756 / SD 0.397 —— **実際に分化している**
+ *   形質なので、絵に出す意味がある（氷の時代に濃い体が有利）。
+ *   ★段に丸めて渡すこと。連続値のまま渡すと**クレードごとに別の絵**が
+ *   できてキャッシュが効かない（16 系統 × 段の数までに抑える）
+ */
+export function creatureSprite(
+  grade: Grade, cladeId: number, shade = 0.5,
+): HTMLCanvasElement | null {
+  const step = Math.max(0, Math.min(4, Math.round(shade * 4)))
+  const key = `${grade}|${cladeId}|${step}`
   const hit = tinted.get(key)
   if (hit) return hit
   const src = source(grade)
@@ -79,11 +89,16 @@ export function creatureSprite(grade: Grade, cladeId: number): HTMLCanvasElement
     const kind = magentaKind(p[i], p[i + 1], p[i + 2])
     if (kind === 0) continue
     // 主 = そのまま / 影 = 0.62 倍 / ハイライト = 白へ 0.45 寄せ
-    const k = kind === 1 ? 1 : kind === 2 ? 0.62 : 1
+    // ★**色の濃さ**（`albedoEffect`）。段 0（薄い）で 1.45 倍、段 4（濃い）で 0.55 倍。
+    //   ★明るい側は 1 を超えるので、下でクランプすること
+    const tone = 1.45 - 0.225 * step
+    const k = (kind === 1 ? 1 : kind === 2 ? 0.62 : 1) * tone
     const lift = kind === 3 ? 0.45 : 0
-    p[i] = cr * k + (255 - cr * k) * lift
-    p[i + 1] = cg * k + (255 - cg * k) * lift
-    p[i + 2] = cb * k + (255 - cb * k) * lift
+    const cl = (c: number) => {
+      const v = c * k + (255 - c * k) * lift
+      return v < 0 ? 0 : v > 255 ? 255 : v
+    }
+    p[i] = cl(cr); p[i + 1] = cl(cg); p[i + 2] = cl(cb)
   }
   ctx.putImageData(d, 0, 0)
   tinted.set(key, cv)
@@ -99,11 +114,14 @@ const urls = new Map<string, string>()
  * 素材は**塗り替える場所をマゼンタで置いている**ので、そのままだと
  * ピンクの塊が出る（`magentaKind`）。
  */
-export function creatureImageUrl(grade: Grade, cladeId: number): string | null {
-  const key = `${grade}|${cladeId}`
+export function creatureImageUrl(
+  grade: Grade, cladeId: number, shade = 0.5,
+): string | null {
+  const step = Math.max(0, Math.min(4, Math.round(shade * 4)))
+  const key = `${grade}|${cladeId}|${step}`
   const hit = urls.get(key)
   if (hit) return hit
-  const cv = creatureSprite(grade, cladeId)
+  const cv = creatureSprite(grade, cladeId, shade)
   if (!cv) return null            // まだ読み込み中。次のティックで出る
   const u = cv.toDataURL()
   urls.set(key, u)
