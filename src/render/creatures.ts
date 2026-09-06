@@ -105,6 +105,44 @@ export function creatureSprite(
   return cv
 }
 
+/** 影の絵。`grade|cladeId|step` で引く */
+const shadows = new Map<string, HTMLCanvasElement>()
+
+/**
+ * **輪郭を作るための影**（暗く落とした同じ絵）。
+ *
+ * ★**`ctx.filter` を描画のたびに設定してはいけない。**
+ * 以前は `ctx.filter = "brightness(0.15)"` を**セルごとに 2 回**
+ * 設定していた。実測（顕生代・優占クレード・最大拡大）で
+ * **60fps → 2fps、30 倍遅い**（`probe-creature-fps.ts`）。
+ * Canvas の `filter` は設定するたびにフィルタの経路を組み直すので、
+ * 1 フレームに数千回やると描画が止まる。**焼いてから使い回す。**
+ */
+export function creatureShadow(
+  grade: Grade, cladeId: number, shade = 0.5,
+): HTMLCanvasElement | null {
+  const step = Math.max(0, Math.min(4, Math.round(shade * 4)))
+  const key = `${grade}|${cladeId}|${step}`
+  const hit = shadows.get(key)
+  if (hit) return hit
+  const src = creatureSprite(grade, cladeId, shade)
+  if (!src) return null
+  const cv = document.createElement("canvas")
+  cv.width = src.width; cv.height = src.height
+  const ctx = cv.getContext("2d")
+  if (!ctx) return null
+  ctx.imageSmoothingEnabled = false
+  ctx.drawImage(src, 0, 0)
+  const d = ctx.getImageData(0, 0, cv.width, cv.height)
+  const p = d.data
+  for (let i = 0; i < p.length; i += 4) {
+    p[i] *= 0.15; p[i + 1] *= 0.15; p[i + 2] *= 0.15
+  }
+  ctx.putImageData(d, 0, 0)
+  shadows.set(key, cv)
+  return cv
+}
+
 /** データ URL にした結果。★`toDataURL` は毎ティック呼ぶには重い */
 const urls = new Map<string, string>()
 
@@ -129,7 +167,9 @@ export function creatureImageUrl(
 }
 
 /** 惑星を作り直したら捨てる（クレードの id が振り直される） */
-export function clearCreatureCache(): void { tinted.clear(); urls.clear() }
+export function clearCreatureCache(): void {
+  tinted.clear(); urls.clear(); shadows.clear()
+}
 
 export { gradeOf }
 export type { Grade }

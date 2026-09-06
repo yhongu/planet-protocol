@@ -7,7 +7,7 @@
  */
 
 import type { Grid } from "../core/grid"
-import { creatureSprite, gradeOf, MIN_CELL_PX } from "./creatures"
+import { creatureSprite, creatureShadow, gradeOf, MIN_CELL_PX } from "./creatures"
 import { GENE_KINDS } from "../sim/genome"
 /** 体の色の濃さの添字。★ホットループで `indexOf` を引かない */
 const ALBEDO_INDEX = GENE_KINDS.indexOf("albedoEffect")
@@ -400,9 +400,13 @@ export class PlanetView {
         const c = clades.find((q) => q.id === best)!
         if (c.capabilities === undefined) continue
         // ★体の色の濃さ（`albedoEffect`）。段に丸めて渡すので絵は使い回せる
-        const sprite = creatureSprite(gradeOf(c.capabilities, c.traits), c.id,
-          c.traits?.[ALBEDO_INDEX] ?? 0.5)
+        const shade = c.traits?.[ALBEDO_INDEX] ?? 0.5
+        const g = gradeOf(c.capabilities, c.traits)
+        const sprite = creatureSprite(g, c.id, shade)
         if (!sprite) continue
+        // ★影は**焼いた絵**を使う。`ctx.filter` を毎回設定すると
+        //   実測で 60fps → 2fps（`probe-creature-fps.ts`）
+        const shadow = creatureShadow(g, c.id, shade)
         for (let k = first; k <= last; k++) {
           const sx = ox + k * dw + (x + 0.5) * this.scale - size / 2
           const sy = oy + (y + 0.5) * this.scale - size / 2
@@ -416,12 +420,11 @@ export class PlanetView {
           // 影は**薄く・1 ドットだけ**。濃くすると生き物が真っ黒になって
           // 系統の色が消える（実測でそうなった）
           const a = ctx.globalAlpha
-          ctx.globalAlpha = a * 0.45
-          const prev = ctx.filter
-          ctx.filter = "brightness(0.15)"
-          ctx.drawImage(sprite, sx + 1.5, sy + 1.5, size, size)
-          ctx.filter = prev
-          ctx.globalAlpha = a
+          if (shadow) {
+            ctx.globalAlpha = a * 0.45
+            ctx.drawImage(shadow, sx + 1.5, sy + 1.5, size, size)
+            ctx.globalAlpha = a
+          }
           ctx.drawImage(sprite, sx, sy, size, size)
         }
       }

@@ -124,9 +124,13 @@ async function main(): Promise<void> {
       expression: `(() => {
         const s = document.getElementById("layer");
         s.value = "dominantClade"; s.dispatchEvent(new Event("change"));
+        // ★**チェックを押すこと。** 押さないと絵は出ないので、
+        //   「絵が出ない」のか「撮り方が悪い」のか分からない写真になる
+        const t = document.getElementById("showCreatures");
+        t.checked = true; t.dispatchEvent(new Event("change"));
         const c = document.getElementById("view");
         const r = c.getBoundingClientRect();
-        for (let i = 0; i < 14; i++) {
+        for (let i = 0; i < 9; i++) {
           c.dispatchEvent(new WheelEvent("wheel", { deltaY: -100, clientX: r.width/2,
             clientY: r.height/2, bubbles: true, cancelable: true }));
         }
