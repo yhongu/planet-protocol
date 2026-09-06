@@ -439,9 +439,48 @@ export class World {
    */
   climateBackendFailures = 0
 
+  /** GPU が投げた理由（UI に出す）。★黙って CPU に落ちない */
+  climateBackendError: string | null = null
+
+  /**
+   * 走っている solve。★**同時に 2 本走らせない。**
+   *
+   * ユーザ報告（2026-09-06）のスタックは 2 本あった ——
+   * `onmessage → refreshAsync → solveClimateAsync` と
+   * `tick → solveOnce`。**同じ GPU バッファに `mapAsync` が二重に掛かり**
+   * 「Buffer already has an outstanding map pending」で落ちた。
+   *
+   * ★GPU 固有の話ではない。**同じ場（temperature など）を 2 本の
+   * 非同期処理が同時に書く**という穴で、CPU でも結果が壊れうる。
+   * だから直列化はバックエンドではなく**ここ**に置く。
+   */
+  private climateQueue: Promise<unknown> = Promise.resolve()
+
   async solveClimateAsync(opts?: Partial<SolveOptions>): Promise<ClimateStats> {
+    const run = () => this.solveClimateOnce(opts)
+    // 前の solve が終わってから始める（失敗しても列は詰まらせない）
+    const next = this.climateQueue.then(run, run)
+    this.climateQueue = next.catch(() => undefined)
+    return next
+  }
+
+  private async solveClimateOnce(opts?: Partial<SolveOptions>): Promise<ClimateStats> {
     if (!this.climateBackend) return this.solveClimate(opts)
-    const s = await this.climateBackend.solve(this.store, this.params, this.globals)
+    let s: ClimateStats
+    try {
+      s = await this.climateBackend.solve(this.store, this.params, this.globals)
+    } catch (e) {
+      // ★**例外も拾うこと。** 下の安全網は「変な数字」しか見ていなかったので、
+      //   WebGPU の検証エラー（`Buffer already has an outstanding map pending`）が
+      //   そのまま上まで飛び、**worker の tick ごと死んで時間が止まった**
+      //   （2026-09-06 のユーザ報告「一生時間が進まなくなった」）。
+      // ★検証エラーは一時的なものではないので、**1 回で見切る**。
+      //   数字がおかしいだけなら 8 回まで様子を見る（下）
+      this.climateBackendError = e instanceof Error ? e.message : String(e)
+      this.climateBackend = null
+      this.climateBackendFailures++
+      return this.solveClimate(opts)
+    }
     // ★**安全網: GPU の解が信用できなければ CPU で解き直す。**
     //
     // CPU 版の擬似時間発展には安全装置がある（残差が悪化したら差し戻して

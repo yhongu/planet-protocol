@@ -7,6 +7,7 @@
 
 import { World } from "../sim/world"
 import type { WorldEvent } from "../sim/world"
+import type { SolveOptions } from "../sim/climate"
 import { landAreaFraction } from "../sim/world"
 import { saveWorld, applySnapshot } from "../sim/snapshot"
 import { WORLD_FIELDS } from "../sim/world"
@@ -39,6 +40,20 @@ const BAD_TICKS = 8
 let sentEvents = 0
 /** GPU バックエンドの状態。UI に出して、何で走っているかを分かるようにする。 */
 let gpuInfo = "CPU"
+
+/**
+ * ★**`void` で投げっぱなしにしない。** メッセージ処理から呼ぶ再計算が
+ * 投げると、ブラウザに `Uncaught (in promise)` として出るだけで
+ * **誰も拾わない**（2026-09-06 のユーザ報告のコンソールがそれ）。
+ * 拾って画面に出し、次の指示は受けられる状態を保つ。
+ */
+function refresh(w: World, opts?: Partial<SolveOptions>): void {
+  w.refreshAsync(opts).catch((e: unknown) => {
+    console.error("[sim] 再計算が投げました", e)
+    self.postMessage({ type: "progress", years: 0, target: 0, done: true,
+      label: `内部エラー: ${e instanceof Error ? e.message : String(e)}` })
+  })
+}
 
 /** 対話中の気候ソルバの設定 */
 const INTERACTIVE = { cgTol: 1e-2, maxOuter: 8, tol: 1e-4 } as const
@@ -88,7 +103,18 @@ async function tick(): Promise<void> {
     console.error("[sim] tick が投げました", e)
     self.postMessage({ type: "progress", years: 0, target: 0, done: true,
       label: `内部エラー: ${e instanceof Error ? e.message : String(e)}` })
-    throw e
+    // ★**投げ直さない。** 上のコメントが書いているとおり、投げると
+    //   `setTimeout` の予約が走らず**ループごと静かに死ぬ** ——
+    //   実際に WebGPU の検証エラーでそうなり、画面が固まった
+    //   （2026-09-06「一生時間が進まなくなった」）。
+    //   1 回投げたら止めて、**次の指示は受けられる状態で待つ**。
+    //   黙って止まらないよう、速度も 0 にして UI に出す
+    speedMultiplier = 0
+    requestedSpeed = 0
+    yearsPerSecond = 0
+    untilEvent = false
+    if (world) { try { postState(0) } catch { /* 状態も送れないなら諦める */ } }
+    timer = setTimeout(() => { void tick() }, 500)
   }
 }
 
@@ -238,7 +264,11 @@ function postState(solveMs: number): void {
     climateFallbacks: world.climateBackendFailures,
     stoppedAtEvent,
     solveMs,
-    backend: gpuInfo,
+    // ★**GPU から落ちたことを黙らせない。** 例外で CPU に切り替わったら、
+    //   その理由をそのまま出す（`docs/04-6`「解けなかったことは必ず外へ出す」）
+    backend: world.climateBackendError
+      ? `CPU（GPU が落ちた: ${world.climateBackendError.slice(0, 60)}）`
+      : gpuInfo,
     /** いま実際に使っている速度の段。自動で落ちていると要求と違う */
     effectiveSpeed: speedMultiplier,
     requestedSpeed,
@@ -348,7 +378,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         Object.assign(world.globals, m.patch)
         // 太陽の倍率が変わったかもしれないので実効値を作り直す
         world.applySun()
-        void world.refreshAsync(INTERACTIVE)
+        refresh(world, INTERACTIVE)
       }
       break
     case "setParams":
@@ -383,7 +413,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break
     case "intervene":
-      if (world) { world.intervene(m.kind, m.magnitude, m.cell, m.geneKind); void world.refreshAsync() }
+      if (world) { world.intervene(m.kind, m.magnitude, m.cell, m.geneKind); refresh(world) }
       break
     // --- セーブ ---------------------------------------------------
     case "save":
@@ -407,7 +437,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         speedMultiplier = 0
         yearBank = 0
         applySnapshot(world, new Uint8Array(m.bytes))
-        void world.refreshAsync(INTERACTIVE)
+        refresh(world, INTERACTIVE)
       }
       break
     // --- 章立て（指定の年まで早送りする）-----------------------------

@@ -622,6 +622,26 @@ wait
    **画面は「この形質は使っていません」と言い続けていた**（罠 50 の裏返し）。
    `grep -n "unused" src/ui/geneLabels.ts` を接続作業の締めに入れる
 
+106. ★★**同じ場を 2 本の非同期処理が同時に書いていた。** ユーザ報告の
+   スタックが 2 本あって初めて分かった —— `onmessage → refreshAsync` と
+   `tick → solveOnce`。同じ GPU バッファに `mapAsync` が二重に掛かり
+   「Buffer already has an outstanding map pending」で落ちた。
+   ★**GPU 固有の話ではない**（CPU でも `temperature` を同時に書けば壊れる）。
+   だから直列化は**バックエンドではなく `World` に置く**
+107. ★**安全網が「変な数字」しか見ていなかった。例外は素通りした。**
+   `solveClimateAsync` は `clampedCells` や `NaN` は拾うのに、
+   バックエンドが**投げた**場合は上まで飛んだ。そして `tick` の catch は
+   **ログを出してから再スロー**していたので `setTimeout` の予約が走らず、
+   **ループごと死んで時間が二度と進まなかった**。
+   ★コメント自身が「投げるとループごと静かに死ぬ」と書いてあった ——
+   **危険を書いておくことと、防ぐことは別**
+108. ★**`void promise` は「拾わない」と書いているのと同じ。**
+   `void world.refreshAsync()` が投げると `Uncaught (in promise)` が
+   コンソールに出るだけで、画面には何も出ない。**catch して外へ出す**
+109. ★**GPU が無い環境では GPU のバグを再現できない。**
+   だから**投げるバックエンドを刺したテスト**を書く（`backendFallback.test.ts`）。
+   「本物で再現できない」は「検証しなくてよい」ではない
+
 詳しい実測値と経緯は `WORK-IN-PROGRESS.md` と `docs/01-6.5c`。
 
 ## 設計上の契約
