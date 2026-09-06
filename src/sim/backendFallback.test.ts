@@ -68,6 +68,47 @@ describe("気候バックエンドの安全網", () => {
     expect(w.climateBackend).not.toBeNull()
   })
 
+
+  it("★climateIdle は飛んでいる solve を待つ（場を差し替える前に呼ぶ）", async () => {
+    const w = mk()
+    let finished = false
+    w.climateBackend = {
+      solve: async () => {
+        await new Promise((r) => setTimeout(r, 20))
+        finished = true
+        return { meanT: 15, converged: true, clampedCells: 0, imbalance: 0,
+          radiative: {}, gradient: 0 }
+      },
+      destroy: () => {},
+    } as never
+    const p = w.solveClimateAsync()
+    await w.climateIdle()
+    expect(finished).toBe(true)     // ★待たずに戻ったら差し替えが壊れる
+    await p
+  })
+
+  it("★飛んでいる solve が、復元した場を上書きしない", async () => {
+    // ユーザ報告「ロードした瞬間、全球凍結して生命が全部しんだ」の形。
+    // 前の状態の solve が `applySnapshot` の**後**に完了すると、
+    // 復元した温度を古い値で塗りつぶし、氷アルベドの暴走に落ちる
+    const w = mk()
+    const T = w.store.f32("temperature").read
+    w.climateBackend = {
+      solve: async () => {
+        await new Promise((r) => setTimeout(r, 20))
+        T.fill(150)                 // ★古い温度を書き戻す（GPU の finish 相当）
+        return { meanT: 15, converged: true, clampedCells: 0, imbalance: 0,
+          radiative: {}, gradient: 0 }
+      },
+      destroy: () => {},
+    } as never
+    const p = w.solveClimateAsync()
+    await w.climateIdle()           // ★これを飛ばすと下で 150 に塗られる
+    T.fill(288)                     // 復元に相当
+    await p
+    expect(T[0]).toBe(288)
+  })
+
   it("数字がおかしいだけなら 8 回までは様子を見る（例外と区別する）", async () => {
     const w = mk()
     w.climateBackend = {

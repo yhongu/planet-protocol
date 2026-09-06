@@ -436,8 +436,18 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         yearsPerSecond = 0
         speedMultiplier = 0
         yearBank = 0
-        applySnapshot(world, new Uint8Array(m.bytes))
-        refresh(world, INTERACTIVE)
+        // ★**飛んでいる solve が終わるまで当てない。**
+        //   復元した場に古い温度が上書きされると、氷アルベドの暴走で
+        //   全球凍結する（2026-09-06 のユーザ報告）
+        const w = world
+        const bytes = new Uint8Array(m.bytes)
+        void w.climateIdle().then(() => {
+          applySnapshot(w, bytes)
+          // ★読み込み直後だけは**必ず CPU で解く**。GPU は反復固定で
+          //   安全装置が無く、平衡から遠い状態で別の枝に落ちる（罠 30）
+          w.refresh(INTERACTIVE)
+          postState(0)
+        })
       }
       break
     // --- 章立て（指定の年まで早送りする）-----------------------------

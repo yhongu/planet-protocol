@@ -456,6 +456,19 @@ export class World {
    */
   private climateQueue: Promise<unknown> = Promise.resolve()
 
+  /**
+   * 飛んでいる solve が全部終わるまで待つ。
+   *
+   * ★**場を差し替える前に必ず呼ぶこと**（`applySnapshot`）。
+   * 読み込みの瞬間、前の状態の solve がまだ走っていることがあり、
+   * それが**復元した場に古い温度を上書き**する。そこから解くと
+   * 氷アルベドの暴走に落ちて**全球凍結**する
+   * （2026-09-06 のユーザ報告「ロードした瞬間、全球凍結して生命が全部しんだ」）。
+   */
+  climateIdle(): Promise<void> {
+    return this.climateQueue.then(() => undefined, () => undefined)
+  }
+
   async solveClimateAsync(opts?: Partial<SolveOptions>): Promise<ClimateStats> {
     const run = () => this.solveClimateOnce(opts)
     // 前の solve が終わってから始める（失敗しても列は詰まらせない）
