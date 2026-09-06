@@ -43,6 +43,10 @@ import { fastExp } from "../core/fastmath"
 import { GENE_KINDS, hasCapability } from "./genome"
 
 const C_OXYGENIC = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
+// ★陸の埋没は**維管束植物にあたるもの**だけ。リグニンは多細胞の陸上植物のもので、
+//   微生物のマットは石炭を作らない（地球の陸上植物は 0.47Ga）
+const C_LAND = GENE_KINDS.indexOf("capLandTolerance")
+const C_MULTI = GENE_KINDS.indexOf("capMulticellular")
 const T_PHOTO = GENE_KINDS.indexOf("photosynthesis")
 const C_PREDATION = GENE_KINDS.indexOf("capPredation")
 const T_RECAL = GENE_KINDS.indexOf("recalcitrance")
@@ -58,6 +62,18 @@ export interface OxygenParams {
    * `recalcitrance`（遺骸の難分解性）が高いクレードほど大きい（§2.2）。
    */
   burialFraction: number
+  /**
+   * **陸のバイオマスからの有機炭素の埋没** [mol C /(m² yr) / バイオマス]。
+   *
+   * ★それまで埋没の式は `(1 - landFraction)` で**陸を掛け捨てて**いた ——
+   * **陸の生産は 1 mol も埋まらなかった**。地球で酸素を現在の水準へ
+   * 押し上げたのは**陸上植物の出現と石炭紀の有機炭素の埋没**なので、
+   * この経路が無いと「低酸素で安定したまま抜けられない」。
+   *
+   * リグニンは分解されにくく、陸と浅海の堆積物は酸化を免れる。
+   * ★**0 なら従来どおり**（既定）。物理単位で書く（`docs/02` §1.5）。
+   */
+  landBurialPerBiomass: number
   /** 現在の地球のマントル由来の還元剤フラックス [mol/yr] */
   reductantPresent: number
   /**
@@ -137,6 +153,9 @@ export interface OxygenParams {
 export const EARTH_OXYGEN: OxygenParams = {
   redfieldCP: 106,
   burialFraction: 0.01,
+  // ★n=2 では 0.10 と 0.30 を区別できなかった（seed 間で順序が入れ替わる）。
+  //   石炭紀の埋没が大きかったことに合わせて強い側を採る（罠 3: 証拠は弱い）
+  landBurialPerBiomass: 0.30,
   reductantPresent: 2.0e12,
   reductantTempScale: 80,
   oxidativeWeatheringPresent: 8.0e12,
@@ -207,7 +226,7 @@ export class Oxygen implements Subsystem {
     const lf = world.store.f32("landFraction").read
     const n = world.grid.cellCount
     // 酸素を出すクレードのレーンと、埋没のしやすさ
-    const lanes: number[] = [], recal: number[] = []
+    const lanes: number[] = [], recal: number[] = [], woody: number[] = []
     for (const c of world.life.clades) {
       if (!hasCapability(c.phenotype, C_OXYGENIC)) continue
       // ★捕食者は一次生産をしない（栄養段階。2026-09-02）。
@@ -216,6 +235,11 @@ export class Oxygen implements Subsystem {
       if (c.phenotype.traits[T_PHOTO] <= 0) continue
       lanes.push(c.lane)
       recal.push(c.phenotype.traits[T_RECAL])
+      // ★陸の埋没に数えるのは「陸に上がった多細胞」だけ。
+      //   陸耐性だけの微生物マットは 3.2Ga に出るので、そこから
+      //   石炭を埋めると**原生代の低酸素が持ち上がる**（実測で 2.0Ga に 5.8%）
+      woody.push(hasCapability(c.phenotype, C_LAND)
+        && hasCapability(c.phenotype, C_MULTI) ? 1 : 0)
     }
     let npp = 0, burialC = 0
     if (lanes.length > 0) {
@@ -233,6 +257,12 @@ export class Oxygen implements Subsystem {
             npp += part
             // 難分解性が高いほど埋まる（§2.2 の recalcitrance）
             burialC += part * p.burialFraction * (0.5 + recal[k])
+            // ★**陸の埋没**（リグニン + 陸と浅海の堆積）。上の `cell` は
+            //   `(1 - lf)` で陸を落としているので、陸はここでだけ入る
+            if (p.landBurialPerBiomass > 0 && lf[i] > 0 && woody[k] === 1) {
+              burialC += bio[lanes[k] * n + i] * areaM2 * lf[i]
+                * p.landBurialPerBiomass * (0.5 + recal[k])
+            }
           }
         }
       }

@@ -333,6 +333,27 @@ export interface LifeParams {
    */
   aridityCost: number
   /**
+   * **無酸素の海がリンを沈める割合**（Reinhard et al. 2017, Nature）。
+   *
+   * ★この模型には**地球の「退屈な 10 億年」が無い** —— 実測（g02）で
+   * O2 は 3.0Ga 0.4% → 2.0Ga **12.2%** → 1.5Ga 16.4% と、GOE の直後に
+   * 一気に上がる。地球は GOE（2.4Ga）の後も **0.1〜2% が 16 億年**続き、
+   * 21% になるのは 0.4Ga。
+   *
+   * 原因は構造的で、還元剤が尽きると定常が `burial = 8e12 × (O2/20.9)^0.5`
+   * すなわち **O2 ∝ burial²** だけで決まり、**低酸素を保つ機構が無い**。
+   *
+   * 無酸素の海では鉄がリンを吸着して沈め、生産を抑える:
+   *   低 O2 → リンが沈む → 生産が低い → 埋没が少ない → 低 O2 のまま
+   * ★**低酸素を安定させる輪**であり、そこから抜けると一気に上がる
+   * （地球の 2 段階＝GOE と NOE の形）。
+   *
+   * ★**現在の地球（O2 20.9%）では 1 倍**なので較正は動かない。
+   */
+  anoxicPhosphorusScavenging: number
+  /** その効きが消える酸素の濃さ [%]。これ以上なら沈まない */
+  anoxicO2RefPercent: number
+  /**
    * **根と有機酸が岩からリンを掘り出す量**（陸のセルだけ）。
    *
    * ★罠 41 の対策。`weatheringBoost` の見返りが「全球の CO2 が下がる」
@@ -725,6 +746,8 @@ export const EARTH_LIFE: LifeParams = {
   dispersalBarrierLeak: 0.05,
   dispersalCost: 0,
   dispersalSettle: 1,
+  anoxicPhosphorusScavenging: 0.85,
+  anoxicO2RefPercent: 5,
   weatheringNutrient: 0.6,
   weatheringCost: 0.01,
   landPlantRef: 1,
@@ -1333,6 +1356,10 @@ export class Life implements Subsystem {
    */
   private carryingCapacity(world: World, K: Float32Array): void {
     const p = this.params
+    // ★**無酸素の海はリンを沈める**（`anoxicPhosphorusScavenging`）。
+    //   現在の地球では 1 倍なので較正は動かない
+    const pAvail = 1 - p.anoxicPhosphorusScavenging
+      * (1 - Math.min(1, world.globals.o2 / Math.max(1e-9, p.anoxicO2RefPercent)))
     const { W, H } = world.grid
     const pho = world.store.f32("phosphateSupply").read
     const runoff = world.store.f32("runoff").read
@@ -1342,7 +1369,7 @@ export class Life implements Subsystem {
       for (let x = 0; x < W; x++) {
         const i = y * W + x
         const f = lf[i] < 0 ? 0 : lf[i] > 1 ? 1 : lf[i]
-        const sea = Math.max(0, pho[i]) / p.phosphorusRef
+        const sea = Math.max(0, pho[i]) * pAvail / p.phosphorusRef
         const land = Math.max(0, runoff[i]) * p.landNutrientFromRunoff / p.phosphorusRef
         const supply = (1 - f) * sea + f * land
         const open = 1 - (ice[i] < 0 ? 0 : ice[i] > 1 ? 1 : ice[i])

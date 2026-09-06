@@ -26,6 +26,8 @@ const arg = (k: string, d: string) => {
 const W = Number(arg("width", "64")), H = W >> 1
 const SEED = arg("seed", "g02")
 const OPT = { cgTol: 1e-2, maxOuter: 12, tol: 1e-4 } as const
+/** ★A/B 用。既定を変えずに条件を試す（罠 39: 対照が本当に対照か） */
+const SET = arg("set", "")
 
 const CAPS = ["capOxygenicPhotosynthesis", "capEukaryotic", "capMulticellular",
   "capPredation", "capSkeleton", "capMotility", "capLandTolerance",
@@ -41,7 +43,21 @@ const w = new World({
   width: W, height: H, seed: SEED, shared: false, startEpoch: "hadean",
   climateCouplingYears: 200_000,
 })
-console.log(`進化の梯子  ${W}x${H}  seed ${SEED}`)
+// ★**どのサブシステムのパラメータかを探して当てる。**
+//   `life.params` にだけ書いていたので、酸素のつまみが**黙って無視され**、
+//   2 水準の結果が 1 桁まで一致した（罠 39 で気づけた）
+for (const kv of SET.split(",").filter(Boolean)) {
+  const [k, v] = kv.split("=")
+  const targets: Record<string, unknown>[] = [
+    w.life.params as unknown as Record<string, unknown>,
+    w.oxygen.params as unknown as Record<string, unknown>,
+    w.carbon.params as unknown as Record<string, unknown>,
+  ]
+  const hit = targets.find((t) => k! in t)
+  if (!hit) throw new Error(`知らないパラメータ: ${k}`)
+  hit[k!] = Number(v)
+}
+console.log(`進化の梯子  ${W}x${H}  seed ${SEED}  ${SET || "既定"}`)
 console.log("Ga   系統 " + SHORT.map((s) => s.padStart(6)).join("")
   + "   生物圏   O2%   日射")
 
