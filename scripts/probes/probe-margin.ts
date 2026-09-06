@@ -40,7 +40,7 @@ for (const kv of SET.split(",").filter(Boolean)) {
 }
 console.log(`形質の余白（適応度が何 % 変わるか。形質を +0.25 したとき）`)
 console.log(`  設定: ${SET || "既定"}${FROM === 0 ? "  【0 から獲得する価値】" : ""}`)
-console.log(`  ★正なら「上げると得」＝選択が採る / 負なら捨てられる`)
+console.log(`  ★「中央値/最大」。一部の系統にしか効かない形質は中央値では消える`)
 
 const q = (a: number[], t: number) => {
   if (!a.length) return NaN
@@ -70,8 +70,10 @@ for (const t of WATCH) {
   const cells: string[] = []
   for (const w of worlds) {
     const m = w.life.traitMargin(w, idx, 0.25, FROM)
+    // ★**中央値だけ出さない。** 一部の系統にしか効かない形質は
+    //   中央値では消える（脳は捕食者にしか効かない。罠 104）
     cells.push(m.length
-      ? `${(100 * q(m, 0.5)).toFixed(1)}%`.padStart(14)
+      ? `${(100 * q(m, 0.5)).toFixed(1)}/${(100 * q(m, 1)).toFixed(1)}%`.padStart(14)
       : "（該当なし）".padStart(14))
   }
   rows.push([t, ...cells])

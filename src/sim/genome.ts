@@ -86,12 +86,57 @@ for (const n of HARD_STEP_KINDS) HARD_STEP[GENE_KINDS.indexOf(n as never)] = 1
  * 「前提を満たしていないクレードは、環境がどれだけ好条件でも獲得できない。
  * **たまたま先に別の能力を得ていた系統だけが次に進める**」（§2.1b）
  */
-const HARD_STEP_PREREQ = new Int8Array(GENE_KINDS.length).fill(-1)
-HARD_STEP_PREREQ[GENE_KINDS.indexOf("capOxygenicPhotosynthesis")] =
-  GENE_KINDS.indexOf("photosynthesis")
-HARD_STEP_PREREQ[GENE_KINDS.indexOf("capEukaryotic")] =
-  GENE_KINDS.indexOf("oxygenDemand")
-HARD_STEP_PREREQ[GENE_KINDS.indexOf("capSymbolic")] = GENE_KINDS.indexOf("brain")
+/**
+ * ★**能力の依存の鎖**（2026-09-06）。
+ *
+ * それまで前提はハードステップ 3 つにしか無く、**残りは前提ゼロ**だった。
+ * 実測（4 seed・全史）で「初めて現れた年」を測ったら:
+ *
+ * | | この模型 | 地球 |
+ * |---|---|---|
+ * | 真核（前提あり） | 1.27〜2.34 Ga | 1.8 Ga ★合う |
+ * | 多細胞 | 1.39〜3.46 Ga | 0.6〜1.5 Ga |
+ * | 骨格 | 1.10〜3.45 Ga | 0.54 Ga |
+ * | 陸 | 2.28〜**3.83** Ga | 0.47 Ga |
+ * | 言語 | 0.64〜**3.19** Ga | 0.0003 Ga |
+ *
+ * ★**物理の門がある真核だけが正しい時代に出て、門の無いものは全部
+ * 太古代に出ていた。** 結果、惑星の歴史の大半が「もう全部起きた後」になる。
+ *
+ * 前提は科学的な順序に合わせる:
+ *   多細胞 ← 真核（複雑な多細胞は真核の発明）
+ *   捕食   ← 真核（食作用は真核の発明。Cavalier-Smith）
+ *   骨格   ← 多細胞（生体鉱化は動物・藻類のもの）
+ *   陸     ← 乾燥耐性（陸に上がるには乾燥に耐える必要がある）
+ *   言語   ← 脳 ＋ 多細胞（脳は多細胞体にしか無い）
+ */
+const HARD_STEP_PREREQ: number[][] = GENE_KINDS.map(() => [])
+const prereq = (cap: string, ...needs: string[]) => {
+  HARD_STEP_PREREQ[GENE_KINDS.indexOf(cap as never)] =
+    needs.map((n) => GENE_KINDS.indexOf(n as never))
+}
+prereq("capOxygenicPhotosynthesis", "photosynthesis")
+prereq("capEukaryotic", "oxygenDemand")
+prereq("capMulticellular", "capEukaryotic")
+prereq("capPredation", "capEukaryotic")
+prereq("capSkeleton", "capMulticellular")
+prereq("capLandTolerance", "aridityTolerance")
+prereq("capSymbolic", "brain", "capMulticellular")
+
+/**
+ * ★**環境の門**（大気の酸素 [%]）。これ未満では引けない。
+ *
+ * `CLAUDE.md` の 87「乱数は『起きるか』に置き、『いつ起きるか』は
+ * 物理に決めさせる」。真核が正しい時代に出るのは `oxygenDemand` という
+ * 門があるからで、**言語には門が無かった**ので 1.47Ga に出た
+ * （地球は 0.0003Ga）。
+ *
+ * 大きな脳は代謝が高い（ヒトの脳は基礎代謝の約 20%）。
+ * 活発な大型動物には高い酸素が要る —— これは**惑星の酸素史が決める**ので、
+ * 抽選ではなく物理が時期を決めることになる。
+ */
+const ENV_O2_MIN = new Float64Array(GENE_KINDS.length)
+ENV_O2_MIN[GENE_KINDS.indexOf("capSymbolic")] = 8
 
 /** 前提の種類の遺伝子を、この強さ以上で持っているか */
 export const PREREQ_THRESHOLD = 64
@@ -107,13 +152,33 @@ export const PREREQ_THRESHOLD = 64
  */
 export const PREREQ_TRAIT = 1 - Math.exp(-PREREQ_THRESHOLD / 255)
 
-function hasPrereq(g: Genome, kind: number): boolean {
-  const need = HARD_STEP_PREREQ[kind]
-  if (need < 0) return true
+/** 環境の門を満たすか（酸素）。★環境を渡さなければ素通り（テスト用） */
+function envOk(kind: number, env?: { o2: number }): boolean {
+  const need = ENV_O2_MIN[kind]!
+  if (need <= 0) return true
+  return env !== undefined && env.o2 >= need
+}
+
+/** その種類の遺伝子を、能力が立つ強さで持っているか */
+function hasKind(g: Genome, kind: number): boolean {
   for (let i = 0; i < g.length; i++) {
-    if (g.kind[i] === need && g.value[i] >= PREREQ_THRESHOLD) return true
+    if (g.kind[i] === kind && g.value[i]! >= CAPABILITY_THRESHOLD) return true
   }
   return false
+}
+
+function hasPrereq(g: Genome, kind: number): boolean {
+  const needs = HARD_STEP_PREREQ[kind]!
+  if (needs.length === 0) return true
+  // ★**全部**満たすこと（言語は「脳」と「多細胞」の両方が要る）
+  for (const need of needs) {
+    let ok = false
+    for (let i = 0; i < g.length && !ok; i++) {
+      if (g.kind[i] === need && g.value[i]! >= PREREQ_THRESHOLD) ok = true
+    }
+    if (!ok) return false
+  }
+  return true
 }
 
 /** 能力ビットが立つ強さの閾値（0..255） */
@@ -304,6 +369,22 @@ export interface MutationParams {
    * それは酸素が無い時代には高くつくので**自然に GOE の後になる**。
    */
   pHardStepEukaryote: number
+  /**
+   * **梯子を上る確率。** 新機能化のとき、25 種類から一様に引くかわりに
+   * **「前提を満たしていて、まだ持っていない能力」から引く**確率。
+   *
+   * ★依存の鎖（`HARD_STEP_PREREQ`）を入れた直後、下流が全滅した ——
+   * 多細胞の提案が 6〜27 回から **0〜1 回**に落ち、骨格も言語も
+   * 一度も現れなくなった（2026-09-06 の実測）。
+   * 前提を満たすのは「真核を持つ系統（9/16）× 真核が出た後の時間（1.5/4.5）」
+   * なので、**機会が 1/5 に減った**うえ 1/25 の抽選では引けない。
+   *
+   * ★**地球も同じ構造をしている** —— 真核 1.8Ga・多細胞 0.6〜1.5Ga・
+   * 言語 0.0003Ga と、**すべてが最後の 1.8 Gyr に詰まっている**。
+   * つまり「**前提が律速で、満たされた後は速い**」のが正しい姿。
+   * だから鎖を緩めるのではなく、**満たされた後を速く**する。
+   */
+  pLadder: number
 }
 
 export const EARTH_MUTATION: MutationParams = {
@@ -316,6 +397,7 @@ export const EARTH_MUTATION: MutationParams = {
   pHardStep: 0.35,
   pHardStepPhoto: 1.0,
   pHardStepEukaryote: 1.0,
+  pLadder: 0.35,
 }
 
 /**
@@ -339,6 +421,8 @@ export class OriginCounter {
  */
 export function mutate(
   g: Genome, rng: Rng, p: MutationParams, origins: OriginCounter,
+  /** そのときの惑星（酸素 [%]）。★省略すると環境の門は掛からない */
+  env?: { o2: number },
 ): number {
   // 新機能化で生まれた種類を返す（-1 なら起きなかった）。
   // **獲得の鎖のどこで切れているかを測るため**（`life.ts` の diag）
@@ -358,15 +442,29 @@ export function mutate(
     let value = g.value[i]
     // 新機能化: コピーの種類が変わる。**由来は新しく振る**（＝別の発明）
     if (rng.nextFloat() < p.pNeofunction) {
-      const k2 = Math.floor(rng.nextFloat() * GENE_KINDS.length)
+      // ★**梯子を上る。** 前提を満たしていて、まだ持っていない能力から引く。
+      //   一様な 1/25 では、鎖を入れた途端に下流が引けなくなる（上の説明）
+      let k2 = -1
+      if (rng.nextFloat() < p.pLadder) {
+        let n = 0
+        for (let k = FIRST_CAPABILITY; k < GENE_KINDS.length; k++) {
+          if (hasKind(g, k) || !hasPrereq(g, k) || !envOk(k, env)) continue
+          n++
+          // 添字順に走査して 1/n で置き換える（★決定論。乱数は 1 回だけ引く）
+          if (rng.nextFloat() < 1 / n) k2 = k
+        }
+      }
+      if (k2 < 0) k2 = Math.floor(rng.nextFloat() * GENE_KINDS.length)
       // ハードステップは 3〜4 桁通りにくい（§2.1b）。
       // **引いたけれど通らなかったときは、重複だけが残る**（材料は溜まる）
       // ハードステップは【前提能力を持つ系統だけ】が引ける（§2.1b の履歴依存）
       // ★酸素発生型光合成だけ別のつまみで通す（`pHardStepPhoto` の説明）
       const pStep = k2 === K_OXYGENIC ? p.pHardStepPhoto
         : k2 === K_EUKARYOTE ? p.pHardStepEukaryote : p.pHardStep
-      const ok = HARD_STEP[k2] === 0
-        || (hasPrereq(g, k2) && rng.nextFloat() < pStep)
+      // ★**前提は常に見る。** それまで「ハードステップでなければ素通り」
+      //   だったので、多細胞も骨格も陸も**前提ゼロで太古代に出ていた**
+      const ok = hasPrereq(g, k2) && envOk(k2, env)
+        && (HARD_STEP[k2] === 0 || rng.nextFloat() < pStep)
       if (ok) {
         kind = k2
         origin = origins.issue()

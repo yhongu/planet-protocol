@@ -42,7 +42,8 @@ const w = new World({
   climateCouplingYears: 200_000,
 })
 console.log(`進化の梯子  ${W}x${H}  seed ${SEED}`)
-console.log("Ga   系統 " + SHORT.map((s) => s.padStart(6)).join("") + "   日射")
+console.log("Ga   系統 " + SHORT.map((s) => s.padStart(6)).join("")
+  + "   生物圏   O2%   日射")
 
 let next = PLANET_AGE_YEARS - 3.0e9
 while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
@@ -56,7 +57,12 @@ while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
   const cells = IDX.map((k) =>
     String(cl.filter((c) => hasCapability(c.phenotype, k)).length).padStart(6))
   console.log(`${((PLANET_AGE_YEARS - w.globals.yearsElapsed) / 1e9).toFixed(2)} ${String(cl.length).padStart(3)} `
-    + cells.join("") + `   ${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
+    + cells.join("")
+    // ★C の診断: **分岐はバイオマスに比例する**ので、貧しい惑星は
+    //   永久に系統が増えない（`speciationRate × min(1, biomass×10)`）。
+    //   O2 は B の環境の門（言語は 8% 以上でしか引けない）のカナリア
+    + `   ${w.globals.biosphereProxy.toFixed(2)}  ${w.globals.o2.toFixed(1)}  `
+    + `${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
 }
 // ★**初めて現れた年**（`detectFirsts` が年代記に刻むもの）。
 //   「進化しない」の正体が「起きていない」のか「見えていない」のかを分ける

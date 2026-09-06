@@ -1161,7 +1161,8 @@ export class Life implements Subsystem {
     const scratch = this.scratchPhenotype
     for (let n = 0; n < p.selectionCandidates; n++) {
       const cand = cloneGenome(c.genome)
-      const neo = mutate(cand, this.rng, this.mutation, this.origins)
+      const neo = mutate(cand, this.rng, this.mutation, this.origins,
+        { o2: world.globals.o2 })
       if (neo >= 0) this.diag.proposed[neo]++
       decodeGenome(cand, scratch)
       const sc = this.fitness(world, scratch, null, 0, K, stride, othSum, othMax,
@@ -1297,7 +1298,8 @@ export class Life implements Subsystem {
     if (lane === undefined) return
     const genome = cloneGenome(parent.genome)
     for (let m = 0; m < this.params.speciationMutations; m++) {
-      mutate(genome, this.rng, this.mutation, this.origins)
+      mutate(genome, this.rng, this.mutation, this.origins,
+        { o2: world.globals.o2 })
     }
     const child: Clade = {
       id: this.nextId++, parent: parent.id, bornYear: world.globals.yearsElapsed,
@@ -1591,14 +1593,24 @@ export class Life implements Subsystem {
     // ★**体サイズと脳を捕獲効率に入れる**（2026-09-02）。
     // どちらも「得と損が対」になっていること —— 体は資源要求を上げ、
     // 脳は代謝を食う。対にしないと端に張り付く（`CLAUDE.md` の 44）
-    const capture = consumer
+    // ★**クランプの中に「連続量の加点」を入れない**（罠 42）。
+    //
+    // それまで `min(1, 0.6 + 0.2 + 0.2 + 0.3×体 + 0.25×脳)` と書いていたので、
+    // **運動と多細胞を持つ捕食者はこの時点で 1.0 に達し、体も脳も
+    // 一切効いていなかった**。結果、脳は純粋なコスト（余白 −1.4〜−2.1%）で
+    // 育たず、`capSymbolic` の前提（脳の遺伝子 ≥ 64）に永久に届かない ——
+    // 実測で**言語が 4 seed とも提案 0 回**だった（2026-09-06）。
+    //
+    // ★同じ式の中で `sociality` を先に直したのに、**隣の 2 項を確かめなかった**。
+    // 能力ビットの足し算だけをクランプし、連続量は**持たない側の減点**にする。
+    const captureBits = consumer
       ? Math.min(1, p.captureBase
         + (hasCapability(ph, C_MOTILITY) ? p.captureMotility : 0)
-        + (hasCapability(ph, C_MULTI) ? p.captureMulticellular : 0)
-        + p.bodyCapture * tr[T_BODY]
-        + p.brainCapture * tr[T_BRAIN]
-        )
+        + (hasCapability(ph, C_MULTI) ? p.captureMulticellular : 0))
       : 0
+    const capture = captureBits
+      * (1 - p.bodyCapture * (1 - tr[T_BODY]!))
+      * (1 - p.brainCapture * (1 - tr[T_BRAIN]!))
     // ★**群れ狩りは「加点」にしてはいけない。** `capture` は
     //   `min(1, 0.6 + 0.2 + 0.2 + …)` で**既に 1 で飽和**しており、
     //   足しても何も起きない（`CLAUDE.md` の 42）。実測で `sociality` の
