@@ -776,17 +776,23 @@ export const EARTH_LIFE: LifeParams = {
   bodyPlanChange: 0.35,
   massExtinctionWindow: 100e6,
   massExtinctionCount: 3,
-  bodyCapture: 0.3,
+  // ★**最初の捕食者は体も脳も持たない。** 0.3/0.25 だと「持たない側の減点」で
+  //   捕獲が 36% 削られ、顕生代の捕食の余白が **+55% → −1.5%** に反転して
+  //   捕食者が 1 系統しか出なかった（2026-09-06 実測。罠 49）。
+  //   0.10/0.10 なら 捕食 +34.3%・脳 +3.2〜4.4% で両立する
+  bodyCapture: 0.10,
   bodyNeed: 0.5,
   bodyDefence: 0.5,
   brainCost: 0.12,
-  brainCapture: 0.25,
+  brainCapture: 0.10,
   brainTolerance: 0.8,
   // ★0.1 → 0.02。見返り（文明）が M7 で未実装なのにコストだけ取っていたため、
   // 選択が絶対に採らなかった（実測で全 16 クレードが −7.7〜−10.7%）。
   // 脳の維持費を薄める見返り（`symbolicBrainRelief`）と対にして、
   // **脳の大きい系統だけが得をする**形にする
-  symbolicCost: 0.02,
+  // ★0.02 では**得すぎて 15 系統中 14 が言語を持った**（地球は 1 系統。罠 50）。
+  //   0.08 なら 原生代 +2.2% / 顕生代 −5.9% —— **獲得はできるが広がらない**
+  symbolicCost: 0.08,
   symbolicTolerance: 0.35,
   ccnAlbedoMax: 0,
   ccnRelaxYears: 1_000_000,

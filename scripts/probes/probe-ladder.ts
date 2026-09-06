@@ -17,6 +17,7 @@
 import { World, PLANET_AGE_YEARS } from "../../src/sim/world"
 import { GENE_KINDS, FIRST_CAPABILITY, hasCapability } from "../../src/sim/genome"
 import { gradeOf, GRADE_LABEL, GRADES } from "../../src/ui/creatureGrade"
+import { earthAnalog } from "../../src/ui/earthAnalog"
 
 const argv = process.argv.slice(2)
 const arg = (k: string, d: string) => {
@@ -99,6 +100,17 @@ for (const c of w.life.clades) {
 for (const g of GRADES) {
   const n = cnt.get(g) ?? 0
   if (n > 0) console.log(`  ${GRADE_LABEL[g].padEnd(18)} ${n}`)
+}
+// ★**地球で言えば何に近いか**の内訳。魚類・爬虫類・昆虫にあたるものが
+//   出ているかは、ここでしか分からない
+console.log("\n★終端の地球との対応")
+const an = new Map<string, number>()
+for (const c of w.life.clades) {
+  const a = earthAnalog(c.phenotype.capabilities, Array.from(c.phenotype.traits))
+  an.set(a.name, (an.get(a.name) ?? 0) + 1)
+}
+for (const [k, v] of [...an.entries()].sort((a, b) => b[1] - a[1])) {
+  console.log(`  ${String(v).padStart(2)}  ${k}`)
 }
 console.log("\n★引けたか（proposed）／採られたか（adopted）")
 for (let i = 0; i < CAPS.length; i++) {

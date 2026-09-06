@@ -143,8 +143,12 @@ export class Inspector {
       // ★**栄養段階を出す。** 「何の生物か」への一番直接の答えで、
       // 捕食の能力ビットがそのまま役割になる（`life.ts` の 2 段の配分）
       const role = (c.capabilities & (1 << (GENE_KINDS.indexOf("capPredation") - FIRST_CAPABILITY)))
-        ? `<span class="cl-role eat">捕食者</span>`
-        : `<span class="cl-role">生産者</span>`
+        // ★**「捕食者」と呼ばない。** この模型の栄養段階は **2 段しかなく**、
+        //   餌の場は生産者からしか作られない（`buildPrey`）。つまり実体は
+        //   **草食**であって、肉食の段は存在しない。
+        //   罠 50: 表示は、その裏に機構があることを勝手に保証してしまう
+        ? `<span class="cl-role eat">他者を食べる</span>`
+        : `<span class="cl-role">自分で作る</span>`
       // ★**「地球で言えば何に近いか」**（`earthAnalog.ts`）。
       // 種名を引くのではなく、形質と能力から**比較として**出す
       const an = earthAnalog(c.capabilities, c.traits)

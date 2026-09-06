@@ -36,8 +36,15 @@ interface Analog {
   need: number
   /** 立っていてはいけない能力 */
   deny: number
-  /** 形質の目標値。[添字, 目標] */
+  /** 形質の目標値。[添字, 目標]。★**距離**であってふるいではない */
   traits: readonly (readonly [number, number])[]
+  /**
+   * **必ず満たす下限**。[添字, 最小値]。★`traits` は距離なので、
+   * 「脳が大きくないと知性種と呼ばない」のようなふるいには使えない。
+   * 実測で脳 0.632 が一致 73% で「知性種」に当たり、
+   * **15 系統中 11 が知性種**と表示された（罠 50 の再発）。
+   */
+  min?: readonly (readonly [number, number])[]
 }
 
 /**
@@ -52,10 +59,17 @@ const ANALOGS: readonly Analog[] = [
   //
   // 知性は神経系を要し、神経系は多細胞と真核を要する。
   // **体を持たない知性種は地球に存在しない**ので、そこまで求める。
+  // ★**形質は「距離」なので、ふるいにならない。** 脳 0.632 でも
+  //   距離 0.268 → 一致 73% で当たってしまい、**15 系統中 11 が知性種**と
+  //   表示された（2026-09-06 実測）。`min` は**必ず満たす下限**（罠 65: 判定は 1 か所に）
   { name: "知性種", era: "地球では人類のみ", need: B_SYM | B_MULTI | B_EUK, deny: 0,
-    traits: [[T_BRAIN, 0.9]] },
+    traits: [[T_BRAIN, 0.9]], min: [[T_BRAIN, 0.75]] },
+  // ★**この行は条件が「多細胞 + 捕食」だけで、下の陸上動物・脊椎動物より
+  //   ゆるい。** 上から順に最初に当たったものを採るので、**下を全部飲み込む**
+  //   （実測で動物が全部これになり、魚類も爬虫類も出なかった）。
+  //   知性種と同じく、**脳の下限をふるいにする**（罠 65: 判定は 1 か所に）
   { name: "大きな脳を持つ動物様", era: "新生代", need: B_MULTI | B_PRED, deny: B_SYM,
-    traits: [[T_BRAIN, 0.8], [T_BODY, 0.8]] },
+    traits: [[T_BRAIN, 0.8], [T_BODY, 0.8]], min: [[T_BRAIN, 0.6]] },
   { name: "陸上動物様", era: "デボン紀以降", need: B_PRED | B_MULTI | B_LAND, deny: 0,
     traits: [[T_BODY, 0.8], [T_PHOTO, 0]] },
   { name: "脊椎動物様", era: "オルドビス紀以降", need: B_PRED | B_SKEL | B_MULTI, deny: B_LAND,
@@ -105,6 +119,8 @@ export function earthAnalog(capabilities: number, traits: readonly number[]): An
   for (const a of ANALOGS) {
     if ((capabilities & a.need) !== a.need) continue
     if ((capabilities & a.deny) !== 0) continue
+    // ★下限は**ふるい**。距離ではないので、届かなければ候補から外す
+    if (a.min && a.min.some(([k, v]) => (traits[k] ?? 0) < v)) continue
     let d = 0
     for (const [k, target] of a.traits) d += Math.abs((traits[k] ?? 0) - target)
     const score = Math.max(0, 1 - d / Math.max(1, a.traits.length))
