@@ -71,6 +71,7 @@ export const HARD_STEP_KINDS: readonly string[] = [
   "capEukaryotic", "capOxygenicPhotosynthesis", "capSymbolic",
 ]
 const K_OXYGENIC = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
+const K_EUKARYOTE = GENE_KINDS.indexOf("capEukaryotic")
 const HARD_STEP = new Uint8Array(GENE_KINDS.length)
 for (const n of HARD_STEP_KINDS) HARD_STEP[GENE_KINDS.indexOf(n as never)] = 1
 
@@ -271,6 +272,27 @@ export interface MutationParams {
    * 大気が酸化しない期間）が自然に現れる。地球の 3.0Ga・2.5Ga の記録と同じ形。
    */
   pHardStepPhoto: number
+  /**
+   * **真核化（ミトコンドリアの獲得）の通りにくさ。**
+   *
+   * ★`pHardStepPhoto` とまったく同じ理由で分けた（2026-09-06）。
+   * ユーザ報告「2 億年前でもシアノバクテリアしかいない」。実測（4 seed・全史）:
+   *
+   * | | 提案 | 採用 | 終端で持つ系統 |
+   * |---|---|---|---|
+   * | 真核 | **2〜8** | 2〜7 | **3〜8 / 16** |
+   * | 多細胞 | 6〜27 | 3〜9 | 4〜6 / 16 |
+   *
+   * ★**採られないのではなく、提案そのものが少ない**（45 億年で数回）。
+   * 顕生代での採算は **+77.7%** と十分にあるのに、引く機会が無い。
+   * 地球の顕生代は事実上すべて真核生物なので、3/16 は薄すぎる。
+   *
+   * ★**乱数は「起きるか」に置き、「いつ起きるか」は物理に決めさせる**
+   * （`CLAUDE.md` の 87）。真核化の時期を決めるのは抽選ではなく
+   * **前提の `oxygenDemand ≥ 64`**（酸素を使う体になっていること）で、
+   * それは酸素が無い時代には高くつくので**自然に GOE の後になる**。
+   */
+  pHardStepEukaryote: number
 }
 
 export const EARTH_MUTATION: MutationParams = {
@@ -282,6 +304,7 @@ export const EARTH_MUTATION: MutationParams = {
   maxGenes: 96,
   pHardStep: 0.35,
   pHardStepPhoto: 1.0,
+  pHardStepEukaryote: 1.0,
 }
 
 /**
@@ -329,7 +352,8 @@ export function mutate(
       // **引いたけれど通らなかったときは、重複だけが残る**（材料は溜まる）
       // ハードステップは【前提能力を持つ系統だけ】が引ける（§2.1b の履歴依存）
       // ★酸素発生型光合成だけ別のつまみで通す（`pHardStepPhoto` の説明）
-      const pStep = k2 === K_OXYGENIC ? p.pHardStepPhoto : p.pHardStep
+      const pStep = k2 === K_OXYGENIC ? p.pHardStepPhoto
+        : k2 === K_EUKARYOTE ? p.pHardStepEukaryote : p.pHardStep
       const ok = HARD_STEP[k2] === 0
         || (hasPrereq(g, k2) && rng.nextFloat() < pStep)
       if (ok) {
