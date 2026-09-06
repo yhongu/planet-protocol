@@ -49,7 +49,14 @@ function taKind(v: unknown): string | null {
 
 const MAGIC = 0x41494147          // "GAIA" のリトルエンディアン
 /** ★形式を変えたら上げること。古いセーブを黙って読み込むと惑星が壊れる */
-export const SNAPSHOT_VERSION = 1
+/**
+ * ★**場の形が変わったら必ず上げること。** `restoreInto` は
+ * `new Uint8Array(store.buffer).set(fields)` と**生のバイト列をそのまま**
+ * 当てるので、レーン数が違うセーブを読むと**黙って壊れる**。
+ *
+ * v2 (2026-09-06): `MAX_CLADES` 16 → 32（バイオマスと到達の場のレーンが倍）
+ */
+export const SNAPSHOT_VERSION = 2
 
 /** 生のバイト列として書き出す配列。順番が形式そのものなので変えないこと */
 interface Blob { name: string; kind: "f64" | "f32" | "i32" | "u8"; len: number }

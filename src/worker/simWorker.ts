@@ -442,7 +442,20 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         const w = world
         const bytes = new Uint8Array(m.bytes)
         void w.climateIdle().then(() => {
-          applySnapshot(w, bytes)
+          // ★**古い形式のセーブは、ここで投げる。** 黙って固まらせない
+          //   （v2 で `MAX_CLADES` 16 → 32 になり、v1 は読めない）
+          try {
+            applySnapshot(w, bytes)
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            console.error("[sim] セーブを読めません", e)
+            self.postMessage({ type: "progress", years: 0, target: 0, done: true,
+              label: `読み込めません: ${msg}` })
+            w.events.push({ year: w.globals.yearsElapsed, kind: "milestone",
+              code: "ev-load-failed", text: `セーブを読み込めませんでした: ${msg}` })
+            postState(0)
+            return
+          }
           // ★**読み込みの自己検査。**
           //
           // スナップショットは気候の統計も持っている。**復元して解き直したら
