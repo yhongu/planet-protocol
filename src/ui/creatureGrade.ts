@@ -15,7 +15,7 @@
  * だから「象徴」は**脳の形質も見る** —— ビットだけで「知性種」を名乗ると、
  * 実測で 16 系統中 10 系統が知性種になった。
  */
-import { GENE_KINDS, FIRST_CAPABILITY } from "../sim/genome"
+import { GENE_KINDS, FIRST_CAPABILITY, PREREQ_TRAIT } from "../sim/genome"
 
 const bit = (name: typeof GENE_KINDS[number]): number =>
   1 << (GENE_KINDS.indexOf(name) - FIRST_CAPABILITY)
@@ -56,7 +56,12 @@ export function gradeOf(capabilities: number, traits?: readonly number[]): Grade
   const brain = traits?.[T_BRAIN] ?? 0
   // ★象徴は**能力ビットと脳の形質の両方**を見る（罠 50）。
   //   ビットだけで名乗らせると、獲得後は無償で子孫に広がって全系統が知性種になる
-  if ((capabilities & SYMBOLIC) !== 0 && brain >= 0.3) return "symbolic"
+  // ★**閾値は前提と揃える**（`PREREQ_TRAIT` = 0.222）。0.3 を別に置いていたので、
+  //   前提（脳の遺伝子 ≥ 64）を満たして `capSymbolic` を得た系統が
+  //   **知性種と認められなかった**（罠 23）。
+  //   罠 50（ビット 1 つで名乗らせない）は満たしたまま —— 脳が前提に
+  //   届いていない系統は、能力ビットがあっても知性種にならない
+  if ((capabilities & SYMBOLIC) !== 0 && brain >= PREREQ_TRAIT) return "symbolic"
   if ((capabilities & LAND) !== 0 && (capabilities & MULTI) !== 0) return "land"
   if ((capabilities & SKELETON) !== 0 && (capabilities & PREDATION) !== 0) return "predator"
   if ((capabilities & MULTI) !== 0) return "multicellular"

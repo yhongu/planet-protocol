@@ -94,7 +94,18 @@ HARD_STEP_PREREQ[GENE_KINDS.indexOf("capEukaryotic")] =
 HARD_STEP_PREREQ[GENE_KINDS.indexOf("capSymbolic")] = GENE_KINDS.indexOf("brain")
 
 /** 前提の種類の遺伝子を、この強さ以上で持っているか */
-const PREREQ_THRESHOLD = 64
+export const PREREQ_THRESHOLD = 64
+
+/**
+ * **前提をぎりぎり満たしたときの形質値。**
+ *
+ * 形質は `1 - exp(-Σ value/255)` なので、値 64 の遺伝子 1 個で 0.222。
+ * ★**表示の閾値をこれと別に置いてはいけない**（`CLAUDE.md` の 23）。
+ * `capSymbolic` の前提は「脳の遺伝子 ≥ 64」なのに、絵の段階は
+ * 「脳 ≥ 0.3」を要求していたので、**前提を満たして能力を得た系統が
+ * 知性種と認められなかった**（2026-09-06）。
+ */
+export const PREREQ_TRAIT = 1 - Math.exp(-PREREQ_THRESHOLD / 255)
 
 function hasPrereq(g: Genome, kind: number): boolean {
   const need = HARD_STEP_PREREQ[kind]

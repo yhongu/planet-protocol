@@ -16,6 +16,7 @@
  */
 import { World, PLANET_AGE_YEARS } from "../../src/sim/world"
 import { GENE_KINDS, FIRST_CAPABILITY, hasCapability } from "../../src/sim/genome"
+import { gradeOf, GRADE_LABEL, GRADES } from "../../src/ui/creatureGrade"
 
 const argv = process.argv.slice(2)
 const arg = (k: string, d: string) => {
@@ -56,6 +57,26 @@ while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
     String(cl.filter((c) => hasCapability(c.phenotype, k)).length).padStart(6))
   console.log(`${((PLANET_AGE_YEARS - w.globals.yearsElapsed) / 1e9).toFixed(2)} ${String(cl.length).padStart(3)} `
     + cells.join("") + `   ${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
+}
+// ★**初めて現れた年**（`detectFirsts` が年代記に刻むもの）。
+//   「進化しない」の正体が「起きていない」のか「見えていない」のかを分ける
+console.log("\n★初めて現れた年 [Ga]")
+for (let i = 0; i < CAPS.length; i++) {
+  const y = w.life.firstSeen.get(IDX[i]!)
+  console.log(`  ${SHORT[i]!.padEnd(6)} `
+    + (y === undefined ? "—（一度も現れず）"
+      : `${((PLANET_AGE_YEARS - y) / 1e9).toFixed(2)} Ga`))
+}
+// ★**画面に出る段階の内訳。** 中身が多様でも、段階が偏れば単調に見える
+console.log("\n★終端の見た目（絵の段階）")
+const cnt = new Map<string, number>()
+for (const c of w.life.clades) {
+  const g = gradeOf(c.phenotype.capabilities, Array.from(c.phenotype.traits))
+  cnt.set(g, (cnt.get(g) ?? 0) + 1)
+}
+for (const g of GRADES) {
+  const n = cnt.get(g) ?? 0
+  if (n > 0) console.log(`  ${GRADE_LABEL[g].padEnd(18)} ${n}`)
 }
 console.log("\n★引けたか（proposed）／採られたか（adopted）")
 for (let i = 0; i < CAPS.length; i++) {
