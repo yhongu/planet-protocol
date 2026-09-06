@@ -124,6 +124,24 @@ describe("セーブとロード", () => {
     expect(fingerprint(b)).toEqual(fingerprint(a))
   }, 180_000)
 
+  it("★読み込んで解き直すと、保存時と同じ気温になる（読み込みの自己検査）", () => {
+    // ユーザ報告（2026-09-06）「ロードした瞬間、全球凍結して生命が全部しんだ」。
+    // ★**スナップショットは気候の統計も持っている**ので、
+    //   復元して解き直したら同じ温度になるはず。ずれたら壊れた読み込み。
+    //   worker はこの検査を実際に走らせて、ずれたら年代記に出す
+    const a = new World({
+      width: 48, height: 24, seed: "load-climate", shared: false,
+      startEpoch: "hadean", climateCouplingYears: 200_000,
+    })
+    for (let i = 0; i < 40; i++) a.advance(400_000, OPT)
+    const saved = a.stats!.meanT
+    const b = loadWorld(saveWorld(a))
+    expect(b.stats!.meanT).toBe(saved)      // 復元した時点では厳密に同じ
+    b.refresh(OPT)
+    // 解き直しても動かない（動くなら場と統計が食い違っている）
+    expect(Math.abs(b.stats!.meanT - saved)).toBeLessThan(0.5)
+  }, 120_000)
+
   it("形式が違うセーブは黙って読み込まない", () => {
     const w = new World({ width: 32, height: 16, seed: "snap-ver", shared: false })
     const bytes = saveWorld(w)

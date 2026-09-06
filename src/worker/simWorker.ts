@@ -443,9 +443,27 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         const bytes = new Uint8Array(m.bytes)
         void w.climateIdle().then(() => {
           applySnapshot(w, bytes)
+          // ★**読み込みの自己検査。**
+          //
+          // スナップショットは気候の統計も持っている。**復元して解き直したら
+          // 保存時と同じ温度になるはず**で、ずれたら壊れた読み込みである。
+          // 2026-09-06 のユーザ報告「ロードした瞬間、全球凍結して生命が
+          // 全部しんだ」は再現できなかった（この環境に GPU が無い）。
+          // ★**再現しない相手には、次に起きたときに証拠が残るようにする。**
+          const before = w.stats?.meanT
           // ★読み込み直後だけは**必ず CPU で解く**。GPU は反復固定で
           //   安全装置が無く、平衡から遠い状態で別の枝に落ちる（罠 30）
           w.refresh(INTERACTIVE)
+          const after = w.stats?.meanT
+          if (before !== undefined && after !== undefined
+            && Number.isFinite(before) && Number.isFinite(after)
+            && Math.abs(after - before) > 5) {
+            const msg = `読み込みで気候が飛びました: 保存時 ${before.toFixed(1)}℃ →`
+              + ` 復元後 ${after.toFixed(1)}℃（backend ${gpuInfo}）`
+            console.error("[sim]", msg)
+            w.events.push({ year: w.globals.yearsElapsed, kind: "milestone",
+              code: "ev-load-mismatch", text: msg })
+          }
           postState(0)
         })
       }
