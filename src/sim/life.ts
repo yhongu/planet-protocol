@@ -187,6 +187,8 @@ const C_EUKARYOTIC = GENE_KINDS.indexOf("capEukaryotic")
 const C_NFIX = GENE_KINDS.indexOf("capNitrogenFixation")
 const C_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
 const T_BODY = GENE_KINDS.indexOf("bodySize")
+// ★遺骸の分解されにくさ。**`oxygen.ts` が埋没に使う量**（＝惑星の O2 を決める）
+const T_RECAL = GENE_KINDS.indexOf("recalcitrance")
 const T_BRAIN = GENE_KINDS.indexOf("brain")
 const T_NUTRIENT_N = GENE_KINDS.indexOf("nutrientN")
 
@@ -609,6 +611,37 @@ export interface LifeParams {
    */
   bodyDefence: number
   /**
+   * ★**難分解性の組織は食べられにくい**（0..1）。捕食者に見える量を減らす。
+   *
+   * 【なぜ入れたか】2026-09-07 の実測（4 seed・全史・64x32）で、
+   * **終端の O2 が 6.0 / 26.4 / 8.9 / 7.9%** と散る原因が
+   * `recalcitrance` の**浮動**だと分かった。NPP は 4 seed でほぼ同じ
+   * （11.6〜12.7 Gt C/yr）なのに、海の埋没だけが 1.7 倍違っていた ——
+   * 埋没は `NPP × burialFraction × (0.5 + recalcitrance)` で、
+   * 平衡 O2 は**埋没の 2 乗**で効くので、これがそのまま 6% と 26% の差になる。
+   *
+   * ★`grep` で決定的だった（罠 46）: `recalcitrance` が読まれているのは
+   * **`oxygen.ts` の 1 行だけ**で、**適応度には 0 箇所**。
+   * `probe-margin.ts` の余白も原生代 0.0% / 顕生代 0.0%。
+   * **選択がまったく働かない中立形質が、惑星の酸素を決めていた。**
+   *
+   * リグニン・セルロース・キチンは消化されにくい。同じ性質が
+   * 「食われにくさ」と「埋まりやすさ」の両方を作るので、
+   * 骨格・多細胞・体サイズと同じ枠（`defenceGuard`）に入る。
+   * ★**加点ではなく、捕食者に見える量の減点**で書く（罠 42）。
+   *
+   * ★これで「リグニン → 石炭紀 → 高酸素」という地球の筋が機構として通る:
+   * 捕食者のいる時代に上がり、いない時代は下がる（時代で符号が変わる。罠 44）。
+   */
+  recalcitranceDefence: number
+  /**
+   * 難分解性の組織を作る投資（常時払う）。
+   * ★**見返りが時代依存なので、コストは常時**にしないと分化しない。
+   * ★`recalcitranceDefence` が 0（機構が無効）なら**コストも取らない**
+   *   —— 取ると「下げることしかできない量」を自分で作ることになる（罠 41・97）。
+   */
+  recalcitranceCost: number
+  /**
    * 脳の代謝コスト。**ヒトの脳は基礎代謝の約 20%** を使う。
    *
    * ★**見返りとの釣り合いがすべて。** 0.25 / 許容幅 ×1.5 にしたら
@@ -804,6 +837,9 @@ export const EARTH_LIFE: LifeParams = {
   bodyCapture: 0.10,
   bodyNeed: 0.5,
   bodyDefence: 0.5,
+  // ★**既定 0**（未検証の物理を既定に残さない）。A/B は `probe-recal.ts`
+  recalcitranceDefence: 0,
+  recalcitranceCost: 0,
   brainCost: 0.12,
   brainCapture: 0.10,
   brainTolerance: 0.8,
@@ -1751,6 +1787,23 @@ export class Life implements Subsystem {
       ? 1 - p.dispersalCost * tr[T_DISPERSAL] : 1
     // 群れの代償（病気・寄生・群れ内の競合）。★見返りが時代依存なので常時払う
     const socCost = 1 - p.socialityCost * tr[T_SOCIAL]
+    // 難分解性の組織（リグニン・セルロース・キチン）を作る投資。
+    //
+    // ★**常時払わせたら形質が消えた。** 実測（4 seed・全史・64x32）で
+    //   `recalcitrance` が早い時代に厳密に 0 まで落ち、**係数を何にしても
+    //   3 条件が 1 桁まで一致**した（0.5×0 と 0.8×0 は同じ）。
+    //   捕食者が出るのは 3.5〜4 Ga で、それまでの数十億年は純粋なコスト
+    //   だから淘汰され、**捕食者が来た頃にはもう誰も持っていない**。
+    //   `rootCost` でまったく同じことを踏んでいる（「後から陸に上がった系統は
+    //   もう遺伝子を持っていない」）。O2 は埋没の 2 乗で効くので、
+    //   終端の O2 が 25.6% → 4.3% に落ちた。
+    //
+    // ★だから**見返りと同じ場所で払う** —— 捕食圧を受けているセルでだけ。
+    //   誘導防御（食害を受けてからリグニンやタンニンを増やす）は
+    //   実際の植物の作法でもある（Karban & Baldwin 1997）。
+    // ★**機構が無効なときはコストも取らない**（罠 41・97）
+    const recalUnit = p.recalcitranceDefence > 0
+      ? p.recalcitranceCost * tr[T_RECAL] : 0
     // 抗酸化物質と色素の代償
     const ccnCost = 1 - p.ccnCost * tr[T_CCN]
     const albCost = 1 - p.albedoCost * tr[T_ALBEDO]
@@ -1829,10 +1882,16 @@ export class Life implements Subsystem {
         // ★捕食圧。守りが固い（guardSelf が小さい）ほど食われない
         const eaten = predators === null ? 0
           : Math.min(0.95, p.predationPressure * predators[i]! * guardSelf)
+        // ★**難分解性の投資は、捕食圧を受けているセルでだけ払う**（誘導防御）。
+        //   目盛りは自分の守りに依らない**その場の圧**にすること ——
+        //   `guardSelf` を使うと「守りが効くほどコストも減る」ただの得になる
+        const expose = recalUnit > 0 && predators !== null
+          ? Math.min(1, p.predationPressure * predators[i]!) : 0
+        const recalPay = expose > 0 ? 1 - recalUnit * expose : 1
         const iceFac = (1 - eaten)
           * (1 - p.albedoIcePenalty * ice[i]! * (1 - tr[T_ALBEDO]))
         const raw = fTemp * dry * oxygen * energy * habitat * nutrient * overhead
-          * root * (iceFac > 0 ? iceFac : 0)
+          * root * recalPay * (iceFac > 0 ? iceFac : 0)
         const v = raw > p.fitnessFloor ? (raw > 1 ? 1 : raw) : 0
         if (out) out[off + i] = v
         // 点数は【環境収容力で重み付けした平均適応度】。
@@ -1969,6 +2028,9 @@ export class Life implements Subsystem {
       * (hasCapability(ph, C_SKELETON) ? 1 - p.skeletonDefence : 1)
       * (hasCapability(ph, C_MULTI) ? 1 - p.multicellularDefence : 1)
       * (1 - p.bodyDefence * ph.traits[T_BODY]!)
+      // ★難分解性（リグニン・セルロース・キチン）は消化されにくい。
+      //   同じ性質が `oxygen.ts` で「埋まりやすさ」になっている
+      * (1 - p.recalcitranceDefence * ph.traits[T_RECAL]!)
   }
 
   /** 計器用に環境収容力を用意する（`update` の外から呼ばれるため） */

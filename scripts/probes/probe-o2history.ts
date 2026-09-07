@@ -21,6 +21,7 @@
  */
 import { World, PLANET_AGE_YEARS } from "../../src/sim/world"
 import { GENE_KINDS, hasCapability } from "../../src/sim/genome"
+import type { LifeParams } from "../../src/sim/life"
 
 const argv = process.argv.slice(2)
 const arg = (k: string, d: string) => {
@@ -29,7 +30,24 @@ const arg = (k: string, d: string) => {
 }
 const W = Number(arg("width", "64")), H = W >> 1
 const SEED = arg("seed", "g01")
+const CASE = Number(arg("case", "0"))
 const OPT = { cgTol: 1e-2, maxOuter: 12, tol: 1e-4 } as const
+
+/**
+ * ★**`recalcitrance` を浮動から選択に置き換える A/B**（2026-09-07）。
+ *
+ * 見返り = 食われにくさ（`defenceGuard`）、コスト = 作る投資（常時）。
+ * ★`probe-margin.ts` では測れない —— **章に捕食者が 1 匹もいない**ので、
+ *   防御形質の見返りは構造的に 0.0% としか出ない（罠 85 で踏んだ）。
+ * ★対照（case 0）は**何も渡さない**こと（罠 39）。
+ */
+const CASES: readonly [string, Partial<LifeParams>][] = [
+  ["対照（既定・浮動のまま）", {}],
+  ["防御 0.5 / コスト 0.02", { recalcitranceDefence: 0.5, recalcitranceCost: 0.02 }],
+  ["防御 0.5 / コスト 0.05", { recalcitranceDefence: 0.5, recalcitranceCost: 0.05 }],
+  ["防御 0.8 / コスト 0.02", { recalcitranceDefence: 0.8, recalcitranceCost: 0.02 }],
+]
+const [label, over] = CASES[CASE] ?? CASES[0]!
 const C_LAND = GENE_KINDS.indexOf("capLandTolerance")
 const C_MULTI = GENE_KINDS.indexOf("capMulticellular")
 const C_OXY = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
@@ -41,17 +59,23 @@ const w = new World({
   width: W, height: H, seed: SEED, shared: false, startEpoch: "hadean",
   climateCouplingYears: 200_000,
 })
+Object.assign(w.life.params, over)
+const T_RECAL = GENE_KINDS.indexOf("recalcitrance")
 
-console.log(`酸素の収支の全史  ${W}x${H}  seed ${SEED}`)
+console.log(`酸素の収支の全史  ${W}x${H}  seed ${SEED}  case ${CASE} ${label}`
+  + `  ${JSON.stringify(over)}`)
 console.log("  ★地球: 埋没 1.0e13（海 ~7e12 / 陸 ~3e12）  NPP 50 Gt C/yr  O2 20.9%")
 console.log("Ga    O2%  平衡%  NPP    埋没      海       陸       還元剤   酸化風化 火災 "
-  + "陸系統/全  陸%   日射")
+  + "陸系統/全  陸%  recal±SD    捕食  日射")
 
 let next = PLANET_AGE_YEARS - 3.5e9
 while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
   w.advance(400_000, OPT)
   if (w.globals.yearsElapsed < next) continue
-  next += 0.5e9
+  // ★**機構が効く窓に標本を集めること。** 捕食者が出るのは最後の 1 Gyr で、
+  //   0.5 Gyr 刻みでは**そこに 2 点しか無い**（実際に判定できなかった）。
+  //   しかも O2 は 0.5 Gyr の周期で振れているので、終端 1 点では読めない（罠 2・40）
+  next += w.globals.yearsElapsed > PLANET_AGE_YEARS - 1.5e9 ? 0.1e9 : 0.5e9
   const st = w.oxygen.state
   const p = w.oxygen.params
   const eq = st.burial > st.reductant
@@ -61,6 +85,12 @@ while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
   const woody = cl.filter((c) => hasCapability(c.phenotype, C_OXY)
     && !hasCapability(c.phenotype, C_PRED)
     && hasCapability(c.phenotype, C_LAND) && hasCapability(c.phenotype, C_MULTI)).length
+  const rv = cl.map((c) => c.phenotype.traits[T_RECAL] ?? 0)
+  const recalMean = rv.length ? rv.reduce((a, b) => a + b, 0) / rv.length : 0
+  const recalSd = rv.length > 1
+    ? Math.sqrt(rv.reduce((a, b) => a + (b - recalMean) * (b - recalMean), 0) / rv.length)
+    : 0
+  const preds = cl.filter((c) => hasCapability(c.phenotype, C_PRED)).length
   // ★陸の割合は**物理が食べている量**（`landFraction`）で出すこと（罠 83）
   const lf = w.store.f32("landFraction").read
   let land = 0, wsum = 0
@@ -77,5 +107,10 @@ while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
     + `${st.oxidativeWeathering.toExponential(1)} ${st.fireLoss.toFixed(2)} `
     + `${String(woody).padStart(4)}/${String(cl.length).padStart(2)}   `
     + `${(100 * land / wsum).toFixed(1).padStart(4)}  `
+    // ★**判定量**: 浮動なら SD が大きいまま散る。選択が効けば揃うはず
+    + `${recalMean.toFixed(2)}±${recalSd.toFixed(2)}  `
+    // ★突き合わせ（罠 110）: 見返りは捕食者がいて初めて生まれる。
+    //   捕食者 0 の時代に recal が動いていたら、それは選択ではない
+    + `${String(preds).padStart(4)}  `
     + `${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
 }
