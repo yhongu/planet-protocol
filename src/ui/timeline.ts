@@ -10,12 +10,16 @@ import { EPOCHS } from "../sim/loop"
 
 const PLANET_AGE = 4.54e9
 
+/* ★時代の帯は「地図の外の唯一の彩色」なので、ここだけは彩度を上げてよい。
+   暗すぎると帯の切れ目が見えず、時間バーが 1 本の灰色の線に見える。
+   ★順番に温度感が上がる（岩 → 海 → 藻 → 森）ようにして、
+   色そのものが「どこまで来たか」を語るようにする */
 const EPOCH_COLOR: Record<string, string> = {
-  hadean: "#4a3a52",
-  archean: "#3f4a63",
-  proterozoic: "#3a5a5e",
-  phanerozoic: "#4a5c3e",
-  anthropocene: "#6b4530",
+  hadean: "#6b3f52",
+  archean: "#3f5a86",
+  proterozoic: "#2f7d7a",
+  phanerozoic: "#5c8f3e",
+  anthropocene: "#b06a2c",
 }
 
 const EVENT_STYLE: Record<WorldEvent["kind"], { color: string; height: number }> = {

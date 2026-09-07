@@ -90,6 +90,30 @@ for (let i = 0; i < CAPS.length; i++) {
     + (y === undefined ? "—（一度も現れず）"
       : `${((PLANET_AGE_YEARS - y) / 1e9).toFixed(2)} Ga`))
 }
+// ★**「陸上多細胞（＝陸上植物）が出ない」を切り分ける**（2026-09-07）。
+//   陸の有機炭素の埋没は `capLandTolerance && capMulticellular` の系統だけが担う
+//   （リグニン。微生物マットは石炭を作らない）。ところが全史 4 seed で
+//   **終端の woody が 0〜3 本**しかなく、O2 が 4〜7% で止まっていた。
+//   ★仮説: 前提の `aridityTolerance` は**陸でしか効かない＝ほぼ中立**なので浮動し
+//   （罠 100）、「多細胞になった系統」と「乾燥耐性を持った系統」が別になる。
+//   ★**系統ごとに 3 つ並べて突き合わせること**（罠 110）
+{
+  const T_ARID = GENE_KINDS.indexOf("aridityTolerance")
+  const iLand = GENE_KINDS.indexOf("capLandTolerance")
+  const iMulti = GENE_KINDS.indexOf("capMulticellular")
+  let both = 0, arid = 0
+  console.log("\n★終端の系統ごと（多細胞 / 陸 / 乾燥耐性 / バイオマス）")
+  for (const c of w.life.clades) {
+    const m = hasCapability(c.phenotype, iMulti), l = hasCapability(c.phenotype, iLand)
+    const a = c.phenotype.traits[T_ARID] ?? 0
+    if (m && l) both++
+    if (a > 0.01) arid++
+    console.log(`  #${String(c.id).padStart(3)}  ${m ? "多細胞" : "　　　"}`
+      + `  ${l ? "陸" : "　"}  乾燥 ${a.toFixed(2)}  bio ${c.biomass.toFixed(3)}`)
+  }
+  console.log(`  → 陸上多細胞 ${both} 本 / 乾燥耐性を持つ ${arid} 本`
+    + ` / 全 ${w.life.clades.length} 本`)
+}
 // ★**画面に出る段階の内訳。** 中身が多様でも、段階が偏れば単調に見える
 console.log("\n★終端の見た目（絵の段階）")
 const cnt = new Map<string, number>()

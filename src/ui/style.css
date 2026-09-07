@@ -1,10 +1,22 @@
+/* ★**枠は SF、中身はドット絵。**
+   地図は物理量の可視化なので写実にしない（罠 32・82）。
+   そのぶん、周りの枠は「観測装置」に見えるところまで作り込む ——
+   粗い解像度が欠点ではなく作風になる。
+   ★色はここだけで決めること。散らばると 5 か所を直すはめになる（罠 63）。 */
 :root {
-  --bg: #0a0d12;
-  --panel: rgba(18, 22, 30, 0.88);
-  --line: rgba(255, 255, 255, 0.10);
-  --fg: #dfe4ec;
-  --dim: #8b95a6;
+  --bg: #05070d;
+  /* 宇宙の側の青。パネルは「暗い硝子」で、地図の上に浮く */
+  --panel: rgba(14, 20, 32, 0.82);
+  --panel-solid: #0b1120;
+  --line: rgba(126, 176, 214, 0.16);
+  --line-strong: rgba(126, 176, 214, 0.34);
+  --fg: #dfe6f2;
+  --dim: #7c8AA0;
   --accent: #6fb3d8;
+  --accent-warm: #f0b878;
+  /* 発光。数値と枠のどちらにも同じ量を使う */
+  --glow: 0 0 12px rgba(111, 179, 216, 0.18);
+  --glow-text: 0 0 10px rgba(111, 179, 216, 0.35);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
@@ -19,21 +31,29 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
   backdrop-filter: blur(10px); }
 .panel .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .panel .row > span:first-child { color: var(--dim); min-width: 74px; }
-.panel .title { font-size: 13px; letter-spacing: 0.04em; color: var(--fg);
-  margin: 0 0 10px; font-weight: 600; }
+/* 見出しは「計器のラベル」に見せる: 細く・字間を広く・左に発光する印
+   ★`.title` はパネル専用（`.titlescreen` と混ぜないこと。罠 70） */
+.panel .title { font-size: 12px; letter-spacing: 0.14em; color: var(--fg);
+  margin: 0 0 10px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.panel .title::before { content: ""; width: 3px; height: 11px; border-radius: 1px;
+  background: var(--accent); box-shadow: var(--glow); flex: none; }
 .panel .tag { color: var(--bg); background: var(--accent); border-radius: 3px;
   padding: 0 5px; font-size: 10px; margin-left: 6px; }
 .panel hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
-.panel .num { color: var(--accent); margin-left: auto; font-variant-numeric: tabular-nums; }
+/* 値は等幅の数字で、わずかに光らせる（読む場所がひと目で分かる） */
+.panel .num { color: var(--accent); margin-left: auto; font-variant-numeric: tabular-nums;
+  text-shadow: var(--glow-text); }
 .panel .stat > span:first-child { color: var(--dim); }
 input[type="text"], select { flex: 1; min-width: 0; background: #0f131a; color: var(--fg);
   border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; font: inherit; }
 input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
 .buttons { gap: 8px; }
-button { flex: 1; background: #182029; color: var(--fg); border: 1px solid var(--line);
-  border-radius: 4px; padding: 5px 8px; font: inherit; cursor: pointer; }
-button:hover { background: #1f2935; border-color: rgba(255,255,255,0.2); }
-button:active { background: #141b23; }
+button { flex: 1; background: linear-gradient(#141d2c, #0e1522); color: var(--fg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px;
+  font: inherit; cursor: pointer; transition: border-color .12s, box-shadow .12s; }
+button:hover { background: linear-gradient(#1a2537, #121b2a);
+  border-color: var(--line-strong); box-shadow: var(--glow); }
+button:active { background: #0b1120; box-shadow: none; }
 .hover { color: var(--dim); white-space: pre; min-height: 3em; }
 
 /* --- カーソル情報バー（画面の上中央）---
@@ -79,8 +99,12 @@ button:active { background: #141b23; }
 .oor .sub { color: #e0b9a0; font-size: 11px; }
 
 /* --- M1 追加分 --- */
+/* ★暗い硝子の板。上端に細い光の筋を入れると「発光する装置」に見える。
+   ★大きさ・位置は触らないこと（触ると罠 63・64 の再発） */
 .panel { position: absolute; padding: 12px 14px; background: var(--panel);
   border: 1px solid var(--line); border-radius: 8px; backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(190, 225, 255, 0.07);
   max-height: calc(100vh - 24px); overflow-y: auto; }
 #hud { top: 12px; left: 12px; width: 268px; }
 #dash { top: 12px; right: 12px; width: 300px; }
@@ -707,21 +731,30 @@ input[type="text"], select {
 }
 .ch-tab.on { color: var(--fg); background: #232e3c; border-color: #3a4a5e; }
 .ch-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
+/* ★分類の色は **1 か所（--cat）で決めて**、左の帯とドットの両方に使う。
+   別々に書くと片方だけ直すことになる（罠 63・65 の UI 版） */
 .ch-ev {
   display: flex; gap: 7px; align-items: flex-start;
-  padding: 4px 5px; margin-bottom: 2px;
-  background: rgba(255,255,255,0.025); border-left: 3px solid var(--line);
+  padding: 4px 5px; margin-bottom: 2px; --cat: var(--dim);
+  background: rgba(255,255,255,0.025); border-left: 3px solid var(--cat);
 }
-.ch-ev[data-cat="life"] { border-left-color: #7fc46a; }
-.ch-ev[data-cat="earth"] { border-left-color: #e0603c; }
-.ch-ev[data-cat="climate"] { border-left-color: #7fc0e0; }
-.ch-ev[data-cat="hand"] { border-left-color: #ffd678; }
+.ch-ev[data-cat="life"] { --cat: #7fc46a; }
+.ch-ev[data-cat="earth"] { --cat: #e0603c; }
+.ch-ev[data-cat="climate"] { --cat: #7fc0e0; }
+.ch-ev[data-cat="hand"] { --cat: #ffd678; }
 /* ★ドット絵は整数分の 1 でしか綺麗に出ない。素材が 64px なので 16px（1/4）*/
 .ch-ico {
   width: 16px; height: 16px; flex: 0 0 16px; margin-top: 1px;
   image-rendering: pixelated; image-rendering: crisp-edges;
 }
-.ch-dot { width: 16px; height: 16px; flex: 0 0 16px; }
+/* ★絵の無い出来事は**分類の色の光点**にする（それまで 16px の空白だった）。
+   一覧を上から舐めたときに、種類が色で分かるのが目的 */
+.ch-dot { width: 16px; height: 16px; flex: 0 0 16px; position: relative; }
+.ch-dot::before {
+  content: ""; position: absolute; left: 5px; top: 6px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--cat); box-shadow: 0 0 7px var(--cat);
+}
 .ch-tx { min-width: 0; font-size: 10.5px; line-height: 1.45; color: var(--fg); }
 .ch-yr {
   color: var(--dim); font-variant-numeric: tabular-nums;

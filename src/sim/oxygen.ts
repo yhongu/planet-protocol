@@ -63,6 +63,45 @@ export interface OxygenParams {
    */
   burialFraction: number
   /**
+   * ★**埋没が `recalcitrance` に振り回される幅**。
+   * 埋没 = 新生産 × `burialFraction` × (`burialRecalBase` + `burialRecalSpan` × recal)。
+   *
+   * 【なぜ変えたか】2026-09-07 の実測（4 seed・全史・64x32）で、
+   * **終端の O2 が 6.0 / 26.4 / 8.9 / 7.9%** と散る原因が、
+   * `recalcitrance` の**浮動**だと分かった（`grep` で適応度に 0 箇所）。
+   * それまでの係数は `0.5 + recal` で、**形質だけで 0.5〜1.5（3 倍）**動く。
+   * 平衡 O2 は埋没の**2 乗**なので、
+   *
+   *   recal 0.0 → 埋没 5.8e12 → O2  7.5%
+   *   recal 0.5 → 埋没 1.1e13 → O2   26%
+   *   recal 1.0 → 埋没 1.7e13 → O2   43%（火災で頭は打つ）
+   *
+   * **中立形質 1 つが惑星の酸素の全域を動かす取っ手になっていた。**
+   * 選択を足しても（`recalcitranceDefence`）直らない ——
+   * 4 seed のうち 2 本は形質そのものを持っておらず、取っ手の**長さ**が問題だった。
+   *
+   * ★**契約**（`carbon.ts` の `assertReferenceState` と同じ作法）:
+   * **現在の地球の条件で【海の】埋没が 7e12 mol C/yr になること。**
+   * 地球の新生産は ~10 Gt C/yr ≒ 1.0e15 mol C/yr（★総 NPP 50 Gt ではない ——
+   * あれは表層で再循環した分を含む。ここは湧昇と河川が運ぶ**新生産**）で、
+   * 埋没はその 1〜2%。地球の 1.0e13 は**海 ~7e12 + 陸 ~3e12**なので、
+   * この係数が受け持つのは海の分だけ。中央の形質（recal 0.5）で
+   *
+   *   1.0e15 × 0.01 × (0.55 + 0.25×0.5) = 6.75e12 ≒ 7e12 ✓
+   *
+   * `burialAtReference()` がこれを見張る（`tests/oxygen.test.ts`）。
+   *
+   * ★**一度 0.85 + 0.3×recal（中央で 1.0e13）にして失敗した。**
+   * それだと `recal ≈ 0` の**原生代の平衡 O2 が 2.3% → 13.8%** に上がり、
+   * 9/6 に作った「退屈な 10 億年」を潰す（罠 19: 直したのではなく釣り合いを崩した）。
+   * ★**時間依存は浮動ではなく生物に持たせること。** 地球で顕生代に
+   * 酸素が上がったのは**リグニンを持つ陸上植物が出たから**で、
+   * 原生代が低いのは**まだいなかったから**。だから海は低く狭く保ち、
+   * 上昇は `landBurialPerBiomass`（`woody` の門つき）に担わせる。
+   */
+  burialRecalBase: number
+  burialRecalSpan: number
+  /**
    * **陸のバイオマスからの有機炭素の埋没** [mol C /(m² yr) / バイオマス]。
    *
    * ★それまで埋没の式は `(1 - landFraction)` で**陸を掛け捨てて**いた ——
@@ -153,9 +192,18 @@ export interface OxygenParams {
 export const EARTH_OXYGEN: OxygenParams = {
   redfieldCP: 106,
   burialFraction: 0.01,
-  // ★n=2 では 0.10 と 0.30 を区別できなかった（seed 間で順序が入れ替わる）。
-  //   石炭紀の埋没が大きかったことに合わせて強い側を採る（罠 3: 証拠は弱い）
-  landBurialPerBiomass: 0.30,
+  // ★取っ手を短くした（0.5〜1.5 の 3 倍 → 0.55〜0.80 の 1.45 倍）。
+  //   中央（recal 0.5）で地球の【海の】埋没 7e12 に一致する（`burialAtReference`）
+  burialRecalBase: 0.55,
+  burialRecalSpan: 0.25,
+  // ★**契約で決めた**（`EARTH_BURIAL_LAND` = 3e12）。それまでの 0.30 は
+  //   「n=2 では 0.10 と 0.30 を区別できなかった」という弱い根拠の値で、
+  //   顕生代の章で陸の埋没が 1.3e12（地球 3e12 の 4 割）しか出ていなかった。
+  //   全史 4 seed でも陸は 0〜5e11 で、**足りない分がそのまま酸素の不足**だった
+  //   （新しい較正で海は契約どおりなのに O2 が 4〜7% に揃った）。
+  //   ★門（`woody` = 陸に上がった多細胞）は変えていないので、
+  //   **原生代には 1 mol も入らない**（地球の筋: リグニン → 石炭紀）
+  landBurialPerBiomass: 0.70,
   reductantPresent: 2.0e12,
   reductantTempScale: 80,
   oxidativeWeatheringPresent: 8.0e12,
@@ -166,6 +214,37 @@ export const EARTH_OXYGEN: OxygenParams = {
   floorPercent: 1e-7,
   co2DrawdownCoupling: 0,
   enabled: 1,
+}
+
+/**
+ * ★**地球の新生産 [mol C/yr]。** 10 Gt C/yr ÷ 12 g/mol。
+ *
+ * ★**総 NPP の 50 Gt C/yr ではない。** あれは表層で再循環したリンで
+ * 何度も回した分を含む。ここが見ているのは湧昇と河川が新しく運ぶリンなので、
+ * 比べる相手は**新生産**（Eppley & Peterson 1979、Falkowski et al. 1998）。
+ * ★私はこれを一度取り違えて「NPP が地球の 1/4」と誤診した（罠 24）。
+ */
+export const EARTH_NEW_PRODUCTION = 1.0e15
+/** 地球の有機炭素の埋没 [mol C/yr]。吸い込み側の較正と釣り合う値 */
+export const EARTH_BURIAL = 1.0e13
+/** その内訳。★**海と陸を分けて見張る**（時間依存を担うのは陸の方） */
+export const EARTH_BURIAL_MARINE = 7.0e12
+export const EARTH_BURIAL_LAND = 3.0e12
+
+/**
+ * ★**契約: 現在の地球の条件で、【海の】埋没が 7e12 mol C/yr になること。**
+ *
+ * `carbon.ts` の `assertReferenceState`（「現在の地球は定常」を火山脱ガスの
+ * 定義に使う）と同じ作法。**供給側にだけ見張りが無かった**（罠 94）ので置く。
+ *
+ * 中央の形質（`recalcitrance` = 0.5）で評価する ——
+ * この量は形質で動くので、**どの点で地球に合わせるかを決めておく**必要がある。
+ * 残りの 3e12（陸）は `landBurialPerBiomass` が担う。**分けて見張ること** ——
+ * 合計だけを見ていると、海を上げて陸の欠落を隠せてしまう（罠 19）。
+ */
+export function burialAtReference(p: OxygenParams, recal = 0.5): number {
+  return EARTH_NEW_PRODUCTION * p.burialFraction
+    * (p.burialRecalBase + p.burialRecalSpan * recal)
 }
 
 export interface OxygenState {
@@ -242,7 +321,11 @@ export class Oxygen implements Subsystem {
       if (hasCapability(c.phenotype, C_PREDATION)) continue
       if (c.phenotype.traits[T_PHOTO] <= 0) continue
       lanes.push(c.lane)
-      recal.push(c.phenotype.traits[T_RECAL])
+      // ★**埋まりやすさの係数は 1 か所で作る**（罠 65）。同じ式が
+      //   海の埋没と陸の埋没の 2 箇所に要る。別々に書くと片方だけ直したときに
+      //   打ち消し合って成功に見える
+      recal.push(p.burialRecalBase
+        + p.burialRecalSpan * c.phenotype.traits[T_RECAL])
       // ★陸の埋没に数えるのは「陸に上がった多細胞」だけ。
       //   陸耐性だけの微生物マットは 3.2Ga に出るので、そこから
       //   石炭を埋めると**原生代の低酸素が持ち上がる**（実測で 2.0Ga に 5.8%）
@@ -266,15 +349,15 @@ export class Oxygen implements Subsystem {
             const part = cell * share
             npp += part
             // 難分解性が高いほど埋まる（§2.2 の recalcitrance）
-            burialC += part * p.burialFraction * (0.5 + recal[k])
-            burialSea += part * p.burialFraction * (0.5 + recal[k])
+            burialC += part * p.burialFraction * recal[k]
+            burialSea += part * p.burialFraction * recal[k]
             // ★**陸の埋没**（リグニン + 陸と浅海の堆積）。上の `cell` は
             //   `(1 - lf)` で陸を落としているので、陸はここでだけ入る
             if (p.landBurialPerBiomass > 0 && lf[i] > 0 && woody[k] === 1) {
               burialC += bio[lanes[k] * n + i] * areaM2 * lf[i]
-                * p.landBurialPerBiomass * (0.5 + recal[k])
+                * p.landBurialPerBiomass * recal[k]
               burialLand += bio[lanes[k] * n + i] * areaM2 * lf[i]
-                * p.landBurialPerBiomass * (0.5 + recal[k])
+                * p.landBurialPerBiomass * recal[k]
             }
           }
         }
