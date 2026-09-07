@@ -433,15 +433,35 @@ export interface LifeParams {
   /** 色素を作る代償 */
   albedoCost: number
   /**
-   * **群れ狩り**。社会性が捕獲効率を上げる（オオカミ・シャチ・アリ）。
-   * ★捕食者にしか効かないので、捕食者のいない時代には**ただのコスト**になる。
-   * だから全系統が上限に張り付かない（罠 44）
+   * **食性を連続量にする度合い**（0 = 従来の二者択一 / 1 = 完全に連続）。
+   *
+   * ★ユーザの指摘（2026-09-06）:「草食、肉食だけで分けれるほど、
+   * 生命は単純じゃないのかも」。まったくそのとおりで、実装は
+   * **もっと単純**だった —— `capPredation` のビットが立った瞬間、
+   * **光合成の形質は完全に無視**され、混合栄養も雑食も表現できなかった。
+   *
+   * ★`docs/02` の理念（「名前は引かない。生成する」／形質は連続値、
+   * 能力ビットは**質的な事件**だけ）とも食い違っていた。
+   * 食性は本来連続なのにビットにしていた。
+   *
+   * 従属栄養の割合を **1 − 光合成** とする。新しい遺伝子は要らない:
+   *   光合成 0.8 の捕食者 → 2 割を他者から取る（サンゴ、ミドリムシ）
+   *   光合成 0.0 の捕食者 → 完全な従属栄養
+   *
+   * ★**最初の捕食者が光合成を捨てなくて済む**ので、「最初の 1 匹」の
+   * 成立にも効くはず（罠 49）。
    */
+  mixotrophy: number
   /**
    * **捕食圧**。捕食者の現存量 1 あたり、生産者の適応度が何割減るか。
    * ★0 なら「食われる不利」が存在しない＝**防御形質は全部ただのコスト**。
    */
   predationPressure: number
+  /**
+   * **群れ狩り**。社会性が捕獲効率を上げる（オオカミ・シャチ・アリ）。
+   * ★捕食者にしか効かないので、捕食者のいない時代には**ただのコスト**になる。
+   * だから全系統が上限に張り付かない（罠 44）
+   */
   socialityCapture: number
   /**
    * **群れの防御**。社会性が食われにくさを上げる（魚群・ムクドリ・ジャコウウシ）。
@@ -751,6 +771,7 @@ export const EARTH_LIFE: LifeParams = {
   albedoWarmK: 0,
   albedoIcePenalty: 1.0,
   albedoCost: 0.01,
+  mixotrophy: 0,
   predationPressure: 2.0,
   socialityCapture: 0.35,
   socialityDefence: 0.45,
@@ -1077,7 +1098,7 @@ export class Life implements Subsystem {
     // 「いないから 0 にする」と、捕食を獲得した候補が
     // **餌ゼロの世界で評価されて必ず落ちる**（鶏と卵）。実測で捕食者が
     // 45 億年ずっと 0 だった原因がこれ（2026-09-02）。
-    this.buildPrey(world, producers, prey)
+    this.buildPrey(world, producers, prey, consumers)
     if (consumers.length > 0) {
       if (!this.resBuf || this.resBuf.length !== n) this.resBuf = new Float32Array(n)
       const res = this.resBuf
@@ -1090,7 +1111,14 @@ export class Life implements Subsystem {
       }
       this.updateReach(world, fit, consumers, dtYears)
       this.applyReach(world, fit, consumers)
-      this.allocateGroup(world, res, fit, consumers, true)
+      // ★**混合栄養は餌と K の両方から取る。**
+      //   ここでの K は 1 段目が使ったものと同じ場なので、自分で作る分は
+      //   生産者と**二重に数えている**（`mixotrophy` を上げるほど甘くなる）。
+      //   1 段目に混ぜて解き直すには配分そのものを作り直す必要があるので、
+      //   まずは既定 0 のまま**効き方だけ**を測る
+      const autoW = this.params.mixotrophy > 0
+        ? consumers.map((c) => 1 - this.heteroShare(c.phenotype)) : null
+      this.allocateGroup(world, res, fit, consumers, true, K, autoW)
     }
     this.publishBiosphere(world)
     this.publishCcn(world)
@@ -1424,11 +1452,13 @@ export class Life implements Subsystem {
     const n = world.grid.cellCount
     if (!this.preyBuf || this.preyBuf.length !== n) this.preyBuf = new Float32Array(n)
     const producers = this.clades.filter((c) => !hasCapability(c.phenotype, C_PREDATION))
-    this.buildPrey(world, producers, this.preyBuf)
+    const consumers = this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION))
+    // ★**本体と同じ引数で呼ぶこと**（罠 20）。混合栄養は「餌でもある」ので
+    //   `consumers` を渡さないと計器だけ別の餌の場を見る
+    this.buildPrey(world, producers, this.preyBuf, consumers)
     // ★計器にも捕食圧を渡すこと。渡さないと**防御形質の余白が見えない**
     //   （餌の場を渡し忘れて `bodySize` が 0.00% に見えた件と同じ。罠 91）
-    const predF = this.predatorField(world,
-      this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION)))
+    const predF = this.predatorField(world, consumers)
     // ★**文脈を全部渡すこと。** この計器は `fitness()` に
     //   `null` を渡す引数が多く、**そこを通る形質が丸ごと見えない**。
     //   2026-09-05 の 1 日で 3 回踏んだ:
@@ -1444,8 +1474,10 @@ export class Life implements Subsystem {
       if (!(base > 0)) continue
       ph.traits.set(c.phenotype.traits)
       ph.capabilities = c.phenotype.capabilities | capBit
+      // ★**基準と同じ文脈で測ること。** 捕食圧を片側だけ渡していたので、
+      //   防御に関わる能力の余白が「圧の無い世界」と比べられていた
       const with_ = this.fitness(world, ph, null, 0, kb, stride,
-        null, null, this.preyBuf)
+        null, null, this.preyBuf, null, null, 1, predF)
       out.push((with_ - base) / base)
     }
     return out
@@ -1481,11 +1513,12 @@ export class Life implements Subsystem {
     const n = world.grid.cellCount
     if (!this.preyBuf || this.preyBuf.length !== n) this.preyBuf = new Float32Array(n)
     const producers = this.clades.filter((c) => !hasCapability(c.phenotype, C_PREDATION))
-    this.buildPrey(world, producers, this.preyBuf)
+    const consumers = this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION))
+    // ★**本体と同じ引数で呼ぶこと**（罠 20）。混合栄養は「餌でもある」
+    this.buildPrey(world, producers, this.preyBuf, consumers)
     // ★計器にも捕食圧を渡すこと。渡さないと**防御形質の余白が見えない**
     //   （餌の場を渡し忘れて `bodySize` が 0.00% に見えた件と同じ。罠 91）
-    const predF = this.predatorField(world,
-      this.clades.filter((c) => hasCapability(c.phenotype, C_PREDATION)))
+    const predF = this.predatorField(world, consumers)
     // ★**文脈を全部渡すこと。** この計器は `fitness()` に
     //   `null` を渡す引数が多く、**そこを通る形質が丸ごと見えない**。
     //   2026-09-05 の 1 日で 3 回踏んだ:
@@ -1665,6 +1698,9 @@ export class Life implements Subsystem {
     //   SD が 0.299 → 0.000 に潰れた ——「見返りが無いコスト」だった。
     //   **単独で狩る側の減点**にすれば、飽和の外で効く
     const captured = capture * (1 - p.socialityCapture * (1 - tr[T_SOCIAL]))
+    // ★**従属栄養の割合**（食性を連続にする）。定義は `heteroShare` に 1 つだけ置く
+    //   （同じ式が餌の場・捕食者の場・ここの 3 箇所に要る。罠 65）
+    const hetero = consumer ? this.heteroShare(ph) : 0
     // 脳は高くつく（ヒトの脳は基礎代謝の約 20%）。象徴はさらに上乗せ。
     // ★見返りは捕獲効率と温度の許容幅。文明の見返りは M7 なのでまだ無い
     // ★**象徴（文化）は脳の元を取りやすくする。**
@@ -1707,7 +1743,10 @@ export class Life implements Subsystem {
     //   **1 が無防備**。捕食者を免除したつもりで `consumer ? 1 : …` と書いたら、
     //   **捕食者だけが捕食圧を最大で受ける**式になっていた（符号の取り違え）。
     //   この段では上位捕食者を扱わないので、捕食者は 0（食われない）
-    const guardSelf = consumer ? 0 : this.defenceGuard(ph)
+    //   ★**混合栄養は、自分で作った分だけ食われる側でもある。**
+    //     免除したままだと「光合成する捕食者」が食われない上に光も使える
+    //     ただの得になって、全系統がそこへ張り付く（罠 44）
+    const guardSelf = (consumer ? 1 - hetero : 1) * this.defenceGuard(ph)
     const dispCost = p.dispersalKmPerYear > 0
       ? 1 - p.dispersalCost * tr[T_DISPERSAL] : 1
     // 群れの代償（病気・寄生・群れ内の競合）。★見返りが時代依存なので常時払う
@@ -1759,9 +1798,12 @@ export class Life implements Subsystem {
           * Math.min(1, vent[i] / Math.max(1e-12, p.chemoVentRef))
         // ★捕食者は光に依らない。**餌の量は資源側（K）に入っている**ので、
         // ここで餌の量を掛けると二重計上になる
-        const energy = consumer
-          ? captured * metabolism
-          : ((1 - photo) * chemo + photo * light * donor) * metabolism
+        // ★**食性を連続にする。** 従属栄養の割合は `1 − 光合成`。
+        //   `mixotrophy = 0` なら従来どおりの二者択一（1 ビットも動かない）
+        const auto = (1 - photo) * chemo + photo * light * donor
+        const energy = (consumer
+          ? hetero * captured + (1 - hetero) * auto
+          : auto) * metabolism
         // 栄養の要求（要求が高いほど貧栄養に弱い。K 側で供給を見る）
         // ★**栄養は「制限」であって「増幅」ではない**（リービッヒの最小律）。
         // 最初 `/ nutrientNeed` と割って 1 を超えさせたら、クランプで
@@ -1774,11 +1816,13 @@ export class Life implements Subsystem {
         // ★**岩から自前で掘り出すリン**（`weatheringNutrient`）。
         //   陸のセルだけ。貧栄養（K が小さい）ほど効くので、
         //   **豊かな陸と貧しい陸で系統が分かれる**
-        const nutrient = consumer
-          ? nLimit
-          : Math.min(nLimit, K
-            ? Math.min(1, (K[i] + (f > 0 ? rootP * f : 0)) / (nutrientNeed * bodyNeed))
-            : 1)
+        // ★**混合栄養は、自分で作る分のリンを自分で要る。**
+        //   `hetero = 1`（従来の捕食者）なら `min(nLimit, 1)` で 1 ビットも動かない
+        const supplyP = K
+          ? Math.min(1, (K[i] + (f > 0 ? rootP * f : 0)) / (nutrientNeed * bodyNeed))
+          : 1
+        const nutrient = Math.min(nLimit,
+          consumer ? hetero + (1 - hetero) * supplyP : supplyP)
         // 根のコストも陸の割合ぶんだけ払う（海では根を作らない）
         const root = f > 0 ? 1 - (1 - rootCost) * f : 1
         // ★氷の上は、黒い生物だけが融かして液体の水を作れる（雪氷藻類）
@@ -1803,7 +1847,9 @@ export class Life implements Subsystem {
           // 捕食者は「餌 × 生態効率」を、**他の捕食者とだけ**分け合う。
           // 生産者の強さを分母に入れると、最初の捕食者が必ず落ちる
           const res = consumer
-            ? p.trophicEfficiency * p.trophicTurnover * prey![i] : K[i]
+            ? hetero * p.trophicEfficiency * p.trophicTurnover * prey![i]
+              + (1 - hetero) * K[i]
+            : K[i]
           const oSum = consumer ? (sumOthersC ? sumOthersC[i] : 0) : sumOthers[i]
           const oMax = consumer ? (maxOthersC ? maxOthersC[i] : 0) : maxOthers![i]
           const fill = res * (v > oMax ? v : oMax)
@@ -1811,8 +1857,11 @@ export class Life implements Subsystem {
           score += denom > 0 ? fill * (pw / denom) * aw : 0
           wsum += aw
         } else {
+          const kk = K ? K[i] : 1
           const res = consumer
-            ? p.trophicEfficiency * p.trophicTurnover * prey![i] : (K ? K[i] : 1)
+            ? hetero * p.trophicEfficiency * p.trophicTurnover * prey![i]
+              + (1 - hetero) * kk
+            : kk
           const w = aw * res
           score += v * w
           wsum += w
@@ -1841,6 +1890,12 @@ export class Life implements Subsystem {
   private allocateGroup(
     world: World, res: Float32Array, fit: Float32Array,
     group: Clade[], add: boolean,
+    /**
+     * ★**混合栄養のための第 2 の資源**（捕食者の段では環境収容力 K）。
+     * `autoW[k]` はクレード k がそちらから取る割合（= 1 − 従属栄養の割合）。
+     * null なら従来どおり全員が `res` だけを分け合う（1 ビットも動かない）。
+     */
+    res2: Float32Array | null = null, autoW: number[] | null = null,
   ): void {
     const p = this.params
     const n = world.grid.cellCount
@@ -1863,7 +1918,9 @@ export class Life implements Subsystem {
       for (let k = 0; k < live.length; k++) {
         const lane = live[k].lane
         const f = fit[lane * n + i]
-        const b = sum > 0 ? fill * Math.pow(f, p.competition) / sum : 0
+        // ★混合栄養のクレードだけ、自分の資源の混ぜ方が違う（取り分の式は同じ）
+        const fk = autoW ? (res[i] * (1 - autoW[k]) + res2![i] * autoW[k]) * best : fill
+        const b = sum > 0 ? fk * Math.pow(f, p.competition) / sum : 0
         bio[lane * n + i] = b
         cellTotal += b
         if (b > 0) {
@@ -1890,6 +1947,22 @@ export class Life implements Subsystem {
    *
    * ★**加点ではなく不利側の減点**で書く（罠 42）。
    */
+  /**
+   * **従属栄養の割合**（0..1）。食性を連続にする唯一の定義。
+   *
+   * 捕食の能力が無ければ 0（完全な独立栄養）。持っていれば
+   * `1 − mixotrophy × 光合成` —— 光合成が強い系統ほど、他者から取る割合が減る。
+   * ★`mixotrophy = 0` なら捕食者は必ず 1 で、**従来の二者択一と 1 ビットも変わらない**。
+   *
+   * ★同じ式が「適応度のエネルギー」「餌の場（食われる側）」
+   * 「捕食者の場（食う側）」の 3 箇所に要る。別々に書くと片方だけ直したときに
+   * 打ち消し合って成功に見える（`CLAUDE.md` の 65）。
+   */
+  heteroShare(ph: Phenotype): number {
+    if (!hasCapability(ph, C_PREDATION)) return 0
+    return 1 - this.params.mixotrophy * ph.traits[T_PHOTO]!
+  }
+
   defenceGuard(ph: Phenotype): number {
     const p = this.params
     return (1 - p.socialityDefence * ph.traits[T_SOCIAL]!)
@@ -1916,12 +1989,19 @@ export class Life implements Subsystem {
     out.fill(0)
     for (const c of consumers) {
       const off = c.lane * n
-      for (let i = 0; i < n; i++) out[i] += bio[off + i]!
+      // ★**食う圧は従属栄養の割合ぶんだけ。** 光合成で半分まかなう系統は
+      //   餌を半分しか取らない（`mixotrophy = 0` なら h = 1 で従来どおり）
+      const h = this.heteroShare(c.phenotype)
+      for (let i = 0; i < n; i++) out[i] += bio[off + i]! * h
     }
     return out
   }
 
-  private buildPrey(world: World, producers: Clade[], out: Float32Array): void {
+  private buildPrey(
+    world: World, producers: Clade[], out: Float32Array,
+    /** ★混合栄養の捕食者は、自分で作った分（1 − h）だけ**餌でもある** */
+    consumers: Clade[] = [],
+  ): void {
     const n = world.grid.cellCount
     const bio = world.store.f32("biomass").read
     out.fill(0)
@@ -1947,6 +2027,14 @@ export class Life implements Subsystem {
       const guard = this.defenceGuard(c.phenotype)
       const off = c.lane * n
       for (let i = 0; i < n; i++) out[i] += bio[off + i] * guard
+    }
+    // ★混合栄養は「食う側」であると同時に「食われる側」でもある。
+    //   `mixotrophy = 0` では重みが厳密に 0 なので、ここは走らない
+    for (const c of consumers) {
+      const w = (1 - this.heteroShare(c.phenotype)) * this.defenceGuard(c.phenotype)
+      if (w <= 0) continue
+      const off = c.lane * n
+      for (let i = 0; i < n; i++) out[i] += bio[off + i] * w
     }
   }
 

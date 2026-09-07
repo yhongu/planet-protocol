@@ -173,6 +173,13 @@ export interface OxygenState {
   primaryProduction: number
   /** 有機炭素の埋没 [mol C/yr] = O2 の生成 [mol/yr] */
   burial: number
+  /**
+   * ★**埋没の内訳**（診断専用。火災の減点を掛ける前の値）。
+   * 供給の側に「地球と比べて妥当か」の見張りが無かった（罠 94）ので、
+   * `probe-o2budget.ts` がこの 2 つを地球の 1.0e13 mol/yr と突き合わせる。
+   */
+  burialMarine: number
+  burialLand: number
   /** マントル由来の還元剤 [mol/yr] */
   reductant: number
   /** 酸化的風化 [mol/yr] */
@@ -195,7 +202,8 @@ export class Oxygen implements Subsystem {
   readonly maxStepYears = 1e9
   readonly params: OxygenParams
   readonly state: OxygenState = {
-    primaryProduction: 0, burial: 0, reductant: 0, oxidativeWeathering: 0,
+    primaryProduction: 0, burial: 0, burialMarine: 0, burialLand: 0,
+    reductant: 0, oxidativeWeathering: 0,
     buriedOrganicC: 0, goeYear: -1, fireLoss: 0,
   }
 
@@ -242,6 +250,8 @@ export class Oxygen implements Subsystem {
         && hasCapability(c.phenotype, C_MULTI) ? 1 : 0)
     }
     let npp = 0, burialC = 0
+    // ★内訳は診断専用。**足す場所を本体と 1 行ずつ揃えること**（別に書くとずれる）
+    let burialSea = 0, burialLand = 0
     if (lanes.length > 0) {
       for (let y = 0; y < H; y++) {
         const areaM2 = world.grid.cellArea[y]
@@ -257,10 +267,13 @@ export class Oxygen implements Subsystem {
             npp += part
             // 難分解性が高いほど埋まる（§2.2 の recalcitrance）
             burialC += part * p.burialFraction * (0.5 + recal[k])
+            burialSea += part * p.burialFraction * (0.5 + recal[k])
             // ★**陸の埋没**（リグニン + 陸と浅海の堆積）。上の `cell` は
             //   `(1 - lf)` で陸を落としているので、陸はここでだけ入る
             if (p.landBurialPerBiomass > 0 && lf[i] > 0 && woody[k] === 1) {
               burialC += bio[lanes[k] * n + i] * areaM2 * lf[i]
+                * p.landBurialPerBiomass * (0.5 + recal[k])
+              burialLand += bio[lanes[k] * n + i] * areaM2 * lf[i]
                 * p.landBurialPerBiomass * (0.5 + recal[k])
             }
           }
@@ -285,6 +298,8 @@ export class Oxygen implements Subsystem {
 
     st.primaryProduction = npp
     st.burial = burialC
+    st.burialMarine = burialSea * (1 - st.fireLoss)
+    st.burialLand = burialLand * (1 - st.fireLoss)
 
     // --- 還元剤（マントルが熱いほど多い）---
     const tm = world.mantle.state.temperature
