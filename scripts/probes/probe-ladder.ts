@@ -51,6 +51,9 @@ for (const kv of SET.split(",").filter(Boolean)) {
   const [k, v] = kv.split("=")
   const targets: Record<string, unknown>[] = [
     w.life.params as unknown as Record<string, unknown>,
+    // ★変異のつまみ（`pLadder` など）は `life.mutation` にある。
+    //   ここを足すまで `--set pLadder=...` は「知らないパラメータ」で落ちていた
+    w.life.mutation as unknown as Record<string, unknown>,
     w.oxygen.params as unknown as Record<string, unknown>,
     w.carbon.params as unknown as Record<string, unknown>,
   ]
