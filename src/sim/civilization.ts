@@ -44,7 +44,8 @@ import type { World } from "./world"
 import type { Subsystem } from "./loop"
 import { GENE_KINDS, hasCapability } from "./genome"
 import {
-  TECHS, sumTech, techPrereqOk, techGateOk, type TechEffect, type PlanetGate,
+  TECHS, TECH_PREREQ, sumTech, techPrereqOk, techGateOk,
+  type TechEffect, type PlanetGate,
 } from "./tech"
 import { felsicVolume } from "./tectonics"
 import { Rng } from "../core/rng"
@@ -56,6 +57,10 @@ export const CIV_FIELDS: readonly FieldSpec[] = [
   {
     name: "population", kind: "f32", doubleBuffered: false,
     comment: "人/セル。★収容力とのロジスティックで決まる",
+  },
+  {
+    name: "civId", kind: "u8", doubleBuffered: false,
+    comment: "0 = 無人。1..MAX_CIVS = その文明の領域。★文明ごとに技術が違う",
   },
   {
     name: "landUse", kind: "f32", doubleBuffered: false,
@@ -159,6 +164,14 @@ export interface CivParams {
   seedPopulation: number
   /** 技術が無いときの 1 人あたりエネルギー [W/人]（狩猟採集 ≒ 火のみ） */
   baseEnergyW: number
+  /**
+   * ★**建国の速さ** [1/yr]。知性種がいる無主の陸に文明が生まれる確率。
+   * **複数の文明が別々の場所で育つ**ので、惑星の条件（大河・海）が違い、
+   * 代替経路（灌漑/天水、舟/畜力）が自然に分かれる。
+   */
+  foundingRate: number
+  /** 領域が隣のセルへ広がる速さ [1/yr] */
+  expansionRate: number
   /** 河川の流量の代表値（これで割って 0..1 にする）。現在の地球の大河の目安 */
   riverRefDischarge: number
   /**
@@ -229,6 +242,9 @@ export const EARTH_CIV: CivParams = {
   baseEnergyW: 300,
   collapseTauYears: 1e5,
   // 1000 万人の狩猟採集民が 1 万年に 1 つ発明する程度から始める
+  // 100 万年に 1 セルあたり 1% 程度。★複数だが多すぎない数を狙う
+  foundingRate: 1e-8,
+  expansionRate: 1e-5,
   riverRefDischarge: 5e4,
   complexityCost: 0.35,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
@@ -239,19 +255,39 @@ export const EARTH_CIV: CivParams = {
   landClearCarbonMolPerM2: 1250,
 }
 
-export interface CivState {
-  /** 全球の人口 [人] */
-  totalPopulation: number
-  /** 1 人あたりのエネルギー [W/人]。★White の法則の連続量 */
+/**
+ * ★**文明 1 つ**（`MAX_CIVS` まで）。
+ *
+ * 技術は**文明ごと**に持つ。惑星の条件も**その文明の領域で**測るので、
+ * 大河のそばの文明は灌漑へ、海辺の文明は舟へと**道が分かれる**。
+ */
+export interface Civ {
+  id: number
+  foundedYear: number
+  population: number
   energyPerCapita: number
+  /** 持っている技術。★これがこの文明のゲノム */
+  tech: boolean[]
+  /** その技術を**誰が最初に発明したか**。★収斂と伝播を分ける唯一の手段 */
+  techOrigin: number[]
+}
+
+/** 同時に存在できる文明の数。★場が u8 なので 255 まで */
+export const MAX_CIVS = 8
+
+export interface CivState {
+  /** 全球の人口 [人]（★すべての文明の合計） */
+  totalPopulation: number
+  /** 1 人あたりのエネルギー [W/人]（★人口で重み付けした平均） */
+  energyPerCapita: number
+  /** ★いま存在する文明 */
+  civs: Civ[]
+  /** 延べ何個の文明が生まれたか（id の発番に使う） */
+  founded: number
   /** 知性種が現れた年（`yearsElapsed`）。まだなら -1 */
   emergedYear: number
   /** ★開墾で大気に出した炭素の積算 [ppm]（診断・収支の相手） */
   landClearCo2Ppm: number
-  /** 持っている技術（`TECHS` の添字）。★これが文明のゲノム */
-  tech: boolean[]
-  /** その技術を**誰が最初に発明したか**の id。★収斂と伝播を分ける唯一の手段 */
-  techOrigin: number[]
   /** 診断: 発明された回数 / 失伝した回数（★引けたか・失ったかを数える） */
   invented: number
   lost: number
@@ -270,8 +306,7 @@ export class Civilization implements Subsystem {
   readonly params: CivParams
   readonly state: CivState = {
     totalPopulation: 0, energyPerCapita: 0, emergedYear: -1, landClearCo2Ppm: 0,
-    tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
-    invented: 0, lost: 0,
+    civs: [], founded: 0, invented: 0, lost: 0,
   }
 
   /** ★決定論のため、世界の seed から作る（`docs/04-6`） */
@@ -301,13 +336,11 @@ export class Civilization implements Subsystem {
    * （`λ·dt` と書くと 100 年刻みと 100 万年刻みで別の惑星になる）。
    */
   private evolveTech(
-    world: World, pop: number, eff: TechEffect, dtYears: number,
+    civ: Civ, planet: Record<PlanetGate, number>, eff: TechEffect, dtYears: number,
   ): void {
     const p = this.params
-    const has = this.state.tech
-    // ★**惑星の条件を測る**（罠 87: 起きるかは乱数、いつ起きるかは物理）。
-    //   ここが「惑星ごとに技術史が変わる」の実体
-    const planet = this.measurePlanet(world)
+    const has = civ.tech
+    const pop = civ.population
     // --- 発明 ---
     if (pop > 0) {
       for (let k = 0; k < TECHS.length; k++) {
@@ -316,7 +349,7 @@ export class Civilization implements Subsystem {
         if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
           has[k] = true
           // ★**由来 id**。誰が最初に発明したかを残す（収斂と伝播を分ける）
-          this.state.techOrigin[k] = this.state.invented
+          civ.techOrigin[k] = this.state.invented
           this.state.invented++
         }
       }
@@ -326,17 +359,27 @@ export class Civilization implements Subsystem {
     for (let k = 0; k < TECHS.length; k++) {
       if (!has[k]) continue
       // ★前提になっている技術は、それに依存する技術がある限り失われない
-      //   （使い続けているものは忘れない）
+      //   （使い続けているものは忘れない）。
+      //   ★**役割経由の依存も見ること** —— 最初 `needs.includes(名前)` だけを
+      //   見ていたので、**口承を失っても法が残った**（法の前提は役割「記録」）。
+      //   実測で「法・貨幣・官僚制を持つのに文字も口承も無い」文明が出た
       let inUse = false
       for (let j = 0; j < TECHS.length && !inUse; j++) {
-        if (has[j] && TECHS[j]!.needs.includes(TECHS[k]!.name)) inUse = true
+        if (!has[j]) continue
+        for (const group of TECH_PREREQ[j]!) {
+          // その前提を満たしているのが**この技術だけ**なら、失うと下流が壊れる
+          if (!group.includes(k)) continue
+          let others = 0
+          for (const alt of group) if (alt !== k && has[alt]) others++
+          if (others === 0) { inUse = true; break }
+        }
       }
       if (inUse) continue
       const lambda = p.lossRate * TECHS[k]!.complexity
         / (Math.max(p.lossPopRef, pop) * retain)
       if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
         has[k] = false
-        this.state.techOrigin[k] = -1
+        civ.techOrigin[k] = -1
         this.state.lost++
       }
     }
@@ -353,18 +396,26 @@ export class Civilization implements Subsystem {
    * | 灌漑 | 河川の流量 | 大河が無いと灌漑農業は成り立たない |
    * | 外洋船 | 海の広さ | |
    */
-  private measurePlanet(world: World): Record<PlanetGate, number> {
+  private measurePlanet(world: World, civId = 0): Record<PlanetGate, number> {
     const lf = world.store.f32("landFraction").read
     const dis = world.store.f32("discharge").read
-    let land = 0, tot = 0, riv = 0
+    // ★**文明ごとに測る**（`civId > 0` なら、その文明の領域だけ）。
+    //   これが「大河のそばの文明は灌漑へ、海辺の文明は舟へ」を作る
+    const cid = world.store.u8("civId").read
+    let land = 0, tot = 0, riv = 0, sea = 0
     for (let y = 0; y < world.grid.H; y++) {
       const a = world.grid.areaWeight[y]!
       for (let x = 0; x < world.grid.W; x++) {
         const i = y * world.grid.W + x
+        const mine = civId === 0 || cid[i] === civId
         const f = Math.max(0, Math.min(1, lf[i] ?? 0))
-        land += f * a; tot += a
-        // 河川は「陸のセルの流量の最大値」で代表する（大河があるか）
-        if (f > 0.5 && (dis[i] ?? 0) > riv) riv = dis[i]!
+        if (civId === 0) { land += f * a; tot += a }
+        else if (mine) {
+          land += f * a; tot += a
+          // ★領域が海に面しているか（舟に要る）
+          sea += (1 - f) * a
+        }
+        if (mine && f > 0.5 && (dis[i] ?? 0) > riv) riv = dis[i]!
       }
     }
     const landFrac = tot > 0 ? land / tot : 0
@@ -373,7 +424,8 @@ export class Civilization implements Subsystem {
       buriedC: world.oxygen.state.buriedOrganicC,
       felsic: felsicVolume(world),
       land: landFrac,
-      ocean: 1 - landFrac,
+      // ★文明の領域では「自分の領域に含まれる海の割合」＝海に面しているか
+      ocean: civId === 0 ? 1 - landFrac : (tot > 0 ? sea / tot : 0),
       // ★流量は惑星で桁が違うので、代表値で割って 0..1 に正規化する
       river: Math.min(1, riv / this.params.riverRefDischarge),
     }
@@ -397,105 +449,157 @@ export class Civilization implements Subsystem {
     const p = this.params
     const pop = world.store.f32("population").read
     const use = world.store.f32("landUse").read
+    const cid = world.store.u8("civId").read
     const lf = world.store.f32("landFraction").read
     const bio = world.store.f32("biomassTotal").read
     const { W, H } = world.grid
+    const n = world.grid.cellCount
     // ★**知性種のいるセルにだけ人が住む。** 文明は生命の一部であって、
     //   惑星のどこにでも湧くものではない
     const lanes: number[] = []
     for (const c of world.life.clades) {
       if (hasCapability(c.phenotype, C_SYMBOLIC)) lanes.push(c.lane)
     }
-    // ★**知性種が絶滅したら文明も終わる。**
-    //   最初これを書かずに測ったら、知性種が 0 になった後も
-    //   **人口 21 億人が残り続けた**（＝作った種が絶滅したのに都市が残る）。
-    //   ★人口は勝手に消えない —— ロジスティックの K が 0 になるだけでは
-    //   「知性種がいない所には増えない」しか意味しないので、明示的に畳む
-    if (lanes.length === 0) {
-      if (this.state.totalPopulation > 0) {
-        const decay = Math.exp(-dtYears / p.collapseTauYears)
-        this.state.totalPopulation *= decay
-        for (let i = 0; i < world.grid.cellCount; i++) {
-          pop[i] = (pop[i] ?? 0) * decay
-          // 使われなくなった土地は野生に戻る（★炭素は戻さない。片道）
-          use[i] = relaxStep(use[i] ?? 0, 0, p.landUseTauYears, dtYears)
-        }
-        if (this.state.totalPopulation < 1) {
-          this.state.totalPopulation = 0
-          // ★人口 0 なのに「1 人あたり 300W」が出ていた（表示の食い違い）
-          this.state.energyPerCapita = 0
+    if (lanes.length === 0) { this.collapseAll(world, dtYears); return }
+    const cell = world.store.f32("biomass").read
+
+    // --- 1. 建国 ---
+    // ★知性種がいて、まだどの文明にも属さないセルに、低い確率で文明が生まれる。
+    //   **複数の文明が別々の場所で育つ**ので、惑星の条件（大河・海）が違い、
+    //   ★代替経路（灌漑 / 天水、舟 / 畜力）が自然に分かれる
+    if (this.state.civs.length < MAX_CIVS) {
+      for (let i = 0; i < n && this.state.civs.length < MAX_CIVS; i++) {
+        if (cid[i] !== 0 || (lf[i] ?? 0) <= 0) continue
+        let here = 0
+        for (const l of lanes) here += cell[l * n + i] ?? 0
+        if (here <= 0) continue
+        if (this.rng.nextFloat() >= 1 - Math.exp(-p.foundingRate * dtYears)) continue
+        this.state.founded++
+        const id = this.state.civs.length + 1
+        this.state.civs.push({
+          id, foundedYear: world.globals.yearsElapsed,
+          population: p.seedPopulation, energyPerCapita: p.baseEnergyW,
+          tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
+        })
+        cid[i] = id
+        pop[i] = p.seedPopulation
+      }
+    }
+    if (this.state.civs.length === 0) return
+
+    // --- 2. 領域の拡張 ---
+    // ★隣のセルへ広がる（知性種がいて、まだ無主の陸だけ）。
+    //   ★**入力と出力を分ける**（同じ配列で走査すると南と東にだけ速く広がる。罠 98）
+    const grow = new Uint8Array(cid)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x
+        if (cid[i] === 0 || pop[i]! <= 0) continue
+        const nb = [
+          y * W + ((x + 1) % W), y * W + ((x + W - 1) % W),
+          y > 0 ? (y - 1) * W + x : -1, y < H - 1 ? (y + 1) * W + x : -1,
+        ]
+        for (const j of nb) {
+          if (j < 0 || cid[j] !== 0 || grow[j] !== 0 || (lf[j] ?? 0) <= 0) continue
+          let here = 0
+          for (const l of lanes) here += cell[l * n + j] ?? 0
+          if (here <= 0) continue
+          if (this.rng.nextFloat() < 1 - Math.exp(-p.expansionRate * dtYears)) {
+            grow[j] = cid[i]!
+            pop[j] = p.seedPopulation
+          }
         }
       }
-      return
     }
-    const cell = world.store.f32("biomass").read
-    const n = world.grid.cellCount
+    cid.set(grow)
 
-    // ★技術の効果を先に合計する（セルごとに引くとホットループで重い）
-    const eff = sumTech(this.state.tech)
+    // --- 3. 文明ごとの技術と、その効果 ---
+    const effs = new Map<number, TechEffect>()
+    for (const civ of this.state.civs) {
+      const planet = this.measurePlanet(world, civ.id)
+      const eff = sumTech(civ.tech)
+      effs.set(civ.id, eff)
+      this.evolveTech(civ, planet, eff, dtYears)
+      civ.energyPerCapita = civ.population > 0 ? p.baseEnergyW + eff.energyW : 0
+      civ.population = 0     // 下のセルの走査で数え直す
+    }
+
+    // --- 4. 人口と土地利用（★セルごと。所属する文明の技術で決まる）---
     let total = 0, cleared = 0
     for (let y = 0; y < H; y++) {
       const areaM2 = world.grid.cellArea[y]!
       for (let x = 0; x < W; x++) {
         const i = y * W + x
         const land = Math.max(0, Math.min(1, lf[i] ?? 0))
-        // ★陸にしか住まない。海のセルは 0 のまま
-        if (land <= 0) { pop[i] = 0; use[i] = 0; continue }
-        // その地域に知性種がいるか（★いない所には人口が湧かない）
+        const id = cid[i] ?? 0
+        if (land <= 0 || id === 0) { pop[i] = 0; use[i] = 0; continue }
+        const eff = effs.get(id)
+        if (!eff) { pop[i] = 0; use[i] = 0; cid[i] = 0; continue }
         let here = 0
         for (const l of lanes) here += cell[l * n + i] ?? 0
-        // 食料の元になる一次生産 [mol C/yr]。★農地にすると効率が上がる
         const u = Math.max(0, Math.min(1, use[i] ?? 0))
-        // ★**収量は技術が決める。** 農耕を持たない文明は土地を耕せない ——
-        //   これを入れるまで「狩猟採集で 21 億人」だった（実際は 500〜1000 万）
-        // ★**収量は技術が上げ、複雑さの維持費が削る**（Tainter の収穫逓減）。
-        //   技術を増やすほど複雑さも増えるので、見返りは頭打ちになり、
-        //   維持費が上回れば**収容力が下がって内生的に崩壊する**
+        // ★**収量は技術が上げ、複雑さの維持費が削る**（Tainter の収穫逓減）
         const gross = 1 + (p.agricultureGain + eff.yieldGain) * u
         const upkeep = 1 - p.complexityCost * eff.complexity
         const food = (bio[i] ?? 0) * land * areaM2 * p.yieldMolPerM2
           * gross * (upkeep > 0 ? upkeep : 0)
-        const k = food / Math.max(1e-9, p.foodPerPerson)
-        // ★**豊かさが出生率を下げる**（人口転換）。負のフィードバックが
-        //   餓死 1 本だけだと人口が振動する（罠 95）
-        const rich = this.state.energyPerCapita / p.demographicTransitionW
+        const k = here > 0 ? food / Math.max(1e-9, p.foodPerPerson) : 0
+        // ★**豊かさが出生率を下げる**（人口転換。負のフィードバックが
+        //   餓死 1 本だけだと振動する。罠 95）
+        const civ = this.state.civs.find((c) => c.id === id)!
+        const rich = civ.energyPerCapita / p.demographicTransitionW
         const r = p.growthRate / (1 + rich * rich)
-        // 知性種がいない地域では人口は増えない（既にいる分は残る）
-        const kHere = here > 0 ? k : 0
         const before = pop[i] ?? 0
-        // ★**最初の 1 人**。知性種がいるのに人口 0 だと永久に 0 のまま
-        //   （ロジスティックは 0 が不動点。罠 49 の「最初の 1 匹」と同じ形）
-        const seeded = before <= 0 && kHere > 0 ? p.seedPopulation : before
-        const after = logisticStep(seeded, kHere, r, dtYears)
+        const seeded = before <= 0 && k > 0 ? p.seedPopulation : before
+        const after = logisticStep(seeded, k, r, dtYears)
         pop[i] = after
         total += after
-        // ★**土地利用は「その人口を養うのに要る土地」から決める。**
-        //   最初「人口/収容力」にしたら、**人口 250 万人（現代の 0.03%）で
-        //   陸の 58% を耕す**という結果になった（地球の農地は陸の約 12%）。
-        //   収容力に対する詰まり具合は、面積の要求とは別物だった。
-        //   ★要る土地 = 人口 × 1 人あたりの面積 / そのセルの陸の面積
+        civ.population += after
         const needM2 = after * p.landPerPersonM2
         const target = Math.min(1, needM2 / Math.max(1, land * areaM2))
         const next = relaxStep(u, target, p.landUseTauYears, dtYears)
-        // ★**開墾した分だけ炭素が出る**（減った分は戻さない ——
-        //   放棄地に森が戻るのは別の時定数なので、まずは片道だけ入れる）
         if (next > u) cleared += (next - u) * land * areaM2
         use[i] = next
       }
     }
+    // ★人口が消えた文明はたたむ（領域も返す）
+    for (const civ of this.state.civs) {
+      if (civ.population >= 1) continue
+      for (let i = 0; i < n; i++) if (cid[i] === civ.id) { cid[i] = 0; pop[i] = 0 }
+    }
+    this.state.civs = this.state.civs.filter((c) => c.population >= 1)
     this.state.totalPopulation = total
-    // ★**大気へ出す**。CO2 は混ざるので全球（`intervene` の巨大噴火と同じ作法）。
-    //   1 ppm = 2.13e15 g-C = 1.775e14 mol-C
+    this.state.energyPerCapita = total > 0
+      ? this.state.civs.reduce((a, c) => a + c.energyPerCapita * c.population, 0) / total
+      : 0
+    // ★**大気へ出す**。CO2 は混ざるので全球（`intervene` の巨大噴火と同じ作法）
     if (cleared > 0 && p.landClearCarbonMolPerM2 > 0) {
       const ppm = cleared * p.landClearCarbonMolPerM2 / 1.775e14
       world.globals.co2 += ppm
-      // ★台帳のタグは M4 の時点で用意されていた（`society.emission`）
       world.ledger.add("co2", ppm, "society.emission")
       this.state.landClearCo2Ppm += ppm
     }
-    // ★**1 人あたりのエネルギーは技術の合計**（White の法則の目盛り）。
-    //   狩猟採集 300W → 農耕 1.2kW → 産業 20kW と、技術だけで決まる
-    this.state.energyPerCapita = total > 0 ? p.baseEnergyW + eff.energyW : 0
-    this.evolveTech(world, total, eff, dtYears)
+  }
+
+  /** ★知性種が絶滅したとき、すべての文明を畳む */
+  private collapseAll(world: World, dtYears: number): void {
+    const p = this.params
+    if (this.state.totalPopulation <= 0) return
+    const pop = world.store.f32("population").read
+    const use = world.store.f32("landUse").read
+    const cid = world.store.u8("civId").read
+    const decay = Math.exp(-dtYears / p.collapseTauYears)
+    this.state.totalPopulation *= decay
+    for (let i = 0; i < world.grid.cellCount; i++) {
+      pop[i] = (pop[i] ?? 0) * decay
+      use[i] = relaxStep(use[i] ?? 0, 0, p.landUseTauYears, dtYears)
+    }
+    for (const c of this.state.civs) c.population *= decay
+    if (this.state.totalPopulation < 1) {
+      this.state.totalPopulation = 0
+      this.state.energyPerCapita = 0
+      this.state.civs = []
+      cid.fill(0)
+    }
   }
 }

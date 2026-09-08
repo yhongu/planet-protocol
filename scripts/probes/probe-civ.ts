@@ -40,7 +40,7 @@ if (arg("seedIntelligence", "1") === "1") {
 const smart = () => w.life.clades.filter((c) => hasCapability(c.phenotype, C_SYMBOLIC)).length
 console.log(`文明  章 ${CH}  ${(w.globals.yearsElapsed / 1e9).toFixed(2)}Gyr から `
   + `${GYR}Gyr  刻み ${(STEP / 1e6).toFixed(2)}Myr  enabled ${ENABLED}`)
-console.log("経過[Myr]  知性種  人口          土地%  1人W    CO2   クレード  技術（発明/失伝）")
+console.log("経過[Myr] 知性種 文明  人口         土地%  1人W    CO2   技術（発明/失伝）")
 
 const end = w.globals.yearsElapsed + GYR * 1e9
 let next = w.globals.yearsElapsed
@@ -57,22 +57,27 @@ const report = () => {
     }
   }
   console.log(
-    `${((w.globals.yearsElapsed - (end - GYR * 1e9)) / 1e6).toFixed(0).padStart(8)}  `
-    + `${String(smart()).padStart(6)}  ${w.civ.state.totalPopulation.toExponential(3)}  `
-    + `${(land > 0 ? 100 * u / land : 0).toFixed(2).padStart(8)}  `
-    + `${w.civ.state.energyPerCapita.toFixed(0).padStart(9)}  `
-    + `${w.globals.co2.toFixed(0).padStart(5)}  ${w.globals.biosphereProxy.toFixed(2)}`
-    // ★**痕跡が出ているか**を同じ行で突き合わせる（罠 110）:
-    //   クレードが減り、CO2 が上がっていれば「文明が惑星を変えた」
-    + `  ${String(w.life.clades.length).padStart(6)}  `
-    // ★**持っている技術を名前で出す**（何が失われたかが見える）
-    + `${TECHS.filter((_, i) => w.civ.state.tech[i]).map((t) => t.what).join("") || "—"}`
+    `${((w.globals.yearsElapsed - (end - GYR * 1e9)) / 1e6).toFixed(0).padStart(8)} `
+    + `${String(smart()).padStart(5)} ${String(w.civ.state.civs.length).padStart(4)}  `
+    + `${w.civ.state.totalPopulation.toExponential(3)}  `
+    + `${(land > 0 ? 100 * u / land : 0).toFixed(1).padStart(5)}  `
+    + `${w.civ.state.energyPerCapita.toFixed(0).padStart(6)}  `
+    + `${w.globals.co2.toFixed(0).padStart(5)}  `
+    // ★**文明ごとに技術を出す**（どこが違う道を通ったかを見る）
+    + w.civ.state.civs.map((c) =>
+      `#${c.id}[${TECHS.filter((_, i) => c.tech[i]).length}]`).join(" ")
     + ` (${w.civ.state.invented}/${w.civ.state.lost})`)
 }
 report()
 while (w.globals.yearsElapsed < end) {
   w.advance(STEP, OPT)
   if (w.globals.yearsElapsed >= next) { report(); next += GYR * 1e9 / 10 }
+}
+// ★**文明ごとの技術の中身**。同じ役割を別の技術で満たしているかを見る
+for (const c of w.civ.state.civs) {
+  console.log(`  文明 #${c.id}  人口 ${c.population.toExponential(2)}  `
+    + `1人 ${c.energyPerCapita.toFixed(0)}W  `
+    + TECHS.filter((_, i) => c.tech[i]).map((t) => t.what).join(""))
 }
 console.log(`終端  人口 ${w.civ.state.totalPopulation.toExponential(3)} 人`
   + `  知性の誕生 ${w.civ.state.emergedYear < 0 ? "まだ"

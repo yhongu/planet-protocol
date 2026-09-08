@@ -98,9 +98,13 @@ describe("文明（M6）", () => {
     civ.state.totalPopulation = 2.1e9
     civ.state.energyPerCapita = 300
     // 知性種がいない世界（クレードなし）で 100 万年
+    // ★複数文明にしたので `civId`（u8）も要る
     const fake = {
       grid: { cellCount: 1, W: 1, H: 1, cellArea: [1], areaWeight: [1] },
-      store: { f32: () => ({ read: new Float32Array(1) }) },
+      store: {
+        f32: () => ({ read: new Float32Array(1) }),
+        u8: () => ({ read: new Uint8Array(1) }),
+      },
       life: { clades: [] },
       globals: { yearsElapsed: 0 },
     } as never
