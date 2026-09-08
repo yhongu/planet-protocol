@@ -294,7 +294,10 @@ export interface CivParams {
 }
 
 export const EARTH_CIV: CivParams = {
-  enabled: 0,
+  // ★**1 にした（2026-09-08）。** ①〜⑥ が揃い、4 つの契約が通ったので有効にする:
+  //   時間解像度の独立性 / 崩壊の内生 / タスマニア効果 / 由来 id
+  //   ★これで初めて「知性が生まれた惑星は文明を持つ」状態になる
+  enabled: 1,
   // 1 人が年に食べる炭素 ≒ 100 kg-C ≒ 8300 mol-C。
   // 農耕の効率と分配の損失を見込んで 1 桁上に置く（較正は測ってから）
   foodPerPerson: 8.3e4,

@@ -26,12 +26,15 @@ import {
  * 中身が入ったら、下の `it.todo` を実測で埋める。
  */
 describe("文明（M6）", () => {
-  it("★既定は無効（未検証の物理を既定に残さない）", () => {
-    expect(EARTH_CIV.enabled).toBe(0)
+  it("★既定で有効。ただし知性が現れるまでは動かない", () => {
+    // ★2026-09-08 に既定を 1 にした（①〜⑥ が揃い、4 つの契約が通ったため）。
+    //   ★**知性が生まれるまでは何もしない**ので、生命への回帰は無い ——
+    //   実測で、知性が生まれない 5 seed は系統数・生物圏・O2 が
+    //   既定 0 のときと一致した（罠 51 の検査）
+    expect(EARTH_CIV.enabled).toBe(1)
     const civ = new Civilization()
-    // 知性が現れていなければ、有効にしても動かない
     expect(civ.state.emergedYear).toBe(-1)
-    expect(civ.isActive({} as never)).toBe(false)
+    expect(civ.isActive({} as never)).toBe(false)   // 知性がまだ現れていない
   })
 
   it("★場は 2 つ（人口・土地利用）で、どちらも 1 セル 1 値", () => {
