@@ -196,8 +196,15 @@ export interface CivParams {
    * 代替経路（灌漑/天水、舟/畜力）が自然に分かれる。
    */
   foundingRate: number
-  /** 領域が隣のセルへ広がる速さ [1/yr] */
-  expansionRate: number
+  /**
+   * ★**領域が広がる速さ** [km/yr]。
+   *
+   * ★**「1 歩で 1 セル」で書いてはいけない**（罠 99）——
+   * セルの東西の幅は緯度で変わる（極では赤道の 1/28）ので、
+   * 同じ確率で広げると**高緯度ほど速く東西に伸びて三角形になる**。
+   * 実測で地図に幾何学的な三角形が出た（★撮って気づいた。罠 48）。
+   */
+  expansionKmPerYear: number
   /**
    * ★**技術が伝わる速さ** [1/(km·yr)]。接する境界の長さに比例する。
    *
@@ -216,6 +223,16 @@ export interface CivParams {
    * （★人口だけでは「大きいが弱い」文明を表せない）。
    */
   conquestRate: number
+  /**
+   * ★**そのセルを「陸」と呼ぶ最小の陸の割合**。
+   *
+   * ★**割合を真偽値として使わない**（`CLAUDE.md` の 21）。
+   * `landFraction > 0` を「陸」としたら、**陸の割合が 1% の海のセルにも
+   * 文明が広がり、文明のセル 583 のうち 554 が海**になった
+   * （★地図を撮って「かまぼこ型」に見えたので測って気づいた。罠 48）。
+   * ★**同じ閾値を「住めるか」と「広がれるか」の両方で使うこと**（罠 23）。
+   */
+  minLandFraction: number
   /** ★「降りた」ときの刻み [yr]。人類史 1 万年を 100 歩で見る */
   focusStepYears: number
   /** 河川の流量の代表値（これで割って 0..1 にする）。現在の地球の大河の目安 */
@@ -295,12 +312,14 @@ export const EARTH_CIV: CivParams = {
   // 1000 万人の狩猟採集民が 1 万年に 1 つ発明する程度から始める
   // 100 万年に 1 セルあたり 1% 程度。★複数だが多すぎない数を狙う
   foundingRate: 1e-8,
-  expansionRate: 1e-5,
+  // 1000 年で 1km 進む程度（★人の移住の速さではなく、領域の拡大の速さ）
+  expansionKmPerYear: 1e-3,
   // ★**伝播が主・独立発明が稀**にする（地球の姿）。実測で
   //   発明 1616 回に対し伝播 12 回だったので、発明を 2 桁下げ伝播を上げた。
   //   地球でも車輪や文字が独立に発明されたのは数回で、あとは伝わっている
   techTransferRate: 5e-10,
   conquestRate: 3e-12,
+  minLandFraction: 0.5,
   focusStepYears: 100,
   riverRefDischarge: 5e4,
   complexityCost: 0.35,
@@ -565,7 +584,7 @@ export class Civilization implements Subsystem {
     //   ★代替経路（灌漑 / 天水、舟 / 畜力）が自然に分かれる
     if (this.state.civs.length < MAX_CIVS) {
       for (let i = 0; i < n && this.state.civs.length < MAX_CIVS; i++) {
-        if (cid[i] !== 0 || (lf[i] ?? 0) <= 0) continue
+        if (cid[i] !== 0 || (lf[i] ?? 0) < p.minLandFraction) continue
         let here = 0
         for (const l of lanes) here += cell[l * n + i] ?? 0
         if (here <= 0) continue
@@ -592,16 +611,26 @@ export class Civilization implements Subsystem {
       for (let x = 0; x < W; x++) {
         const i = y * W + x
         if (cid[i] === 0 || pop[i]! <= 0) continue
-        const nb = [
-          y * W + ((x + 1) % W), y * W + ((x + W - 1) % W),
-          y > 0 ? (y - 1) * W + x : -1, y < H - 1 ? (y + 1) * W + x : -1,
+        // ★**セルの東西の幅は緯度で変わる**（極では赤道の 1/28）。
+        //   同じ確率で広げると**高緯度ほど速く東西に伸びて、三角形になる**
+        //   （実測: 地図に幾何学的な三角形が出た。撮って気づいた。罠 48）。
+        //   広がる速さは **km/yr** で書き、セル幅で割る（罠 99）
+        const dxKm = (2 * Math.PI * 6371 * Math.cos(world.grid.latRad[y]!)) / W
+        const dyKm = (Math.PI * 6371) / H
+        const nb: [number, number][] = [
+          [y * W + ((x + 1) % W), dxKm], [y * W + ((x + W - 1) % W), dxKm],
+          [y > 0 ? (y - 1) * W + x : -1, dyKm],
+          [y < H - 1 ? (y + 1) * W + x : -1, dyKm],
         ]
-        for (const j of nb) {
-          if (j < 0 || cid[j] !== 0 || grow[j] !== 0 || (lf[j] ?? 0) <= 0) continue
+        for (const [j, km] of nb) {
+          if (j < 0 || cid[j] !== 0 || grow[j] !== 0) continue
+          if ((lf[j] ?? 0) < p.minLandFraction) continue
           let here = 0
           for (const l of lanes) here += cell[l * n + j] ?? 0
           if (here <= 0) continue
-          if (this.rng.nextFloat() < 1 - Math.exp(-p.expansionRate * dtYears)) {
+          // 1 セル進むのに要る時間は距離に比例する（速さ km/yr ÷ セル幅 km）
+          const lambda = p.expansionKmPerYear / Math.max(1e-6, km)
+          if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
             grow[j] = cid[i]!
             pop[j] = p.seedPopulation
           }
@@ -629,7 +658,8 @@ export class Civilization implements Subsystem {
         const i = y * W + x
         const land = Math.max(0, Math.min(1, lf[i] ?? 0))
         const id = cid[i] ?? 0
-        if (land <= 0 || id === 0) { pop[i] = 0; use[i] = 0; continue }
+        // ★住める判定も同じ閾値で（別々に置くと領域と人口が食い違う。罠 23）
+        if (land < p.minLandFraction || id === 0) { pop[i] = 0; use[i] = 0; continue }
         const eff = effs.get(id)
         if (!eff) { pop[i] = 0; use[i] = 0; cid[i] = 0; continue }
         let here = 0

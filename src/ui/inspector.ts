@@ -103,6 +103,23 @@ export class Inspector {
       + stat("氷", ice.toFixed(2))
       + stat("土壌水分", soil.toFixed(2))
 
+    // ★**文明**（M6）。数字はすべて `population` / `landUse` / `civId` の場から
+    //   出ている —— **飾りの数字を 1 つでも混ぜると罠 50 を踏む**
+    if (store.has("population") && store.has("civId")) {
+      const pop = store.f32("population").read[i] ?? 0
+      const cid = store.u8("civId").read[i] ?? 0
+      const use = store.f32("landUse").read[i] ?? 0
+      if (cid > 0 && pop > 0) {
+        const areaKm2 = grid.cellArea[t.y]! / 1e6
+        html += `<div class="section">このマスの文明</div>`
+          + stat("所属", `#${cid}`)
+          + stat("人口", pop >= 1e6 ? `${(pop / 1e6).toFixed(2)} 百万人`
+            : `${Math.round(pop).toLocaleString()} 人`)
+          + stat("人口密度", `${(pop / Math.max(1, areaKm2 * lf)).toFixed(1)} 人/km²`)
+          + stat("土地利用", `${(use * 100).toFixed(0)} %`)
+      }
+    }
+
     html += `<div class="section">このマスの生命</div>`
     if (!bio || tot <= 0 || roster.length === 0) {
       html += `<div class="lg-note">まだ生命がいません</div>`

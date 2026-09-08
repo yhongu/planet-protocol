@@ -417,6 +417,50 @@ export function cladeColor(id: number): readonly [number, number, number] {
  * 離散のサブグリッドは入れないこと。粒子で踏んだ 1/√n の標本ノイズ
  * （`CLAUDE.md` の 35）を生命側にも持ち込むことになる。
  */
+/**
+ * ★**文明**（M6）。色 = どの文明か、明るさ = 人口密度、
+ * 土地利用の高いセルは灰色（都市・農地）に寄せる。
+ *
+ * ★**アイコン 1 つずつに状態変数を対応させる**（罠 50: 表示は裏に機構が
+ * あると勝手に保証する）。ここで描いているのは全部
+ * `population` / `landUse` / `civId` の 3 つの場から出ている。
+ */
+function civLayer(): LayerDef["render"] {
+  return (grid, store, out, ss) => {
+    const n = grid.cellCount
+    if (!store.has("population") || !store.has("civId")) {
+      perCell(grid, out, ss, () => [20, 22, 28] as const)
+      return
+    }
+    const pop = store.f32("population").read
+    const use = store.f32("landUse").read
+    const cid = store.u8("civId").read
+    const e = store.f32("elevation").read
+    // ★明るさの基準は上位分位点（1 セルだけ桁違いだと他が真っ黒になる）
+    const vals: number[] = []
+    for (let i = 0; i < n; i++) if (pop[i]! > 0) vals.push(pop[i]!)
+    vals.sort((a, b) => a - b)
+    const mx = vals.length ? Math.max(1, vals[Math.floor(vals.length * 0.95)]!) : 1
+    perCell(grid, out, ss, (i) => {
+      const land = e[i]! >= 0
+      const base = land ? [58, 54, 46] as const : [12, 20, 36] as const
+      const id = cid[i] ?? 0
+      if (id === 0 || (pop[i] ?? 0) <= 0) return base
+      const col = cladeColor(id * 7)     // ★クレードと色がかぶらないようずらす
+      // 濃さ = 人口密度（下限を置く。薄い所が素の惑星と区別できないと意味がない）
+      const t = 0.4 + 0.6 * Math.pow(Math.min(1, (pop[i] ?? 0) / mx), 0.4)
+      // ★土地利用が高いほど灰色へ（農地・都市）
+      const u = Math.max(0, Math.min(1, use[i] ?? 0))
+      const g = 0.55 * u
+      return [
+        (base[0] + (col[0] - base[0]) * t) * (1 - g) + 150 * g,
+        (base[1] + (col[1] - base[1]) * t) * (1 - g) + 145 * g,
+        (base[2] + (col[2] - base[2]) * t) * (1 - g) + 135 * g,
+      ] as const
+    })
+  }
+}
+
 function dominantCladeLayer(): LayerDef["render"] {
   return (grid, store, out, ss, env) => {
     const n = grid.cellCount
@@ -611,6 +655,12 @@ export const LAYERS: readonly LayerDef[] = [
       note: "★色はそのセルで**一番多いクレード**（凡例の一覧を見ること）。" +
         "明るさは総バイオマス（相対）。**1 マスに 1 種族ではない** —— " +
         "最大 16 クレードが取り分で同居している。内訳は地図をクリックすると出る" } },
+  { id: "civilization", label: "文明 ★", render: civLayer(),
+    legend: { stops: [], min: "", max: "",
+      note: "★色は**どの文明か**、明るさは**人口密度**、灰色に寄るほど" +
+        "**土地利用（農地・都市）**が高い。描いている値はすべて " +
+        "`population` / `landUse` / `civId` の場から出ている —— " +
+        "**飾りの数字は 1 つも無い**。文明が無い惑星では素の地形が出る" } },
   { id: "diversity", label: "生命: 多様性 ★", render: diversityLayer(),
     legend: { stops: ramp((t) => sequentialColor(t)),
       min: "1（単独優占）", max: "8 以上",

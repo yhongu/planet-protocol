@@ -25,6 +25,8 @@ const GROUPS: { label: string; ids: string[] }[] = [
   { label: "海洋", ids: ["ventFlux", "upwelling", "phosphateSupply", "dic"] },
   { label: "生命", ids: ["biomass", "dominantClade", "diversity",
     "prebioticFavor", "prebioticOligomer"] },
+  // ★文明（M6）。知性が生まれるまでは素の地形が出る
+  { label: "文明", ids: ["civilization"] },
 ]
 
 /** 凡例から 1 本の色帯を作る。★無いレイヤは無地で出す（穴を開けない） */
