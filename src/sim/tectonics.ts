@@ -75,6 +75,35 @@ export interface TectonicParams {
   maxThickness: number
   /** 大陸とみなす厚さの閾値 [km] */
   continentThreshold: number
+  /**
+   * ★**大陸は、いま乗っているプレートから引き剥がされにくい**（0 で従来）。
+   *
+   * 【なぜ要るか】`assignPlates` は「いちばん近い種」で決める**純粋な
+   * ボロノイ**で、**地殻の組成をまったく見ていない**。種は毎ステップ回るので、
+   * 境界は大陸の上を無差別に横切る。切られた大陸は引き離され、
+   * 隙間は厚さ 7km の海洋地殻で埋まる —— これを 45 億年繰り返すと、
+   * **珪長質は細く引き伸ばされて海底全面に散る**。
+   *
+   * 実測（96x48・4 seed。`probe-fragment.ts` / `probe-relief.ts`）:
+   *   初期地形     陸 29.0% 成分 23 最大 62%  ← 地球そのもの
+   *   太古代 1.2Gyr 陸 17.3% 成分 **99** 最大 43%  ← ここで砕ける
+   *   終盤         陸 6〜18% 成分 59〜79
+   *   珪長質の体積 6.52e9 km³（地球 7.2）だが**面積 69%・厚さ 19km**
+   *   （地球 41%・34km）で、海面（31.7km 相当）に届かない
+   * **量は足りている。集まっていない。**
+   *
+   * 【地球の姿】大陸はプレートの**内側**にある（アフリカ・ユーラシア・北米）。
+   * 境界は弱い海洋リソスフェアに局在し、クラトンの厚く冷たい根は割れにくい
+   * （Artemieva 2006、Lenardic et al. 2003）。実際の大陸分裂は起きるが、
+   * **数億年に一度**であって毎ステップではない。
+   *
+   * 【実装】セルを種に割り当てるとき、**前のステップの所属**に
+   * `これ × 大陸らしさ` だけ下駄を履かせる（内積は無次元なので
+   * 解像度に依らない）。海洋のセルは従来どおり純粋なボロノイ。
+   * 大陸も、種が十分に離れれば最後は引き剥がされる ——
+   * **禁止ではなく抵抗**なので、超大陸の分裂は起こりうる。
+   */
+  continentPlateCohesion: number
   /** 海洋地殻が沈み込むまでの最大年齢 [Myr] */
   maxOceanAge: number
   /**
@@ -217,6 +246,55 @@ export interface TectonicParams {
    * （現在の地球 10 ステップで 22s → 25s。コストは気候と水循環が支配する）。
    */
   parcelsPerCell: number
+  /**
+   * ★**地殻の穴が塞がる時定数 [yr]**（0 で従来＝塞がらない）。
+   *
+   * 【見つけた穴】海嶺の充填は
+   *   `want = empty ? gap : min(gap, opened)`
+   * で、`empty` は**被覆率 0.5 未満**、`opened` は**発散があるときだけ**正。
+   * つまり**被覆率 0.8 のセル（面積の 2 割に地殻が無い）は、発散していなければ
+   * 永久に埋まらない**。
+   *
+   * 沈み込みは体積の予算（`thick[c] × frac`）で粒子を殺すので、
+   * 太古代の厚い海洋地殻（マントルが熱く 12〜13km）では
+   * **海嶺が開く面積（7km 厚の粒子）より多くの面積を消す**。
+   * 差が穴として積もる。実測（48x24・全史。`probe-crustdist.ts`）:
+   *   被覆率 1.00（初期）→ 0.91（1Gyr）→ **0.77（終端）**
+   *
+   * ★**これがセル平均を薄める。** セル平均の厚さ = 粒子の厚さ × 被覆率 なので、
+   * 35km の大陸の粒子が被覆 0.6 で載っていると**セルは 21km にしか見えない**。
+   * 実測の終端が「大陸 19.9km（地球 34）」だったのはこれで説明がつく。
+   * 陸の判定も薄まるので「まとまった陸（lf≥0.75）が 3.5%」になる。
+   *
+   * 【物理】**地殻に穴が空いたままなのはありえない。** 露出したマントルは
+   * 減圧融解して即座に新しい地殻を作る（それが海嶺そのもの）。
+   * ただし**無条件に埋めると churn する**（罠 25: 被覆の上限は唯一の負の
+   * フィードバック。ポアソン揺らぎを隙間と誤読すると生成が 5 倍に膨らむ）。
+   * だから**時定数で緩やかに塞ぐ**: 1 ステップに埋めるのは `gap × dt/τ`。
+   * τ = 5e7 年なら 2 割の不足が 5000 万年で塞がる。
+   */
+  coverageHealYears: number
+  /**
+   * ★**大陸のセルには海洋地殻を注入しない**（0 で従来）。
+   * セル内の珪長質の粒子の割合がこれ以上なら、海嶺の充填を止める。
+   *
+   * 【見つけた経路】充填は被覆率の不足 `gap = (1 − cov)·hOc` で発火し、
+   * **セルの組成を見ていない**。大陸のセルの被覆は 0.84〜0.88 なので、
+   * **大陸の下で発散が起きるたびに玄武岩の粒子が注入される**。
+   * 過去の調査の「**発散の 87% が大陸組成の下にある**」がそのまま効く。
+   *
+   * 実測（96x48・1Gyr。`probe-crustdist.ts`）——侵食の有無で比べると、
+   * 侵食は「痩せさせる」だけでなく「薄める」ことが分かる:
+   *   既定     大陸セル 23.4km / 珪長質率 0.66
+   *   侵食なし 大陸セル 31.3km / 珪長質率 **0.82**
+   * セル平均 = 珪長質率 × 珪長質の厚さ + 残り × 7km なので、
+   * 薄まると**海面に届かなくなり、まとまった陸が消える**。
+   *
+   * 【地球の姿】大陸の伸張はまず**大陸地殻が薄くなる**（リフト。ベーズン＆
+   * レンジ、東アフリカ地溝帯）。**完全に割れて初めて**海洋地殻ができる
+   * （紅海）。大陸の下に海洋地殻が湧いてくることはない。
+   */
+  ridgeFillFelsicBlock: number
   /**
    * セル平均の場を均す強さ（0..0.5）。**体積は保存する。**
    *
@@ -745,13 +823,87 @@ export interface TectonicParams {
    * 大陸が「厚く狭く」なり続けて陸地面積が減っていく（29% -> 17%）。
    * 削られた分は大陸棚に堆積させて体積を保存する。
    * M3 の侵食場（stream power law）が分布を決める。
+   *
+   * ★**2026-09-08 に 3e-8 → 1e-8 にした（課題 4「まとまった陸」）。**
+   *
+   * 【なぜ】主指標（厚さの分散）と「まとまった陸」を動かせる機構を
+   * **6 つ試して全部外し**、二分法で残ったのが侵食だった。
+   * 4 seed・96x48・1Gyr の対応比較（`probe-relief.ts`）:
+   *
+   * | 係数 | 厚さの分散 | まとまった陸 |
+   * |---|---|---|
+   * | 3e-8（旧） | 49〜86（中央 75） | 11.5〜15.7（13.3%） |
+   * | 1e-8 | 111〜155 | 17.8〜20.4 |
+   * | **3e-9** | **147〜223（中央 173）** | **21.5〜24.1（23.0%）** |
+   * | 0（参考） | 178〜216 | 22.0〜23.8 |
+   * | 地球 | **218** | ほぼ全部 |
+   *
+   * **4 seed とも単調**で、1/10 にすると「侵食なし」とほぼ同じ水準に届く。
+   *
+   * ★**ただし 1/10（3e-9）は行き過ぎる。** 陸が増えるほど海が減り、
+   * 栄養（リン）の主な供給である湧昇が細るので、生物圏が痩せる。
+   * 実測（64x32・2Gyr・4 seed。`tests/life.test.ts` と同じ設定）:
+   *
+   * | 係数 | 陸% | バイオマス | クレード | O2% |
+   * |---|---|---|---|---|
+   * | 3e-8（旧） | 22.2 | 0.031/0.008/0.035/0.029 | 2/1/5/2 | 0.3〜2.7 |
+   * | **1e-8** | **25.1** | **0.046/0.016/0.018/0.029** | **6/5/3/2** | **0.6〜2.6** |
+   * | 3e-9 | 34.9 | 0.008/0.005/0.038/0.030 | 1/1/4/2 | **2 本が 0.00** |
+   * | 地球 | 29.2 | | | |
+   *
+   * 3e-9 では**陸が地球（29.2%）を超え**、2 seed で酸素が 0 に落ちた
+   * （テスト「生命が定着し、絶滅しきらない」も落ちた）。
+   * **1e-8 は主指標を 75 → 132 に上げつつ、生命は旧既定より健全**になる。
+   * ★「地球の値に近いほど良い」ではなく、**惑星として釣り合う点を選ぶ**こと。
+   *
+   * 【物理の言い訳を書いておく】地球の大陸が 34km を保つのは、
+   * **造山（衝突）が侵食と釣り合っている**から。このモデルの厚化は
+   * 粒子の重なりから自動的に出るぶん地球より弱く、地球の侵食速度を
+   * そのまま入れると**標高が基準面に落ちるまで削り切られて 20km で釣り合う**
+   * （標高 −1.8km ＝ 海面とほぼ同じ。アイソスタシーの式自体は地球どおりで、
+   * 34km → +0.35km、7km → −5.07km）。
+   * ★つまりこれは「地球の侵食はもっと速い」という主張ではなく、
+   * **弱い造山と釣り合わせるための較正**である。造山を強くできたら戻すこと。
+   *
+   * ★**炭素循環は動かない。** 風化のサーモスタットが読む `erosionRate` の場は
+   * **水循環（傾斜と流量）が書く**もので、この係数は「その場を地殻の厚さの
+   * 減少に変換する係数」でしかない（`carbon.ts` は `ero/erosionRef` で
+   * 正規化して使う。罠 24）。値で確認済み。
    */
   denudationRate: number
   /**
    * 堆積の受け皿になる最小の厚さ（continentThreshold に対する倍率）。
    * 0.45 だと厚さ 7km の【海洋地殻まで受け皿になる】。
+   * ★格子の実装だけが読む。粒子では `sedimentNeedsFelsic` を使うこと
    */
   shelfMinFactor: number
+  /**
+   * ★**堆積物は、すでに大陸地殻があるセル（＝大陸棚）にしか積もらない**
+   * （0 で従来）。
+   *
+   * 【なぜ要るか】粒子の侵食は、削った珪長質を「水深の 4 乗の重み」で
+   * 海側に配るとき、**珪長質の粒子が 1 つも無いセルには新しい粒子を作って
+   * いた**（`spawnInCell(..., felsic=1, H_CONT_KM)`）。つまり
+   * **土砂が海底に落ちるたびに、そこが新しい大陸地殻になる**。
+   *
+   * 45 億年でこれが効いて、珪長質は海底全面に薄く広がる:
+   *   珪長質の体積 6.52e9 km³（地球 7.2）← 量は足りている
+   *   面積 69%（地球 41）・厚さ 19km（地球 34）← 海面（31.7km 相当）に届かない
+   *
+   * ★**二分法で確定した**（96x48・4 seed・1Gyr。`probe-relief.ts`）:
+   *   基準           分散 71.5 / まとまった陸 13.4%
+   *   プレート停止    分散 56.7 / 29.0%（動かないので当然まとまる）
+   *   **侵食なし**    分散 **198.0** / **23.0%**（地球 218）
+   * **侵食を止めるだけで、18 の機構が動かせなかった指標が地球の水準に届く。**
+   * ただし侵食は風化のサーモスタットとリンの供給に要るので消せない。
+   * 消すべきは侵食ではなく**「土砂が大陸を新造する」経路**の方。
+   *
+   * 【地球の姿】堆積物の約 9 割は大陸棚・大陸斜面・海底扇状地に留まり、
+   * それらは**もともと大陸地殻の上**にある。深海底に届いた分は薄い被覆で、
+   * 沈み込み帯で戻る（Clift & Vannucchi 2004）。
+   * **海洋地殻の上に土砂が積もっても、大陸地殻にはならない。**
+   */
+  sedimentNeedsFelsic: number
   /**
    * 付加（terrane accretion）の強さ。無次元。
    *
@@ -826,6 +978,10 @@ export const EARTH_TECTONICS: TectonicParams = {
   crustModel: 1,
   parcelCount: 200_000,
   parcelsPerCell: 97.65625,
+  // ★既定 0（従来＝穴は塞がらない）。A/B は `probe-relief.ts`
+  coverageHealYears: 0,
+  // ★既定 0（従来）。A/B は `probe-relief.ts`
+  ridgeFillFelsicBlock: 0,
   rasterSmoothing: 0.2,
   initialContinentFraction: 1,
   subgridLand: 1,
@@ -854,6 +1010,8 @@ export const EARTH_TECTONICS: TectonicParams = {
   riftThreshold: 5e-8,
   maxThickness: 75,
   continentThreshold: 10,
+  // ★既定 0（未検証の物理を既定に残さない）。A/B は `probe-relief.ts`
+  continentPlateCohesion: 0,
   maxOceanAge: 180,
   llsvpCount: 2,
   llsvpRadius: 0.72,
@@ -862,9 +1020,11 @@ export const EARTH_TECTONICS: TectonicParams = {
   deglaciationBoost: 40,
   crustGrowthRate: 1.4,
   targetCrustVolume: 7.2e9,
-  denudationRate: 3e-8,
+  denudationRate: 1e-8,
   accretionBonus: 0,
   shelfMinFactor: 0.45,
+  // ★既定 0（従来）。A/B は `probe-relief.ts`
+  sedimentNeedsFelsic: 0,
   volumeClamp: 1,
   advectCorrection: 1,
   orogenyForelandOnly: 1,
@@ -1259,12 +1419,25 @@ export class Tectonics implements Subsystem {
     const n = world.grid.cellCount
     const sph = world.grid.sphere
     const pid = world.store.u8("plateId").read
+    // ★**大陸は引き剥がされにくい**（`continentPlateCohesion`）。
+    //   0 なら下の `bonus` は厳密に 0 で、従来の純粋なボロノイと 1 ビットも変わらない
+    const coh = this.params.continentPlateCohesion
+    const thick = coh > 0 ? world.store.f32("crustThickness").read : null
+    const cont = this.params.continentThreshold
+    const full = this.params.maxThickness
     for (let i = 0; i < n; i++) {
       const x = sph[i * 3], y = sph[i * 3 + 1], z = sph[i * 3 + 2]
+      // 大陸らしさ 0..1。`continentThreshold`(10km) で 0、上限の厚さで 1
+      const prev = pid[i]
+      const bonus = thick
+        ? coh * Math.max(0, Math.min(1, (thick[i]! - cont) / Math.max(1e-6, full - cont)))
+        : 0
       let best = 0, bestDot = -2
       for (let k = 0; k < this.plates.length; k++) {
         const s = this.plates[k].seed
-        const d = x * s[0] + y * s[1] + z * s[2]
+        // ★下駄は**いま乗っているプレート**にだけ履かせる（履歴依存）。
+        //   十分に離れれば負けるので、分裂そのものは起きる
+        const d = x * s[0] + y * s[1] + z * s[2] + (k === prev ? bonus : 0)
         if (d > bestDot) { bestDot = d; best = k }
       }
       pid[i] = best
@@ -2341,6 +2514,18 @@ export class Tectonics implements Subsystem {
         // 大陸の伸張が永遠に海洋底を作らない（`ridgeFillByCoverage`）
         // ポアソン揺らぎを「隙間」と誤読しない（`ridgeFillCoverageSigma`）。
         // 期待粒子数 n = セル面積 / 粒子面積。相対誤差は 1/√n
+        // ★**大陸のセルには海洋地殻を注入しない**（`ridgeFillFelsicBlock`）。
+        //   0 なら判定ごと走らないので、従来と 1 ビットも変わらない
+        if (p.ridgeFillFelsicBlock > 0) {
+          let nf = 0, nt = 0
+          for (let k = ps.cellStart[c]; k < ps.cellStart[c + 1]; k++) {
+            const i = ps.cellIndex[k]
+            if (!ps.alive[i]) continue
+            nt++
+            if (ps.felsic[i] >= 0.5) nf++
+          }
+          if (nt > 0 && nf / nt >= p.ridgeFillFelsicBlock) continue
+        }
         const nExp = Math.max(1, A / ps.parcelArea)
         const covTol = p.ridgeFillCoverageSigma / Math.sqrt(nExp)
         const gap = p.ridgeFillByCoverage > 0
@@ -2352,9 +2537,17 @@ export class Tectonics implements Subsystem {
         // 2 = 空セルの抜け道も使わない（純粋に運動学だけ）。
         // 空セル経路は被覆率のポアソン揺らぎで発火するので、
         // **残る解像度依存はここに集まる**（実測 3.19/6.92/8.97 km³/yr）
-        const want = p.ridgeFillKinematic > 0
+        // ★**穴は時定数で塞がる**（`coverageHealYears`）。
+        //   0 なら `heal` は厳密に 0 で、従来と 1 ビットも変わらない。
+        //   露出したマントルは減圧融解して地殻を作る（＝海嶺）。
+        //   ただし**無条件に埋めると churn する**ので、埋めるのは
+        //   1 ステップあたり不足の `dt/τ` だけに絞る（罠 25）
+        const heal = p.coverageHealYears > 0
+          ? gap * Math.min(1, dtYears / p.coverageHealYears) : 0
+        const want0 = p.ridgeFillKinematic > 0
           ? (empty && p.ridgeFillKinematic < 2 ? Math.max(gap, opened) : opened)
           : (empty ? gap : Math.min(gap, opened))
+        const want = heal > want0 ? heal : want0
         // しきい値の門は「小さすぎる充填を捨てる」ためのものだが、
         // **捨てられる量は粗い格子ほど多い**（`opened` はセルあたり ∝ 1/W）。
         // 運動学版では粒子の端数を確率で置いているので門は要らない
@@ -2541,10 +2734,23 @@ export class Tectonics implements Subsystem {
     this.diag.dErosion = removed
 
     // 配る。水深の 4 乗の重み（浅い棚に 99% が載る）
+    // ★**受け皿を「すでに珪長質があるセル」に限る**（`sedimentNeedsFelsic`）。
+    //   限らないと、土砂が海底に落ちるたびに下の枝が
+    //   **新しい大陸の粒子を作る**（珪長質の面積が増え続ける）
+    const needFel = p.sedimentNeedsFelsic > 0
     let wsum = 0
     const wbuf = this.arcWeightBuf!
     for (let c = 0; c < n; c++) {
       if (elevKm[c] >= 0) { wbuf[c] = 0; continue }
+      if (needFel) {
+        let hasFel = false
+        const s2 = ps.cellStart[c], e2 = ps.cellStart[c + 1]
+        for (let k = s2; k < e2; k++) {
+          const i = ps.cellIndex[k]
+          if (ps.alive[i] && ps.felsic[i] >= 0.5) { hasFel = true; break }
+        }
+        if (!hasFel) { wbuf[c] = 0; continue }
+      }
       const d = Math.max(0.05, -elevKm[c]) / 0.6
       wbuf[c] = 1 / (1 + d * d * d * d)
       wsum += wbuf[c] * grid.cellArea[(c / W) | 0]

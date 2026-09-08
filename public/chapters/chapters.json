@@ -6,7 +6,7 @@
     "seed": "terra-ridge-15",
     "width": 96,
     "height": 48,
-    "bytes": 14593782,
+    "bytes": 14593792,
     "years": 540000000,
     "meanT": -0.8,
     "co2": 11306,
@@ -22,14 +22,14 @@
     "seed": "terra-ridge-15",
     "width": 96,
     "height": 48,
-    "bytes": 15148203,
+    "bytes": 15081422,
     "years": 2040000000,
-    "meanT": 0.1,
-    "co2": 4389,
-    "o2": 2.224351982108228,
-    "clades": 3,
-    "goeYear": 1634175000,
-    "events": 32
+    "meanT": 0.7,
+    "co2": 5266,
+    "o2": 1e-7,
+    "clades": 2,
+    "goeYear": 1540175000,
+    "events": 33
   },
   {
     "id": "phanerozoic",
@@ -38,13 +38,13 @@
     "seed": "terra-ridge-15",
     "width": 96,
     "height": 48,
-    "bytes": 15478954,
+    "bytes": 15515694,
     "years": 4000000000,
-    "meanT": 15.5,
-    "co2": 851,
-    "o2": 27.784139098301143,
-    "clades": 15,
-    "goeYear": 1634175000,
-    "events": 55
+    "meanT": 14.1,
+    "co2": 596,
+    "o2": 13.431787329929914,
+    "clades": 17,
+    "goeYear": 1540175000,
+    "events": 64
   }
 ]

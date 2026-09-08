@@ -49,6 +49,8 @@ for (const k of ["orogenyReach", "orogenyDonor", "crustComposition",
   // ★島弧を「既にある大陸の縁」へ偏らせる強さ。既定 0（一様）。
   //   アンデス型の大陸成長を表す量で、0 だと海底全面に薄く塗られる
   "arcContinentBias", "rasterSmoothing", "marginErosionRatio",
+  // ★大陸がプレートから引き剥がされにくさ／堆積が大陸を新造しないか（2026-09-07）
+  "continentPlateCohesion", "sedimentNeedsFelsic", "coverageHealYears", "ridgeFillFelsicBlock",
   "initialContinentFraction"]) {
   const v = arg(k.toLowerCase(), NaN)
   if (!Number.isNaN(v)) tec[k] = v
