@@ -56,6 +56,39 @@ export const CIV_FIELDS: readonly FieldSpec[] = [
   },
 ]
 
+/**
+ * ★★**刻みに依らないロジスティック**（時間解像度の独立性の核）。
+ *
+ * オイラー法（`N += r·N·(1−N/K)·dt`）で書くと、**刻みを変えると答えが変わる**。
+ * 100 年刻みと 100 万年刻みで違う惑星になったら、
+ * 「降りるのが裏技」になって設計方針 A-2 が壊れる。
+ *
+ * ロジスティックには解析解があるので、**1 歩で厳密に解ける**:
+ *
+ *   N(t+dt) = K / (1 + (K/N − 1)·exp(−r·dt))
+ *
+ * ★同じ作法を海のリンで既に使っている（`ocean.ts` の `eq + (before−eq)·k`）。
+ * K が歩の中で一定なら、**刻みを何にしても厳密に同じ**になる。
+ * K が動くぶんの差だけが残り、それは物理（環境が変われば結果も変わる）。
+ */
+export function logisticStep(n: number, k: number, r: number, dtYears: number): number {
+  if (!(k > 0) || dtYears <= 0) return n
+  if (!(n > 0)) return 0
+  const decay = Math.exp(-r * dtYears)
+  const denom = 1 + (k / n - 1) * decay
+  return denom > 0 ? k / denom : k
+}
+
+/**
+ * ★**緩和も解析で解く**（土地利用が目標へ近づく速さ）。
+ * `x(t+dt) = target + (x − target)·exp(−dt/τ)`。オイラーだと刻みで変わる。
+ */
+export function relaxStep(x: number, target: number, tauYears: number, dtYears: number): number {
+  if (!(tauYears > 0) || dtYears <= 0) return x
+  const k = Math.exp(-dtYears / tauYears)
+  return target + (x - target) * k
+}
+
 export interface CivParams {
   /**
    * 0 で無効（既定）。★有効にする条件は

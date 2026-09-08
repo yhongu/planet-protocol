@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { Civilization, EARTH_CIV, CIV_FIELDS } from "../src/sim/civilization"
+import {
+  Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep,
+} from "../src/sim/civilization"
 
 /**
  * ★★**時間解像度の独立性**（M6 の設計上の契約。2026-09-08）。
@@ -48,8 +50,44 @@ describe("文明（M6）", () => {
     expect(b.state.emergedYear).toBe(a.state.emergedYear)
   })
 
-  // ★★ 機構を入れたらここを埋める。**空のまま放置しないこと。**
-  it.todo("★時間解像度の独立性: 100 年刻みと 100 万年刻みで集計が一致する")
+  it("★★時間解像度の独立性: 100 年刻み × 1 万回 = 100 万年刻み × 1 回", () => {
+    // ★これが M6 の設計上の契約。降りても降りなくても結果が同じでなければ、
+    //   降りるのが必須（A-2 の意味が消える）か裏技（結果が変わる）になる。
+    const K = 1.2e8, r = 1e-3, N0 = 1e4
+    let fine = N0
+    for (let i = 0; i < 10_000; i++) fine = logisticStep(fine, K, r, 100)
+    const coarse = logisticStep(N0, K, r, 1_000_000)
+    // ★解析解なので**丸め誤差だけ**しか違わない
+    expect(Math.abs(fine / coarse - 1)).toBeLessThan(1e-9)
+  })
+
+  it("★★オイラー法だと刻みで答えが変わる（なぜ解析解が要るかの対照）", () => {
+    // ★**対照が本当に対照かを値で示す**（罠 39）。
+    //   これが無いと「解析解にした意味」が後から読む人に伝わらない
+    const K = 1.2e8, r = 1e-3, N0 = 1e4
+    const euler = (n: number, dt: number) => n + r * n * (1 - n / K) * dt
+    let fine = N0
+    for (let i = 0; i < 10_000; i++) fine = euler(fine, 100)
+    const coarse = euler(N0, 1_000_000)
+    // 粗い刻みでは 1 歩で K を大きく飛び越える（発散する）
+    expect(Math.abs(fine / coarse - 1)).toBeGreaterThan(0.5)
+  })
+
+  it("★緩和（土地利用）も刻みに依らない", () => {
+    const tau = 5e4, target = 0.6, x0 = 0.05
+    let fine = x0
+    for (let i = 0; i < 10_000; i++) fine = relaxStep(fine, target, tau, 100)
+    const coarse = relaxStep(x0, target, tau, 1_000_000)
+    expect(Math.abs(fine - coarse)).toBeLessThan(1e-12)
+  })
+
+  it("ロジスティックは 0 と K で止まり、K を超えない", () => {
+    expect(logisticStep(0, 100, 1e-3, 1e6)).toBe(0)
+    expect(logisticStep(100, 100, 1e-3, 1e6)).toBeCloseTo(100, 6)
+    // 収容力が減った惑星では人口が減る（★餓死も同じ式で出る）
+    expect(logisticStep(100, 50, 1e-3, 1e6)).toBeLessThan(100)
+    expect(logisticStep(1, 100, 1e-3, 1e9)).toBeCloseTo(100, 6)
+  })
   it.todo("★崩壊が内生する（Tainter の収穫逓減。外から与えない）")
   it.todo("★孤立した文明は技術を失う（Henrich のタスマニア効果）")
   it.todo("★由来 id で独立発明と伝播を区別できる")
