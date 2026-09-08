@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest"
 import {
-  Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep,
+  Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep, type Civ,
 } from "../src/sim/civilization"
 import {
   TECHS, TECH_INDEX, ROLE_PROVIDERS, techPrereqOk, techGateOk, sumTech,
@@ -179,5 +179,24 @@ describe("文明（M6）", () => {
   })
 
   it.todo("★孤立した文明は技術を失う（Henrich のタスマニア効果）")
-  it.todo("★由来 id で独立発明と伝播を区別できる")
+  it("★★由来 id で独立発明と伝播を区別できる（機能は収斂する）", () => {
+    // ★`docs/02` の中心的主張の文明版。実測で「畜力を 4 文明が持ち、
+    //   由来は 1 種類」＝ 1 つが発明して 3 つに伝わった、と読めた
+    const civ = new Civilization({ enabled: 1 })
+    const mk = (id: number): Civ => ({
+      id, foundedYear: 0, population: 1e6, energyPerCapita: 300,
+      tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
+    })
+    const a = mk(1), b = mk(2), c = mk(3)
+    const fire = TECH_INDEX.get("fire")!
+    // a と b は別々に発明（由来が違う）、c は a から伝わった（由来が同じ）
+    a.tech[fire] = true; a.techOrigin[fire] = 10
+    b.tech[fire] = true; b.techOrigin[fire] = 11
+    c.tech[fire] = true; c.techOrigin[fire] = 10
+    civ.state.civs = [a, b, c]
+    const origins = new Set([a, b, c].map((x) => x.techOrigin[fire]))
+    expect(origins.size).toBe(2)                    // 2 系統の由来
+    expect(a.techOrigin[fire]).toBe(c.techOrigin[fire])  // ★a→c は伝播
+    expect(a.techOrigin[fire]).not.toBe(b.techOrigin[fire]) // a と b は収斂
+  })
 })

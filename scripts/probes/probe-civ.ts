@@ -66,7 +66,8 @@ const report = () => {
     // ★**文明ごとに技術を出す**（どこが違う道を通ったかを見る）
     + w.civ.state.civs.map((c) =>
       `#${c.id}[${TECHS.filter((_, i) => c.tech[i]).length}]`).join(" ")
-    + ` (${w.civ.state.invented}/${w.civ.state.lost})`)
+    + ` 発明${w.civ.state.invented}/失伝${w.civ.state.lost}`
+    + `/伝播${w.civ.state.transferred}/征服${w.civ.state.conquered}`)
 }
 report()
 while (w.globals.yearsElapsed < end) {
@@ -78,6 +79,23 @@ for (const c of w.civ.state.civs) {
   console.log(`  文明 #${c.id}  人口 ${c.population.toExponential(2)}  `
     + `1人 ${c.energyPerCapita.toFixed(0)}W  `
     + TECHS.filter((_, i) => c.tech[i]).map((t) => t.what).join(""))
+}
+// ★★**同じ技術を、独立に発明したのか伝わったのか**（由来 id で分かる）
+{
+  const civs = w.civ.state.civs
+  const rows: string[] = []
+  for (let t = 0; t < TECHS.length; t++) {
+    const holders = civs.filter((c) => c.tech[t])
+    if (holders.length < 2) continue
+    const origins = new Set(holders.map((c) => c.techOrigin[t]))
+    rows.push(`  ${TECHS[t]!.what.padEnd(6)} ${holders.length} 文明が保有`
+      + `  由来 ${origins.size} 種類`
+      + (origins.size === 1 ? "  ← ★伝播（同じ由来）" : "  ← 独立発明が混在"))
+  }
+  if (rows.length > 0) {
+    console.log("\n★技術の由来（同じ技術を持つ文明が 2 つ以上あるもの）")
+    console.log(rows.slice(0, 12).join("\n"))
+  }
 }
 console.log(`終端  人口 ${w.civ.state.totalPopulation.toExponential(3)} 人`
   + `  知性の誕生 ${w.civ.state.emergedYear < 0 ? "まだ"

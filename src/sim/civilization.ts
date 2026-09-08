@@ -172,6 +172,24 @@ export interface CivParams {
   foundingRate: number
   /** 領域が隣のセルへ広がる速さ [1/yr] */
   expansionRate: number
+  /**
+   * ★**技術が伝わる速さ** [1/(km·yr)]。接する境界の長さに比例する。
+   *
+   * ★**重力モデル**（規模 × 規模 / 距離）の、格子での素直な形が
+   * 「**接している長さ**」。境界の長さは km で測るので**解像度に依らない**
+   * （セルを細かくすると本数は増えるが 1 本が短くなる。罠 9 の「線」の扱い）。
+   *
+   * ★**伝わった技術は由来 id を引き継ぐ** —— これで系譜図に
+   * 「独立発明（由来が違う）」と「伝播（由来が同じ）」が描き分けられる。
+   * `docs/02` の「機能は収斂する、系統は収斂しない」の文明版。
+   */
+  techTransferRate: number
+  /**
+   * ★**征服**が起きる速さ [1/(km·yr)]。軍事力の比が大きいほど速い。
+   * 軍事力 = 技術の `military` の合計 × 人口の平方根
+   * （★人口だけでは「大きいが弱い」文明を表せない）。
+   */
+  conquestRate: number
   /** 河川の流量の代表値（これで割って 0..1 にする）。現在の地球の大河の目安 */
   riverRefDischarge: number
   /**
@@ -194,6 +212,11 @@ export interface CivParams {
    * ★**Boserup**: 人口圧が集約化を駆動する ——
    * 発明の機会は**人口に比例**し、収容力に対して詰まっているほど増える。
    * 前提が揃った技術からしか引けない（★鎖は緩めない。罠 113）。
+   *
+   * ★**較正**: 地球は「1000 万人が 5000 年で文字を発明」＝ 1.386e-11 だが、
+   * それは**1 つの技術**の話。40 技術が並行に引かれると実効で 40 倍速くなるので、
+   * 2 桁下げて 1.4e-13 にした。実測で発明 1616 回・伝播 12 回だったのが、
+   * ★**地球の姿（伝播が主・独立発明は稀）**に寄る。
    */
   inventionRate: number
   /**
@@ -245,10 +268,15 @@ export const EARTH_CIV: CivParams = {
   // 100 万年に 1 セルあたり 1% 程度。★複数だが多すぎない数を狙う
   foundingRate: 1e-8,
   expansionRate: 1e-5,
+  // ★**伝播が主・独立発明が稀**にする（地球の姿）。実測で
+  //   発明 1616 回に対し伝播 12 回だったので、発明を 2 桁下げ伝播を上げた。
+  //   地球でも車輪や文字が独立に発明されたのは数回で、あとは伝わっている
+  techTransferRate: 5e-10,
+  conquestRate: 3e-12,
   riverRefDischarge: 5e4,
   complexityCost: 0.35,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
-  inventionRate: 1.386e-11,
+  inventionRate: 1.4e-13,
   lossRate: 3e4,
   lossPopRef: 1e4,
   habitatDisplacement: 0.9,
@@ -291,6 +319,9 @@ export interface CivState {
   /** 診断: 発明された回数 / 失伝した回数（★引けたか・失ったかを数える） */
   invented: number
   lost: number
+  /** 診断: 技術が伝わった回数 / 征服で領域が移った回数 */
+  transferred: number
+  conquered: number
 }
 
 /**
@@ -306,7 +337,7 @@ export class Civilization implements Subsystem {
   readonly params: CivParams
   readonly state: CivState = {
     totalPopulation: 0, energyPerCapita: 0, emergedYear: -1, landClearCo2Ppm: 0,
-    civs: [], founded: 0, invented: 0, lost: 0,
+    civs: [], founded: 0, invented: 0, lost: 0, transferred: 0, conquered: 0,
   }
 
   /** ★決定論のため、世界の seed から作る（`docs/04-6`） */
@@ -562,6 +593,9 @@ export class Civilization implements Subsystem {
         use[i] = next
       }
     }
+    // --- 5. 接触（★重力モデルの、格子での素直な形＝接している長さ）---
+    this.contact(world, cid, dtYears)
+
     // ★人口が消えた文明はたたむ（領域も返す）
     for (const civ of this.state.civs) {
       if (civ.population >= 1) continue
@@ -578,6 +612,87 @@ export class Civilization implements Subsystem {
       world.globals.co2 += ppm
       world.ledger.add("co2", ppm, "society.emission")
       this.state.landClearCo2Ppm += ppm
+    }
+  }
+
+  /**
+   * ★**接触**。隣り合った文明のあいだで技術が伝わり、時に征服が起きる。
+   *
+   * ★重力モデル（規模 × 規模 / 距離）の、格子での素直な形は
+   * **「接している境界の長さ」**。長さは km で測るので解像度に依らない
+   * （セルを細かくすると本数は増えるが 1 本が短くなる。罠 9 の「線」の扱い）。
+   *
+   * ★**伝わった技術は由来 id を引き継ぐ。** これで系譜図に
+   * 「独立発明（由来が違う）」と「伝播（由来が同じ）」が描き分けられる ——
+   * `docs/02` の「機能は収斂する、系統は収斂しない」の文明版。
+   */
+  private contact(world: World, cid: Uint8Array, dtYears: number): void {
+    const p = this.params
+    const civs = this.state.civs
+    if (civs.length < 2) return
+    const { W, H } = world.grid
+    // 境界の長さ [km] を文明の組ごとに積む。★添字順に走査（決定論）
+    const border = new Map<number, number>()
+    const key = (a: number, b: number) => (a < b ? a * 256 + b : b * 256 + a)
+    for (let y = 0; y < H; y++) {
+      // 経度方向の 1 セルの幅と、緯度方向の幅 [km]
+      const dx = (2 * Math.PI * 6371 * Math.cos(world.grid.latRad[y]!)) / W
+      const dy = (Math.PI * 6371) / H
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x
+        const a = cid[i] ?? 0
+        if (a === 0) continue
+        const east = cid[y * W + ((x + 1) % W)] ?? 0
+        if (east !== 0 && east !== a) {
+          border.set(key(a, east), (border.get(key(a, east)) ?? 0) + dy)
+        }
+        if (y < H - 1) {
+          const south = cid[(y + 1) * W + x] ?? 0
+          if (south !== 0 && south !== a) {
+            border.set(key(a, south), (border.get(key(a, south)) ?? 0) + dx)
+          }
+        }
+      }
+    }
+    if (border.size === 0) return
+    const byId = new Map(civs.map((c) => [c.id, c]))
+    const planet = new Map<number, Record<PlanetGate, number>>()
+    for (const [k, len] of [...border.entries()].sort((u, v) => u[0] - v[0])) {
+      const a = byId.get(Math.floor(k / 256)), b = byId.get(k % 256)
+      if (!a || !b) continue
+      // --- 技術の伝播（両方向。★片方だけだと「進んだ方が損」になる）---
+      for (const [from, to] of [[a, b], [b, a]] as const) {
+        if (!planet.has(to.id)) planet.set(to.id, this.measurePlanet(world, to.id))
+        const gate = planet.get(to.id)!
+        for (let t = 0; t < TECHS.length; t++) {
+          if (!from.tech[t] || to.tech[t]) continue
+          // ★**前提と惑星の条件は伝播でも免除しない。**
+          //   鉄を知っていても、鉱石の無い惑星では作れない
+          if (!techPrereqOk(to.tech, t) || !techGateOk(t, gate)) continue
+          const lambda = p.techTransferRate * len
+          if (this.rng.nextFloat() >= 1 - Math.exp(-lambda * dtYears)) continue
+          to.tech[t] = true
+          // ★**由来を引き継ぐ**（ここが独立発明との違い）
+          to.techOrigin[t] = from.techOrigin[t]!
+          this.state.transferred++
+        }
+      }
+      // --- 征服（軍事力の比で決まる）---
+      const power = (c: Civ) =>
+        (1 + sumTech(c.tech).military) * Math.sqrt(Math.max(1, c.population))
+      const pa = power(a), pb = power(b)
+      const [strong, weak] = pa >= pb ? [a, b] : [b, a]
+      const ratio = Math.max(pa, pb) / Math.max(1e-9, Math.min(pa, pb))
+      const lambda = p.conquestRate * len * (ratio - 1)
+      if (lambda <= 0) continue
+      if (this.rng.nextFloat() >= 1 - Math.exp(-lambda * dtYears)) continue
+      // 境界のセルを 1 つ奪う（★添字順に最初に見つかったもの。決定論）
+      for (let i = 0; i < world.grid.cellCount; i++) {
+        if (cid[i] !== weak.id) continue
+        cid[i] = strong.id
+        this.state.conquered++
+        break
+      }
     }
   }
 
