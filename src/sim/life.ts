@@ -656,6 +656,29 @@ export interface LifeParams {
   /** 脳が広げる温度の許容幅の倍率（行動で環境を避けられる） */
   brainTolerance: number
   /**
+   * ★**「行動で環境を避ける」には動物の体が要る**（0 で従来）。
+   * 1 なら、運動能力と多細胞の両方を持たない系統は
+   * `brainTolerance` の見返りを受け取れない。
+   *
+   * 【なぜ要るか】2026-09-08 の実測（12 seed・全史・`probe-ladder.ts`）で、
+   * **脳の遺伝子が 1.0〜1.5 Ga で上限 255 に達していた**（地球で脳が
+   * 大きくなるのは新生代 0.05 Ga 以降）。その結果、言語の初出が
+   * **0.38〜0.62 Ga と地球（0.0003 Ga）より 3 桁早い**。
+   *
+   * 律速は前提でも抽選でもなかった —— g11 は **1.5 Ga の時点で既に
+   * 7 系統が全条件（脳 ≥ 64・多細胞・O2 ≥ 8%）を満たしていた**。
+   * つまり**脳が早く育ちすぎている**ことが時期のずれの本体。
+   *
+   * 【原因】`brainTolerance` は**誰にでも効く**。太古代のマットや単細胞にも
+   * 「行動で環境を避ける」見返りが入るので、脳が早くから割に合ってしまう。
+   * ★実際には、行動による体温調節は**動く体と神経系**があって初めて成り立つ。
+   * シアノバクテリアのマットは暑さから逃げられない。
+   *
+   * `brainCapture`（捕獲効率）は既に捕食者にしか効かないので、
+   * ここを閉じれば**脳の見返りは動物にだけ残る**。
+   */
+  brainBehaviourNeedsAnimal: number
+  /**
    * 象徴（言語・文化）の追加コスト。
    *
    * ★これを入れるまで `capSymbolic` は**無償で子孫に広がり**、
@@ -843,6 +866,12 @@ export const EARTH_LIFE: LifeParams = {
   brainCost: 0.12,
   brainCapture: 0.10,
   brainTolerance: 0.8,
+  // ★既定 0（従来）。A/B は `probe-ladder.ts` の「脳max」と象徴の初出
+  // ★**0.7**（2026-09-08）。1.0（動物以外は見返り 0）は行き過ぎで、
+  //   厳しい惑星の生物圏が 2.00 → 0.25〜1.06 に落ちた。脳の温度耐性は
+  //   微生物にとっても本物の緩衝だった。0.7 なら知性の結果は 1.0 と同一
+  //   （象徴 0.05・0.54 Ga、2/12）のまま、壊れた惑星が 2.00 に戻る
+  brainBehaviourNeedsAnimal: 0.7,
   // ★0.1 → 0.02。見返り（文明）が M7 で未実装なのにコストだけ取っていたため、
   // 選択が絶対に採らなかった（実測で全 16 クレードが −7.7〜−10.7%）。
   // 脳の維持費を薄める見返り（`symbolicBrainRelief`）と対にして、
@@ -1620,8 +1649,13 @@ export class Life implements Subsystem {
     // 形質 0..1 を物理量に写す
     const opt = p.tempOptMin + (p.tempOptMax - p.tempOptMin) * tr[T_TEMP_OPT]
     // ★脳は行動で環境を避けられる = 実効的な温度の許容幅が広がる
+    // ★**行動で環境を避けるには、動く体が要る**（`brainBehaviourNeedsAnimal`）。
+    //   0 なら係数は厳密に 1 で、従来と 1 ビットも変わらない
+    const behaviour = p.brainBehaviourNeedsAnimal > 0
+      && !(hasCapability(ph, C_MOTILITY) && hasCapability(ph, C_MULTI))
+      ? 1 - p.brainBehaviourNeedsAnimal : 1
     const tol = (p.tempTolMin + (p.tempTolMax - p.tempTolMin) * tr[T_TEMP_TOL])
-      * (1 + p.brainTolerance * tr[T_BRAIN]
+      * (1 + p.brainTolerance * tr[T_BRAIN] * behaviour
         + (hasCapability(ph, C_SYMBOLIC) ? p.symbolicTolerance : 0))
     const inv2t2 = 1 / (2 * tol * tol)
     // 酸素: 要求を満たすか / 毒性で死なないか（GOE の実装点。§3.1）

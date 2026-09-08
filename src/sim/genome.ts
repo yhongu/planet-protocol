@@ -72,6 +72,7 @@ export const HARD_STEP_KINDS: readonly string[] = [
 ]
 const K_OXYGENIC = GENE_KINDS.indexOf("capOxygenicPhotosynthesis")
 const K_EUKARYOTE = GENE_KINDS.indexOf("capEukaryotic")
+const K_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
 const HARD_STEP = new Uint8Array(GENE_KINDS.length)
 for (const n of HARD_STEP_KINDS) HARD_STEP[GENE_KINDS.indexOf(n as never)] = 1
 
@@ -349,6 +350,21 @@ export interface MutationParams {
    */
   pHardStepPhoto: number
   /**
+   * ★**象徴（言語）だけ別のつまみ**（既定は `pHardStep` と同じ 0.35）。
+   *
+   * 【なぜ分けたか】2026-09-08 の実測（`probe-ladder.ts`）:
+   * **前提（脳 ≥ 64・多細胞・O2 ≥ 8%）が揃ってから初出まで 9 億年**あった
+   * （g11 は 1.5Ga に既に 7 系統が満たしていたのに初出は 0.62Ga）。
+   * さらに `brainBehaviourNeedsAnimal` で脳の成長を顕生代に遅らせたら、
+   * **残り時間で引けなくなり、知性が 3/6 → 1/6 に落ちた**。
+   *
+   * ★これは自分で書いた罠 113 そのもの ——
+   * **「前提が律速で、満たされた後は速い」のが正しい姿。
+   * 鎖を緩めるのではなく、満たされた後を速くする。**
+   * 地球でも、大きな脳を持つ動物が現れてから言語までは（地質時間では）一瞬。
+   */
+  pHardStepSymbolic: number
+  /**
    * **真核化（ミトコンドリアの獲得）の通りにくさ。**
    *
    * ★`pHardStepPhoto` とまったく同じ理由で分けた（2026-09-06）。
@@ -396,6 +412,11 @@ export const EARTH_MUTATION: MutationParams = {
   maxGenes: 96,
   pHardStep: 0.35,
   pHardStepPhoto: 1.0,
+  // ★既定は `pHardStep` と同じ（従来どおり）。A/B は `probe-ladder.ts`
+  // ★**1.0**（2026-09-08）。前提（脳・多細胞・O2 8%）が揃った後は速く。
+  //   脳を動物に限った（`brainBehaviourNeedsAnimal`）ら残り時間で引けなくなり、
+  //   知性が 3/6 → 1/6 に落ちた。速くしたら 2/12・初出 0.05/0.54 Ga に戻った
+  pHardStepSymbolic: 1.0,
   pHardStepEukaryote: 1.0,
   // ★0.35 → 0.70（2026-09-07）。**「満たされた後が、まだ遅かった」**。
   //   実測（4 seed・全史・64x32・対応のある比較）:
@@ -469,7 +490,9 @@ export function mutate(
       // ハードステップは【前提能力を持つ系統だけ】が引ける（§2.1b の履歴依存）
       // ★酸素発生型光合成だけ別のつまみで通す（`pHardStepPhoto` の説明）
       const pStep = k2 === K_OXYGENIC ? p.pHardStepPhoto
-        : k2 === K_EUKARYOTE ? p.pHardStepEukaryote : p.pHardStep
+        : k2 === K_EUKARYOTE ? p.pHardStepEukaryote
+        // ★前提が揃った後は速い（`pHardStepSymbolic`）。既定は `pHardStep` と同値
+        : k2 === K_SYMBOLIC ? p.pHardStepSymbolic : p.pHardStep
       // ★**前提は常に見る。** それまで「ハードステップでなければ素通り」
       //   だったので、多細胞も骨格も陸も**前提ゼロで太古代に出ていた**
       const ok = hasPrereq(g, k2) && envOk(k2, env)

@@ -440,7 +440,13 @@ button:active { background: #0b1120; box-shadow: none; }
 /* --- 左の列: 縦を詰める ---------------------------------------------
    ★神の手を足して縦に伸び、凡例パネルと重なった（実測）。
    アイコンだけの横並びにして高さを稼ぐ */
-.rail-strip { display: flex; gap: 6px; }
+/* ★**行を増やさずに 5 つ収める。** 折り返したら列が伸びて
+   レイヤ選択と系譜ボタンが重なった（罠 48 をそのまま踏んだ。実測・スクショ）。
+   幅 152px − 隙間 4×4px = 136px を 5 つで割るので、1 つ 27px まで。
+   アイコンを 18px にして padding を詰める */
+.rail-strip { display: flex; gap: 4px; }
+.rail-strip .act.icon { padding: 4px 2px; }
+.rail-strip .act.icon img { width: 18px; height: 18px; flex: 0 0 18px; }
 .act.icon { flex: 1; justify-content: center; padding: 5px 4px; }
 /* ★4 つ並べても列の幅（152px）に収まる大きさにすること。
    28px だと 4 つ目がはみ出して【見えなくなった】（実測） */

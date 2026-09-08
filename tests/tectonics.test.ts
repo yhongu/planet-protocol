@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { World } from "../src/sim/world"
 import { MODE_TRAITS } from "../src/sim/mantle"
-import { Tectonics, continentalVolume } from "../src/sim/tectonics"
+import { Tectonics, continentalVolume, felsicVolume } from "../src/sim/tectonics"
 
 const OPT = { cgTol: 1e-2, maxOuter: 300, tol: 1e-4 } as const
 const mk = (o: Record<string, unknown> = {}) =>
@@ -122,7 +122,19 @@ describe("プレートテクトニクス", () => {
 
   it("★ 大陸が動き、衝突で山ができ、地殻体積が保存される", () => {
     const w = mk()
-    const v0 = continentalVolume(w, w.tectonics.params.continentThreshold)
+    // ★**測る量を `felsicVolume` に替えた**（2026-09-08）。
+    //
+    // `continentalVolume` は「厚さ 10km を超えるセル」の合計だが、
+    // **冥王代〜太古代の海洋地殻はマントルが熱くて 12〜13km ある**
+    // （`oceanCrustThickness`。太古代の海洋地殻が厚いのは地球でも同じ）。
+    // つまり**海洋地殻が「大陸」として数えられ**、マントルが冷えて 7km に
+    // なると一斉に集計から外れる。**保存量ではないものを保存で検査していた。**
+    //
+    // 実測（`probe-relief.ts`・96x48・現在の既定）:
+    //   島弧の生成 1.63 / 珪長質の再循環 0.57 / 深海流出 0.10 km³/yr
+    //   → **正味 0.96 km³/yr（地球 約 1）**。物理は正しい。
+    // 珪長質そのものを見れば、3 億年で増えるのは数 % に収まる。
+    const v0 = felsicVolume(w)
     const e0 = w.store.f32("elevation").read.slice()
     let max0 = -Infinity
     for (let i = 0; i < e0.length; i++) if (e0[i] > max0) max0 = e0[i]
@@ -153,8 +165,11 @@ describe("プレートテクトニクス", () => {
     } else {
       expect(w.tectonics.budget.orogeny).toBeGreaterThan(0)
     }
-    const v1 = continentalVolume(w, w.tectonics.params.continentThreshold)
-    expect(Math.abs(v1 / v0 - 1)).toBeLessThan(0.25)    // 体積が保存される
+    const v1 = felsicVolume(w)
+    // ★正味 0.96 km³/yr × 3 億年 = 2.9e8 km³。基準の 6e9 km³ に対し +5% 程度。
+    //   ★**閾値を緩めたのではない** —— 測る量を保存量に替えたので、
+    //   0.25（海洋地殻の厚さの変化を飲み込むための緩さ）より厳しくできる
+    expect(Math.abs(v1 / v0 - 1)).toBeLessThan(0.15)
     // ★★ 2026-08-28 現在【落ちている】（0.094 対 0.1）。**閾値を下げて通してはいけない。**
     //
     // 発散の南北項の符号を直した（computeVelocity のコメント）ところ、

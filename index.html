@@ -42,6 +42,13 @@
           <button class="iv act icon" data-kind="nudgeTrait" data-gene="oxygenDemand"
             title="好気呼吸へ傾向を押す">
             <img src="icons/cap-eukaryotic.png" alt="" /></button>
+          <!-- ★**埋没を押す**（2026-09-08）。今日の実測で、遺骸の分解されにくさが
+               惑星の酸素を支配すると分かった（酸素の乏しい惑星 7.7% / 8.5% が、
+               押し続けると 26.5% / 20.4% まで上がる。`probe-intervene.ts`）。
+               ★押すのは形質であって酸素ではない —— 不利な惑星では選択が戻す -->
+          <button class="iv act icon" data-kind="nudgeTrait" data-gene="recalcitrance"
+            title="遺骸の分解されにくさへ傾向を押す（埋没 → 酸素）">
+            <img src="icons/ev-goe.png" alt="" /></button>
           <button class="iv act icon" data-kind="transferGenes"
             title="水平伝播（同じマスの 2 系統で遺伝子を渡す）">
             <img src="icons/ev-speciation.png" alt="" /></button>
