@@ -39,6 +39,12 @@ const IDX = CAPS.map((c) => {
   return i
 })
 const SHORT = ["酸素光合成", "真核", "多細胞", "捕食", "骨格", "運動", "陸", "窒素固定", "象徴"]
+// ★**言語の前提がいつ揃うか**を追う（2026-09-08）。
+//   実測で 3 惑星とも 0.38〜0.62Ga に集中していた ——
+//   酸素だけが門ならばらけるはずなので、別の何かが律速している。
+//   前提は「脳の遺伝子 >= 64（PREREQ_THRESHOLD）」「多細胞」「大気 O2 >= 8%」の 3 つ
+const T_BRAIN_G = GENE_KINDS.indexOf("brain")
+const C_MULTI_G = GENE_KINDS.indexOf("capMulticellular")
 
 const w = new World({
   width: W, height: H, seed: SEED, shared: false, startEpoch: "hadean",
@@ -63,7 +69,7 @@ for (const kv of SET.split(",").filter(Boolean)) {
 }
 console.log(`進化の梯子  ${W}x${H}  seed ${SEED}  ${SET || "既定"}`)
 console.log("Ga   系統 " + SHORT.map((s) => s.padStart(6)).join("")
-  + "   生物圏   O2%   日射")
+  + "   生物圏   O2%  脳max  前提◯  日射")
 
 let next = PLANET_AGE_YEARS - 3.0e9
 while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
@@ -76,13 +82,26 @@ while (w.globals.yearsElapsed < PLANET_AGE_YEARS) {
   //   全部 0 と出た —— 採用回数と食い違ったので気づけた
   const cells = IDX.map((k) =>
     String(cl.filter((c) => hasCapability(c.phenotype, k)).length).padStart(6))
+  // ★脳の遺伝子の最大値（0..255）と、**言語の前提を全部満たす系統の数**。
+  //   前提が揃った時期と初出が一致するなら、律速しているのは抽選ではなく前提
+  let brainMax = 0, prereqOk = 0
+  for (const c of cl) {
+    let b = 0
+    for (let i = 0; i < c.genome.length; i++) {
+      if (c.genome.kind[i] === T_BRAIN_G && c.genome.value[i]! > b) b = c.genome.value[i]!
+    }
+    if (b > brainMax) brainMax = b
+    if (b >= 64 && hasCapability(c.phenotype, C_MULTI_G) && w.globals.o2 >= 8) prereqOk++
+  }
   console.log(`${((PLANET_AGE_YEARS - w.globals.yearsElapsed) / 1e9).toFixed(2)} ${String(cl.length).padStart(3)} `
     + cells.join("")
     // ★C の診断: **分岐はバイオマスに比例する**ので、貧しい惑星は
     //   永久に系統が増えない（`speciationRate × min(1, biomass×10)`）。
     //   O2 は B の環境の門（言語は 8% 以上でしか引けない）のカナリア
     + `   ${w.globals.biosphereProxy.toFixed(2)}  ${w.globals.o2.toFixed(1)}  `
-    + `${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
+    + `${brainMax.toFixed(0).padStart(5)}`
+    + `${String(prereqOk).padStart(6)}`
+    + `  ${(w.globals.solarConstant * w.globals.solarMultiplier).toFixed(0)}`)
 }
 // ★**初めて現れた年**（`detectFirsts` が年代記に刻むもの）。
 //   「進化しない」の正体が「起きていない」のか「見えていない」のかを分ける
