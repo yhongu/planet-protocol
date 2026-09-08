@@ -61,7 +61,10 @@ export type PlanetGate =
  * - `retention`: 情報の保持。**失伝しにくくする**
  * - `military`: 接触の結果を征服側に傾ける（⑥で使う）
  * - `complexity`: 維持費。★**トレードオフの無い技術は全員が持つ**（罠 44）
- * - `needs`: 前提の技術。★**鎖は緩めず、満たされた後を速く**（罠 113）
+ * - `provides`: **役割**。★同じ役割を果たす技術が複数あってよい
+ * - `needs`: 前提。**技術の名前でも役割の名前でもよい** ——
+ *   役割で書けば「**どれか 1 つ**」で満たされる（★代替経路）。
+ *   ★**鎖は緩めず、満たされた後を速く**（罠 113）
  * - `gate`: **惑星の条件**。満たさない惑星では**永久に発明できない**
  */
 export interface TechSpec {
@@ -75,6 +78,17 @@ export interface TechSpec {
   military: number
   complexity: number
   needs: readonly string[]
+  /**
+   * ★**この技術が果たす役割**（`農業` `長距離輸送` `記録` など）。
+   *
+   * 下流は役割を前提に書けるので、**同じ役割を別の技術で満たせる**。
+   * これが無いと、増やした分だけ一本道が長くなるだけになる。
+   *
+   * ★`docs/02` の中心的な主張「**機能は収斂する、系統は収斂しない**」の技術版。
+   * 大河の惑星は灌漑で、雨の多い惑星は天水で「農業」の役割を満たす ——
+   * **同じ役割・違う由来**は、系譜図で収斂として描ける。
+   */
+  provides?: readonly string[]
   gate?: { kind: PlanetGate; min: number }
 }
 
@@ -83,6 +97,7 @@ const T = (
   e: Partial<Omit<TechSpec, "name" | "what" | "needs">> = {},
 ): TechSpec => ({
   name, what, needs,
+  ...(e.provides ? { provides: e.provides } : {}),
   energyW: e.energyW ?? 0, yieldGain: e.yieldGain ?? 0,
   cohesion: e.cohesion ?? 0, retention: e.retention ?? 0,
   military: e.military ?? 0, complexity: e.complexity ?? 0.1,
@@ -109,17 +124,21 @@ export const TECHS: readonly TechSpec[] = [
   }),
   T("pottery", "土器", ["fire"], { yieldGain: 1.5, retention: 0.05, complexity: 0.05 }),
   // ★鉱石は大陸地殻に濃集する（花崗岩質の分化）
-  T("copper", "銅", ["fire", "agriculture"], {
+  T("copper", "銅", ["fire", "farming"], {
+    provides: ["metal"],
     energyW: 150, yieldGain: 2, military: 0.2, complexity: 0.12,
     gate: { kind: "felsic", min: 2e9 },
   }),
   T("bronze", "青銅", ["copper", "trade"], {
+    provides: ["metal", "hardMetal"],
     energyW: 150, yieldGain: 3, military: 0.5, complexity: 0.15,
   }),
-  T("iron", "鉄", ["bronze"], {
+  T("iron", "鉄", ["hardMetal"], {
+    provides: ["metal", "hardMetal"],
     energyW: 300, yieldGain: 6, military: 0.8, complexity: 0.18,
   }),
-  T("steel", "鋼", ["iron", "writing"], {
+  T("steel", "鋼", ["iron", "record"], {
+    provides: ["hardMetal"],
     energyW: 400, yieldGain: 6, military: 1.0, complexity: 0.2,
   }),
   T("steam", "蒸気機関", ["steel", "fossilFuel"], {
@@ -134,15 +153,28 @@ export const TECHS: readonly TechSpec[] = [
   // ================= 食料 =================
   T("agriculture", "農耕", ["fire"], {
     energyW: 400, yieldGain: 12, cohesion: 0.1, complexity: 0.15,
+    provides: ["farming"],
     gate: { kind: "land", min: 0.02 },
   }),
   // ★灌漑は大河が要る
-  T("irrigation", "灌漑", ["agriculture"], {
+  // ★**同じ「集約農業」の役割を、2 つの道が満たす**（代替経路）
+  T("irrigation", "灌漑", ["farming"], {
     energyW: 150, yieldGain: 20, cohesion: 0.15, complexity: 0.22,
+    provides: ["intensiveFarming"],
     gate: { kind: "river", min: 0.3 },
   }),
-  T("plough", "犂", ["agriculture", "copper"], { energyW: 150, yieldGain: 10, complexity: 0.12 }),
-  T("rotation", "輪作", ["plough", "writing"], { yieldGain: 12, complexity: 0.12 }),
+  // 雨の多い惑星は大河が無くても集約農業に届く（天水農業）
+  T("rainfed", "天水農業", ["farming"], {
+    energyW: 100, yieldGain: 14, cohesion: 0.05, complexity: 0.15,
+    provides: ["intensiveFarming"],
+    gate: { kind: "land", min: 0.15 },
+  }),
+  T("plough", "犂", ["farming", "metal"], { energyW: 150, yieldGain: 10, complexity: 0.12 }),
+  // ★**畜力**は金属が無くても長距離輸送を満たす（車輪の代替）
+  T("draft", "畜力", ["farming"], {
+    energyW: 250, yieldGain: 4, complexity: 0.1, provides: ["transport"],
+  }),
+  T("rotation", "輪作", ["intensiveFarming", "record"], { yieldGain: 12, complexity: 0.12 }),
   T("breeding", "選抜育種", ["rotation"], { yieldGain: 15, complexity: 0.15 }),
   T("fertilizer", "化学肥料", ["electricity", "fossilFuel"], {
     yieldGain: 35, complexity: 0.3,
@@ -150,28 +182,40 @@ export const TECHS: readonly TechSpec[] = [
   // ================= 情報の保持 =================
   T("ritual", "儀礼", [], { cohesion: 0.3, retention: 0.1, complexity: 0.05 }),
   T("religion", "宗教", ["ritual"], { cohesion: 0.6, retention: 0.2, complexity: 0.15 }),
-  T("writing", "文字", ["agriculture", "pottery"], {
-    cohesion: 0.2, retention: 0.5, complexity: 0.1,
+  T("writing", "文字", ["farming", "pottery"], {
+    cohesion: 0.2, retention: 0.5, complexity: 0.1, provides: ["record"],
   }),
-  T("printing", "印刷", ["writing", "iron"], { retention: 0.8, cohesion: 0.1, complexity: 0.15 }),
-  T("school", "学校", ["writing", "law"], { retention: 0.6, cohesion: 0.2, complexity: 0.18 }),
+  // ★**口承**は文字より弱いが、文字を持たない文明でも記録の役割を果たす
+  //   （Henrich: 語り部と儀礼は技術の維持装置。ただし劣化しやすい）
+  T("oralTradition", "口承", ["ritual"], {
+    cohesion: 0.25, retention: 0.25, complexity: 0.06, provides: ["record"],
+  }),
+  T("printing", "印刷", ["writing", "hardMetal"], { retention: 0.8, cohesion: 0.1, complexity: 0.15 }),
+  T("school", "学校", ["record", "law"], { retention: 0.6, cohesion: 0.2, complexity: 0.18 }),
   T("science", "科学", ["printing", "school"], {
     yieldGain: 5, retention: 0.5, complexity: 0.25,
   }),
   // ================= 結束（★宗教・法・貨幣はここ） =================
-  T("law", "法", ["writing"], { cohesion: 0.5, retention: 0.15, complexity: 0.2 }),
-  T("money", "貨幣", ["writing"], { cohesion: 0.3, yieldGain: 2, complexity: 0.15 }),
+  T("law", "法", ["record"], { cohesion: 0.5, retention: 0.15, complexity: 0.2 }),
+  T("money", "貨幣", ["record"], { cohesion: 0.3, yieldGain: 2, complexity: 0.15 }),
   T("bureaucracy", "官僚制", ["law", "money"], { cohesion: 0.7, complexity: 0.3 }),
-  T("trade", "交易", ["boats", "pottery"], { yieldGain: 3, cohesion: 0.1, complexity: 0.08 }),
+  // ★交易は「何かで運べれば」成り立つ（舟でも畜力でも車輪でも）
+  T("trade", "交易", ["transport", "pottery"], {
+    yieldGain: 3, cohesion: 0.1, complexity: 0.08,
+  }),
   // ================= 移動 =================
-  T("boats", "舟", [], { energyW: 50, yieldGain: 1, complexity: 0.08,
-    gate: { kind: "ocean", min: 0.2 } }),
+  T("boats", "舟", [], {
+    energyW: 50, yieldGain: 1, complexity: 0.08, provides: ["transport"],
+    gate: { kind: "ocean", min: 0.2 },
+  }),
   T("sail", "帆船", ["boats", "bronze"], { energyW: 100, yieldGain: 2, complexity: 0.12 }),
   T("ocean", "外洋船", ["sail", "writing"], {
     energyW: 100, yieldGain: 3, military: 0.3, complexity: 0.18,
     gate: { kind: "ocean", min: 0.5 },
   }),
-  T("wheel", "車輪", ["copper"], { energyW: 100, yieldGain: 1, complexity: 0.1 }),
+  T("wheel", "車輪", ["metal"], {
+    energyW: 100, yieldGain: 1, complexity: 0.1, provides: ["transport"],
+  }),
   T("railway", "鉄道", ["steam", "steel"], { energyW: 500, yieldGain: 5, complexity: 0.25 }),
   // ================= 軍事 =================
   T("bow", "弓", ["stoneTools"], { military: 0.3, yieldGain: 0.5, complexity: 0.05 }),
@@ -188,12 +232,29 @@ export const TECHS: readonly TechSpec[] = [
 ]
 
 export const TECH_INDEX = new Map(TECHS.map((t, i) => [t.name, i]))
-/** 前提を添字に直したもの（ホットループで名前を引かない） */
-export const TECH_PREREQ: readonly number[][] = TECHS.map((t) =>
+
+/** 役割 → その役割を果たす技術の添字（★複数あってよい＝代替経路） */
+export const ROLE_PROVIDERS = new Map<string, number[]>()
+for (let i = 0; i < TECHS.length; i++) {
+  for (const r of TECHS[i]!.provides ?? []) {
+    const a = ROLE_PROVIDERS.get(r) ?? []
+    a.push(i)
+    ROLE_PROVIDERS.set(r, a)
+  }
+}
+
+/**
+ * 前提を添字の**集合の並び**に直す。
+ * 外側の配列は AND（全部要る）、内側は **OR**（どれか 1 つでよい）。
+ * ★技術の名前なら要素 1 つ、役割の名前なら**その役割を果たす技術すべて**。
+ */
+export const TECH_PREREQ: readonly (readonly number[])[][] = TECHS.map((t) =>
   t.needs.map((n) => {
-    const i = TECH_INDEX.get(n)
-    if (i === undefined) throw new Error(`知らない前提: ${n}`)
-    return i
+    const one = TECH_INDEX.get(n)
+    if (one !== undefined) return [one]
+    const many = ROLE_PROVIDERS.get(n)
+    if (many && many.length > 0) return many
+    throw new Error(`知らない前提（技術でも役割でもない）: ${n}`)
   }))
 
 export interface TechEffect {
@@ -222,9 +283,16 @@ export function sumTech(has: readonly boolean[]): TechEffect {
   return e
 }
 
-/** 前提を全部持っているか（★鎖は緩めない） */
+/**
+ * 前提を全部満たしているか（★鎖は緩めない）。
+ * **AND の並びで、それぞれは OR**（役割ならどれか 1 つでよい）。
+ */
 export function techPrereqOk(has: readonly boolean[], kind: number): boolean {
-  for (const n of TECH_PREREQ[kind]!) if (!has[n]) return false
+  for (const group of TECH_PREREQ[kind]!) {
+    let ok = false
+    for (const n of group) if (has[n]) { ok = true; break }
+    if (!ok) return false
+  }
   return true
 }
 

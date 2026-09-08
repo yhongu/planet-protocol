@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest"
 import {
   Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep,
 } from "../src/sim/civilization"
-import { TECHS, TECH_INDEX, techPrereqOk, techGateOk, sumTech } from "../src/sim/tech"
+import {
+  TECHS, TECH_INDEX, ROLE_PROVIDERS, techPrereqOk, techGateOk, sumTech,
+} from "../src/sim/tech"
 
 /**
  * ★★**時間解像度の独立性**（M6 の設計上の契約。2026-09-08）。
@@ -138,6 +140,31 @@ describe("文明（M6）", () => {
     for (const n of ["stoneTools", "fire", "pottery", "agriculture", "copper",
       "boats", "trade", "bronze"]) has[TECH_INDEX.get(n)!] = true
     expect(techPrereqOk(has, iron)).toBe(true)
+  })
+
+  it("★★代替経路: 同じ役割を別の技術で満たせる（機能は収斂する）", () => {
+    // ★交易は「何かで運べれば」成り立つ —— 舟でも畜力でも車輪でもよい。
+    //   これが無いと、技術を増やしても一本道が長くなるだけになる
+    const trade = TECH_INDEX.get("trade")!
+    const base = () => {
+      const h = TECHS.map(() => false)
+      for (const n of ["stoneTools", "fire", "pottery"]) h[TECH_INDEX.get(n)!] = true
+      return h
+    }
+    const byBoat = base(); byBoat[TECH_INDEX.get("boats")!] = true
+    const byDraft = base()
+    for (const n of ["agriculture", "draft"]) byDraft[TECH_INDEX.get(n)!] = true
+    expect(techPrereqOk(base(), trade)).toBe(false)      // 運ぶ手段が無い
+    expect(techPrereqOk(byBoat, trade)).toBe(true)       // 海の惑星は舟で
+    expect(techPrereqOk(byDraft, trade)).toBe(true)      // 内陸の惑星は畜力で
+  })
+
+  it("★役割は複数の技術が果たす（代替経路が実在する）", () => {
+    // ★1 つしか提供者がいない役割は「代替」になっていない
+    for (const [role, providers] of ROLE_PROVIDERS) {
+      if (role === "farming") continue   // 農耕は今のところ 1 本道（既知）
+      expect(providers.length, `役割 ${role} の提供者`).toBeGreaterThan(1)
+    }
   })
 
   it("★すべての技術に維持費がある（トレードオフの無い技術は全員が持つ。罠 44）", () => {
