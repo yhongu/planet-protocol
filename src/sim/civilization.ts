@@ -63,6 +63,11 @@ export const CIV_FIELDS: readonly FieldSpec[] = [
     comment: "0 = 無人。1..MAX_CIVS = その文明の領域。★文明ごとに技術が違う",
   },
   {
+    name: "landCleared", kind: "f32", doubleBuffered: false,
+    comment: "0..1。これまでに開墾した割合の最大値。★炭素は【一度だけ】出る。"
+      + "増分で数えると、刻みを細かくするほど揺れを足して CO2 が膨らむ",
+  },
+  {
     name: "landUse", kind: "f32", doubleBuffered: false,
     comment: "0..1。そのセルの陸のうち農地・都市に変えた割合。"
       + "★野生の生息地を減らす（人為的な絶滅の実体）",
@@ -211,6 +216,8 @@ export interface CivParams {
    * （★人口だけでは「大きいが弱い」文明を表せない）。
    */
   conquestRate: number
+  /** ★「降りた」ときの刻み [yr]。人類史 1 万年を 100 歩で見る */
+  focusStepYears: number
   /** 河川の流量の代表値（これで割って 0..1 にする）。現在の地球の大河の目安 */
   riverRefDischarge: number
   /**
@@ -294,6 +301,7 @@ export const EARTH_CIV: CivParams = {
   //   地球でも車輪や文字が独立に発明されたのは数回で、あとは伝わっている
   techTransferRate: 5e-10,
   conquestRate: 3e-12,
+  focusStepYears: 100,
   riverRefDischarge: 5e4,
   complexityCost: 0.35,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
@@ -343,7 +351,14 @@ export interface CivState {
   founded: number
   /** 知性種が現れた年（`yearsElapsed`）。まだなら -1 */
   emergedYear: number
-  /** ★開墾で大気に出した炭素の積算 [ppm]（診断・収支の相手） */
+  /**
+   * ★開墾で大気に出した炭素の積算 [ppm]（診断・収支の相手）。
+   *
+   * ★**刻みに依らないことを実測で確かめてある**（24〜56ppm、
+   * 100 万年 / 1 万年 / 100 年刻み。`probe-focus.ts`）。
+   * ★大気の CO2 そのものは 100 万年刻みで 4000ppm 台に跳ねることがあるが、
+   * それは**炭素循環の結合が粗すぎる**ためで、文明とは別の要因（罠 31）。
+   */
   landClearCo2Ppm: number
   /** 診断: 発明された回数 / 失伝した回数（★引けたか・失ったかを数える） */
   invented: number
@@ -361,8 +376,27 @@ export interface CivState {
  */
 export class Civilization implements Subsystem {
   readonly name = "civilization"
-  readonly preferredStepYears = 1_000_000
+  /**
+   * ★**降りると刻みが細かくなる**（設計方針 A-2 の⑥）。
+   *
+   * 惑星の目線では文明は 1 フレームで生まれて滅びる（×20 なら人類史 1 万年は
+   * 1/200 フレーム）。プレイヤーが「降りる」を選ぶと、ここが 100 年になる。
+   *
+   * ★**惑星の物理は粗くならない。** `SubsystemLoop` は各サブシステムが
+   * 自分の `preferredStepYears` まで溜めてから発火するので、
+   * 親の刻みが 100 年でも**炭素は 25kyr ごと・酸素は 1Myr ごと**に回る。
+   * 気候も `chunked()` が結合間隔（20 万年）ごとに解くので変わらない。
+   *
+   * ★**降りても降りなくても結果は同じでなければならない**（`tests/civilization`）。
+   * 確率は必ず `1 − exp(−λ·dt)` で作ってあるので、**ポアソン過程として
+   * 刻みに依らない**（n 回に割っても「1 回以上起きる確率」は同じ）。
+   */
+  get preferredStepYears(): number {
+    return this.focused ? this.params.focusStepYears : 1_000_000
+  }
   readonly maxStepYears = 1e9
+  /** ★プレイヤーが「降りて」いるか。UI が切り替える */
+  focused = false
   readonly params: CivParams
   readonly state: CivState = {
     totalPopulation: 0, energyPerCapita: 0, emergedYear: -1, landClearCo2Ppm: 0,
@@ -510,6 +544,7 @@ export class Civilization implements Subsystem {
     const p = this.params
     const pop = world.store.f32("population").read
     const use = world.store.f32("landUse").read
+    const maxUse = world.store.f32("landCleared").read
     const cid = world.store.u8("civId").read
     const lf = world.store.f32("landFraction").read
     const bio = world.store.f32("biomassTotal").read
@@ -620,7 +655,15 @@ export class Civilization implements Subsystem {
         const needM2 = after * p.landPerPersonM2
         const target = Math.min(1, needM2 / Math.max(1, land * areaM2))
         const next = relaxStep(u, target, p.landUseTauYears, dtYears)
-        if (next > u) cleared += (next - u) * land * areaM2
+        // ★**炭素は「これまでの最大」を超えた分だけ出る**（片道）。
+        //   増分（`next > u`）で数えると、土地利用が揺れるたびに足してしまい、
+        //   **刻みを細かくするほど CO2 が膨らむ**（実測: 1 万年刻みで 4071ppm、
+        //   100 万年刻みで 959ppm）。森は一度切れば、また生えるまで戻らない
+        const wasMax = maxUse[i] ?? 0
+        if (next > wasMax) {
+          cleared += (next - wasMax) * land * areaM2
+          maxUse[i] = next
+        }
         use[i] = next
       }
     }
