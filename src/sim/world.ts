@@ -19,6 +19,7 @@ import {
 import { Ocean, OCEAN_FIELDS, type OceanParams } from "./ocean"
 import { Prebiotic, PREBIOTIC_FIELDS, type PrebioticParams } from "./prebiotic"
 import { Life, LIFE_FIELDS } from "./life"
+import { Civilization, CIV_FIELDS, type CivParams } from "./civilization"
 import { GENE_KINDS } from "./genome"
 import { Oxygen, type OxygenParams } from "./oxygen"
 import { SimLoop, epochAt, resolveSpeed, type EpochDef, type StepReport } from "./loop"
@@ -33,7 +34,7 @@ import {
 /** 現時点で存在する全フィールド。マイルストーンごとに増える */
 export const WORLD_FIELDS: readonly FieldSpec[] =
   [...M1_FIELDS, ...CARBON_FIELDS, ...HYDRO_FIELDS, ...TECTONIC_FIELDS, ...OCEAN_FIELDS,
-    ...PREBIOTIC_FIELDS, ...LIFE_FIELDS]
+    ...PREBIOTIC_FIELDS, ...LIFE_FIELDS, ...CIV_FIELDS]
 
 /**
  * ★**陸の面積割合。物理が食べているのと同じ量を返す。**
@@ -139,6 +140,7 @@ export interface WorldOptions {
   ocean?: Partial<OceanParams>
   prebiotic?: Partial<PrebioticParams>
   oxygen?: Partial<OxygenParams>
+  civ?: Partial<CivParams>
   /** マントルの初期温度 [degC]。高いほどプレートテクトニクスの開始が遅れる */
   initialMantleTempC?: number
   /**
@@ -191,6 +193,8 @@ export class World {
   readonly life: Life
   /** 酸素。docs/02 §3.1。生命が動かす */
   readonly oxygen: Oxygen
+  /** 文明。docs/02 §文明。★知性種が現れてから動く（既定は無効） */
+  readonly civ: Civilization
   readonly loop = new SimLoop()
   readonly ledger = new Ledger()
   params: PlanetParams
@@ -223,6 +227,7 @@ export class World {
     this.prebiotic = new Prebiotic(opts.seed, opts.prebiotic)
     this.life = new Life(opts.seed)
     this.oxygen = new Oxygen(opts.oxygen)
+    this.civ = new Civilization(opts.civ)
     this.params = { ...EARTH_PARAMS, ...opts.params }
     this.globals = earthGlobals()
     // 【較正は必ず「現在の地球」の内部熱流で行う】★2026-08-28
@@ -279,7 +284,7 @@ export class World {
     if (opts.enableTectonics !== false) this.loop.add(this.mantle).add(this.tectonics)
     // 順序: 水循環 -> 海洋（熱塩循環が降水と流出を読む）-> 炭素
     // 前生命化学は熱水（海洋）と陸・火山（テクトニクス）と気温を読むので最後
-    this.loop.add(this.hydrology).add(this.ocean).add(this.carbon).add(this.prebiotic).add(this.life).add(this.oxygen)
+    this.loop.add(this.hydrology).add(this.ocean).add(this.carbon).add(this.prebiotic).add(this.life).add(this.oxygen).add(this.civ)
   }
 
   /**
@@ -792,6 +797,14 @@ export class World {
   }
 
   private finishTick(co2Before: number): void {
+    // ★**知性の誕生**。`civ.isActive` は emergedYear が立ってから true になるので、
+    //   ここで見ないと永久に立たない（鶏と卵。罠 49 と同じ形）
+    if (this.civ.params.enabled > 0 && this.civ.detectEmergence(this)) {
+      this.events.push({
+        year: this.globals.yearsElapsed, kind: "milestone", code: "ev-speciation",
+        text: `知性が生まれた（${(this.globals.yearsElapsed / 1e6).toFixed(0)}Myr）`,
+      })
+    }
     this.detectEpoch()
     this.detectGlaciation()
     this.detectSeaLevel()

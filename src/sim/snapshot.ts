@@ -56,7 +56,12 @@ const MAGIC = 0x41494147          // "GAIA" のリトルエンディアン
  *
  * v2 (2026-09-06): `MAX_CLADES` 16 → 32（バイオマスと到達の場のレーンが倍）
  */
-export const SNAPSHOT_VERSION = 2
+/**
+ * ★3 にした（2026-09-08）。**文明の場（population / landUse）を足したので
+ * 場の形が変わる。** 上げないと古いセーブを読んだときに黙って壊れる
+ * （`MAX_CLADES` 16 → 32 で同じことをした）。
+ */
+export const SNAPSHOT_VERSION = 3
 
 /** 生のバイト列として書き出す配列。順番が形式そのものなので変えないこと */
 interface Blob { name: string; kind: "f64" | "f32" | "i32" | "u8"; len: number }
@@ -76,6 +81,7 @@ interface Meta {
   prebiotic: Record<string, unknown>
   oxygen: Record<string, unknown>
   life: Record<string, unknown>
+  civ: Record<string, unknown>
   events: unknown[]
   blobs: Blob[]
 }
@@ -118,6 +124,7 @@ export function saveWorld(world: World): Uint8Array {
     prebiotic: world.prebiotic.snapshot(),
     oxygen: world.oxygen.snapshot(),
     life: world.life.snapshot(),
+    civ: world.civ.snapshot(),
     events: world.events,
     blobs: arrays.map((a) => a.blob),
   }
@@ -209,7 +216,11 @@ function readMeta(bytes: Uint8Array): Meta {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (dv.getUint32(0, true) !== MAGIC) throw new Error("セーブデータではありません")
   const version = dv.getUint32(4, true)
-  if (version !== SNAPSHOT_VERSION) {
+  // ★**v2 は読める**（2026-09-08）。v3 で足したのは文明の場（population /
+  //   landUse）だけで、**どちらも 0 から始まる**ので、無い場は 0 のままでよい。
+  //   ★配っている章は v2 なので、ここを閉じると**公開中の惑星が全部読めなくなる**。
+  //   場の【形】が変わったとき（`MAX_CLADES` 16 → 32）とは事情が違う
+  if (version !== SNAPSHOT_VERSION && version !== 2) {
     throw new Error(`セーブの形式が違います（保存 v${version} / いま v${SNAPSHOT_VERSION}）`)
   }
   const jsonLen = dv.getUint32(8, true)
@@ -261,6 +272,8 @@ function restoreInto(w: World, meta: Meta, bytes: Uint8Array): void {
   w.prebiotic.restore(meta.prebiotic)
   w.oxygen.restore(meta.oxygen)
   w.life.restore(meta.life)
+  // ★古いセーブには無いので、あるときだけ戻す
+  if (meta.civ) w.civ.restore(meta.civ)
   w.events.length = 0
   w.events.push(...(meta.events as World["events"]))
 
