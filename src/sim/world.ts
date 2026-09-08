@@ -227,7 +227,7 @@ export class World {
     this.prebiotic = new Prebiotic(opts.seed, opts.prebiotic)
     this.life = new Life(opts.seed)
     this.oxygen = new Oxygen(opts.oxygen)
-    this.civ = new Civilization(opts.civ)
+    this.civ = new Civilization(opts.civ, opts.seed)
     this.params = { ...EARTH_PARAMS, ...opts.params }
     this.globals = earthGlobals()
     // 【較正は必ず「現在の地球」の内部熱流で行う】★2026-08-28

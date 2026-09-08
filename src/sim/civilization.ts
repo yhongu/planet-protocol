@@ -43,6 +43,8 @@
 import type { World } from "./world"
 import type { Subsystem } from "./loop"
 import { GENE_KINDS, hasCapability } from "./genome"
+import { TECHS, sumTech, techPrereqOk, type TechEffect } from "./tech"
+import { Rng } from "../core/rng"
 import type { FieldSpec } from "../core/fields"
 
 const C_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
@@ -155,6 +157,36 @@ export interface CivParams {
   /** 技術が無いときの 1 人あたりエネルギー [W/人]（狩猟採集 ≒ 火のみ） */
   baseEnergyW: number
   /**
+   * ★★**複雑さの維持費**（Tainter『複雑社会の崩壊』）。
+   *
+   * 技術は収量を上げるが、**維持に資源を食う**。収量から
+   * `これ × 複雑さの合計` を引く。複雑さは足し算で増えるので、
+   * **技術を増やすほど 1 つあたりの見返りが減る（収穫逓減）**。
+   *
+   * ★**これが無いと崩壊が起きない。** 実測（繋ぐ前）で人口が
+   * **1626 億人**（地球の 20 倍）まで際限なく増えた ——
+   * 表に `complexity` を書いたのに**どこからも読まれていなかった**（罠 46）。
+   * ★崩壊を隕石や気候で外から与えると台本になる。
+   * **内生させるための唯一の経路がこれ。**
+   */
+  complexityCost: number
+  /**
+   * ★**発明の速さ**。1 人・1 年あたりの発明の確率の目盛り [1/(人·yr)]。
+   *
+   * ★**Boserup**: 人口圧が集約化を駆動する ——
+   * 発明の機会は**人口に比例**し、収容力に対して詰まっているほど増える。
+   * 前提が揃った技術からしか引けない（★鎖は緩めない。罠 113）。
+   */
+  inventionRate: number
+  /**
+   * ★**失伝の速さ**（Henrich 2004 のタスマニア効果）。
+   * 失伝の確率 = これ × 複雑さ / (人口 × 情報の保持)。
+   * **孤立した小さな文明は、複雑な技術から失っていく。**
+   */
+  lossRate: number
+  /** 失伝の分母が 0 にならないようにする下限の人口 */
+  lossPopRef: number
+  /**
    * ★**知性種が絶滅した後、人口が消えるまでの時定数** [yr]。
    * 実測で、これを書かないと**知性種 0 の惑星に人口 21 億人が残り続けた**。
    */
@@ -191,6 +223,12 @@ export const EARTH_CIV: CivParams = {
   // 狩猟採集の 1 人あたりは約 300 W（食料 100 W + 火 200 W。White の目盛り）
   baseEnergyW: 300,
   collapseTauYears: 1e5,
+  // 1000 万人の狩猟採集民が 1 万年に 1 つ発明する程度から始める
+  complexityCost: 0.35,
+  // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
+  inventionRate: 1.386e-11,
+  lossRate: 3e4,
+  lossPopRef: 1e4,
   habitatDisplacement: 0.9,
   landClearCarbonMolPerM2: 1250,
 }
@@ -204,6 +242,13 @@ export interface CivState {
   emergedYear: number
   /** ★開墾で大気に出した炭素の積算 [ppm]（診断・収支の相手） */
   landClearCo2Ppm: number
+  /** 持っている技術（`TECHS` の添字）。★これが文明のゲノム */
+  tech: boolean[]
+  /** その技術を**誰が最初に発明したか**の id。★収斂と伝播を分ける唯一の手段 */
+  techOrigin: number[]
+  /** 診断: 発明された回数 / 失伝した回数（★引けたか・失ったかを数える） */
+  invented: number
+  lost: number
 }
 
 /**
@@ -219,10 +264,16 @@ export class Civilization implements Subsystem {
   readonly params: CivParams
   readonly state: CivState = {
     totalPopulation: 0, energyPerCapita: 0, emergedYear: -1, landClearCo2Ppm: 0,
+    tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
+    invented: 0, lost: 0,
   }
 
-  constructor(params?: Partial<CivParams>) {
+  /** ★決定論のため、世界の seed から作る（`docs/04-6`） */
+  private rng: Rng
+
+  constructor(params?: Partial<CivParams>, seed = "civ") {
     this.params = { ...EARTH_CIV, ...params }
+    this.rng = new Rng(`${seed}:civ`)
   }
 
   /** ★状態のすぐ隣に置く（`CLAUDE.md` の 69） */
@@ -231,6 +282,53 @@ export class Civilization implements Subsystem {
 
   isActive(_world: World): boolean {
     return this.params.enabled > 0 && this.state.emergedYear >= 0
+  }
+
+  /**
+   * ★**発明と失伝**（技術のゲノム）。
+   *
+   * **発明**（Boserup）: 機会は人口に比例する。前提が揃った技術からしか引けない。
+   * **失伝**（Henrich 2004 のタスマニア効果）: 確率 ∝ 複雑さ /(人口 × 情報の保持)。
+   * ★**孤立した小さな文明は、複雑な技術から先に失う。**
+   *
+   * ★確率は必ず `1 − exp(−λ·dt)` で作る —— **刻みに依らないため**
+   * （`λ·dt` と書くと 100 年刻みと 100 万年刻みで別の惑星になる）。
+   */
+  private evolveTech(pop: number, eff: TechEffect, dtYears: number): void {
+    const p = this.params
+    const has = this.state.tech
+    // --- 発明 ---
+    if (pop > 0) {
+      for (let k = 0; k < TECHS.length; k++) {
+        if (has[k] || !techPrereqOk(has, k)) continue
+        const lambda = p.inventionRate * pop
+        if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
+          has[k] = true
+          // ★**由来 id**。誰が最初に発明したかを残す（収斂と伝播を分ける）
+          this.state.techOrigin[k] = this.state.invented
+          this.state.invented++
+        }
+      }
+    }
+    // --- 失伝 ---
+    const retain = 1 + eff.retention
+    for (let k = 0; k < TECHS.length; k++) {
+      if (!has[k]) continue
+      // ★前提になっている技術は、それに依存する技術がある限り失われない
+      //   （使い続けているものは忘れない）
+      let inUse = false
+      for (let j = 0; j < TECHS.length && !inUse; j++) {
+        if (has[j] && TECHS[j]!.needs.includes(TECHS[k]!.name)) inUse = true
+      }
+      if (inUse) continue
+      const lambda = p.lossRate * TECHS[k]!.complexity
+        / (Math.max(p.lossPopRef, pop) * retain)
+      if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
+        has[k] = false
+        this.state.techOrigin[k] = -1
+        this.state.lost++
+      }
+    }
   }
 
   /**
@@ -285,6 +383,8 @@ export class Civilization implements Subsystem {
     const cell = world.store.f32("biomass").read
     const n = world.grid.cellCount
 
+    // ★技術の効果を先に合計する（セルごとに引くとホットループで重い）
+    const eff = sumTech(this.state.tech)
     let total = 0, cleared = 0
     for (let y = 0; y < H; y++) {
       const areaM2 = world.grid.cellArea[y]!
@@ -298,8 +398,15 @@ export class Civilization implements Subsystem {
         for (const l of lanes) here += cell[l * n + i] ?? 0
         // 食料の元になる一次生産 [mol C/yr]。★農地にすると効率が上がる
         const u = Math.max(0, Math.min(1, use[i] ?? 0))
+        // ★**収量は技術が決める。** 農耕を持たない文明は土地を耕せない ——
+        //   これを入れるまで「狩猟採集で 21 億人」だった（実際は 500〜1000 万）
+        // ★**収量は技術が上げ、複雑さの維持費が削る**（Tainter の収穫逓減）。
+        //   技術を増やすほど複雑さも増えるので、見返りは頭打ちになり、
+        //   維持費が上回れば**収容力が下がって内生的に崩壊する**
+        const gross = 1 + (p.agricultureGain + eff.yieldGain) * u
+        const upkeep = 1 - p.complexityCost * eff.complexity
         const food = (bio[i] ?? 0) * land * areaM2 * p.yieldMolPerM2
-          * (1 + p.agricultureGain * u)
+          * gross * (upkeep > 0 ? upkeep : 0)
         const k = food / Math.max(1e-9, p.foodPerPerson)
         // ★**豊かさが出生率を下げる**（人口転換）。負のフィードバックが
         //   餓死 1 本だけだと人口が振動する（罠 95）
@@ -338,7 +445,9 @@ export class Civilization implements Subsystem {
       world.ledger.add("co2", ppm, "society.emission")
       this.state.landClearCo2Ppm += ppm
     }
-    // ★エネルギー捕捉はまだ技術が無いので基準値のまま（実装の 5 番目で繋ぐ）
-    this.state.energyPerCapita = total > 0 ? p.baseEnergyW : 0
+    // ★**1 人あたりのエネルギーは技術の合計**（White の法則の目盛り）。
+    //   狩猟採集 300W → 農耕 1.2kW → 産業 20kW と、技術だけで決まる
+    this.state.energyPerCapita = total > 0 ? p.baseEnergyW + eff.energyW : 0
+    this.evolveTech(total, eff, dtYears)
   }
 }

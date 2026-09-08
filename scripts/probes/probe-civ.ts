@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs"
 import { gunzipSync } from "node:zlib"
 import { loadWorld } from "../../src/sim/snapshot"
 import { GENE_KINDS, hasCapability } from "../../src/sim/genome"
+import { TECHS } from "../../src/sim/tech"
 
 const argv = process.argv.slice(2)
 const arg = (k: string, d: string) => {
@@ -39,7 +40,7 @@ if (arg("seedIntelligence", "1") === "1") {
 const smart = () => w.life.clades.filter((c) => hasCapability(c.phenotype, C_SYMBOLIC)).length
 console.log(`文明  章 ${CH}  ${(w.globals.yearsElapsed / 1e9).toFixed(2)}Gyr から `
   + `${GYR}Gyr  刻み ${(STEP / 1e6).toFixed(2)}Myr  enabled ${ENABLED}`)
-console.log("経過[Myr]  知性種  人口          土地利用%  1人あたりW  CO2    生物圏  クレード  開墾CO2")
+console.log("経過[Myr]  知性種  人口          土地%  1人W    CO2   クレード  技術（発明/失伝）")
 
 const end = w.globals.yearsElapsed + GYR * 1e9
 let next = w.globals.yearsElapsed
@@ -64,7 +65,9 @@ const report = () => {
     // ★**痕跡が出ているか**を同じ行で突き合わせる（罠 110）:
     //   クレードが減り、CO2 が上がっていれば「文明が惑星を変えた」
     + `  ${String(w.life.clades.length).padStart(6)}  `
-    + `${w.civ.state.landClearCo2Ppm.toFixed(1)}ppm`)
+    // ★**持っている技術を名前で出す**（何が失われたかが見える）
+    + `${TECHS.filter((_, i) => w.civ.state.tech[i]).map((t) => t.what).join("") || "—"}`
+    + ` (${w.civ.state.invented}/${w.civ.state.lost})`)
 }
 report()
 while (w.globals.yearsElapsed < end) {
