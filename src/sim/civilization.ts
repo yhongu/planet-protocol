@@ -43,7 +43,10 @@
 import type { World } from "./world"
 import type { Subsystem } from "./loop"
 import { GENE_KINDS, hasCapability } from "./genome"
-import { TECHS, sumTech, techPrereqOk, type TechEffect } from "./tech"
+import {
+  TECHS, sumTech, techPrereqOk, techGateOk, type TechEffect, type PlanetGate,
+} from "./tech"
+import { felsicVolume } from "./tectonics"
 import { Rng } from "../core/rng"
 import type { FieldSpec } from "../core/fields"
 
@@ -156,6 +159,8 @@ export interface CivParams {
   seedPopulation: number
   /** 技術が無いときの 1 人あたりエネルギー [W/人]（狩猟採集 ≒ 火のみ） */
   baseEnergyW: number
+  /** 河川の流量の代表値（これで割って 0..1 にする）。現在の地球の大河の目安 */
+  riverRefDischarge: number
   /**
    * ★★**複雑さの維持費**（Tainter『複雑社会の崩壊』）。
    *
@@ -224,6 +229,7 @@ export const EARTH_CIV: CivParams = {
   baseEnergyW: 300,
   collapseTauYears: 1e5,
   // 1000 万人の狩猟採集民が 1 万年に 1 つ発明する程度から始める
+  riverRefDischarge: 5e4,
   complexityCost: 0.35,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
   inventionRate: 1.386e-11,
@@ -294,13 +300,18 @@ export class Civilization implements Subsystem {
    * ★確率は必ず `1 − exp(−λ·dt)` で作る —— **刻みに依らないため**
    * （`λ·dt` と書くと 100 年刻みと 100 万年刻みで別の惑星になる）。
    */
-  private evolveTech(pop: number, eff: TechEffect, dtYears: number): void {
+  private evolveTech(
+    world: World, pop: number, eff: TechEffect, dtYears: number,
+  ): void {
     const p = this.params
     const has = this.state.tech
+    // ★**惑星の条件を測る**（罠 87: 起きるかは乱数、いつ起きるかは物理）。
+    //   ここが「惑星ごとに技術史が変わる」の実体
+    const planet = this.measurePlanet(world)
     // --- 発明 ---
     if (pop > 0) {
       for (let k = 0; k < TECHS.length; k++) {
-        if (has[k] || !techPrereqOk(has, k)) continue
+        if (has[k] || !techPrereqOk(has, k) || !techGateOk(k, planet)) continue
         const lambda = p.inventionRate * pop
         if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
           has[k] = true
@@ -328,6 +339,43 @@ export class Civilization implements Subsystem {
         this.state.techOrigin[k] = -1
         this.state.lost++
       }
+    }
+  }
+
+  /**
+   * ★**惑星が技術に課す条件を測る。**
+   *
+   * | 技術 | 条件 | 根拠 |
+   * |---|---|---|
+   * | 火 | 酸素 16% 以上 | 燃焼限界。**無酸素の惑星では火が使えない** |
+   * | 化石燃料 | 埋没した有機炭素 | ★**石炭紀が無かった惑星には石炭が無い** |
+   * | 冶金 | 大陸地殻の体積 | 鉱石は大陸地殻に濃集する |
+   * | 灌漑 | 河川の流量 | 大河が無いと灌漑農業は成り立たない |
+   * | 外洋船 | 海の広さ | |
+   */
+  private measurePlanet(world: World): Record<PlanetGate, number> {
+    const lf = world.store.f32("landFraction").read
+    const dis = world.store.f32("discharge").read
+    let land = 0, tot = 0, riv = 0
+    for (let y = 0; y < world.grid.H; y++) {
+      const a = world.grid.areaWeight[y]!
+      for (let x = 0; x < world.grid.W; x++) {
+        const i = y * world.grid.W + x
+        const f = Math.max(0, Math.min(1, lf[i] ?? 0))
+        land += f * a; tot += a
+        // 河川は「陸のセルの流量の最大値」で代表する（大河があるか）
+        if (f > 0.5 && (dis[i] ?? 0) > riv) riv = dis[i]!
+      }
+    }
+    const landFrac = tot > 0 ? land / tot : 0
+    return {
+      o2: world.globals.o2,
+      buriedC: world.oxygen.state.buriedOrganicC,
+      felsic: felsicVolume(world),
+      land: landFrac,
+      ocean: 1 - landFrac,
+      // ★流量は惑星で桁が違うので、代表値で割って 0..1 に正規化する
+      river: Math.min(1, riv / this.params.riverRefDischarge),
     }
   }
 
@@ -448,6 +496,6 @@ export class Civilization implements Subsystem {
     // ★**1 人あたりのエネルギーは技術の合計**（White の法則の目盛り）。
     //   狩猟採集 300W → 農耕 1.2kW → 産業 20kW と、技術だけで決まる
     this.state.energyPerCapita = total > 0 ? p.baseEnergyW + eff.energyW : 0
-    this.evolveTech(total, eff, dtYears)
+    this.evolveTech(world, total, eff, dtYears)
   }
 }

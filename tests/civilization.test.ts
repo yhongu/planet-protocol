@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest"
 import {
   Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep,
 } from "../src/sim/civilization"
+import { TECHS, TECH_INDEX, techPrereqOk, techGateOk, sumTech } from "../src/sim/tech"
 
 /**
  * ★★**時間解像度の独立性**（M6 の設計上の契約。2026-09-08）。
@@ -113,6 +114,39 @@ describe("文明（M6）", () => {
   })
 
   it.todo("★崩壊が内生する（Tainter の収穫逓減。外から与えない）")
+  it("★★惑星が許さない技術は永久に発明できない（火には酸素が要る）", () => {
+    // ★燃焼限界 —— 大気の酸素が 16% 未満だと火は燃えない。
+    //   実測: 原生代の章（O2 9%）では**石器と儀礼だけ**で止まり、
+    //   顕生代の章（O2 26%）では 37 技術すべてに到達した。
+    //   ★これが「惑星ごとに技術史が変わる」の実体（罠 87）
+    const fire = TECH_INDEX.get("fire")!
+    const poor = { o2: 9, buriedC: 1e20, felsic: 6e9, land: 0.25, ocean: 0.75, river: 1 }
+    const rich = { ...poor, o2: 26 }
+    expect(techGateOk(fire, poor)).toBe(false)
+    expect(techGateOk(fire, rich)).toBe(true)
+    // ★石炭紀が無かった惑星には化石燃料が無い
+    const fossil = TECH_INDEX.get("fossilFuel")!
+    expect(techGateOk(fossil, { ...rich, buriedC: 1e18 })).toBe(false)
+    expect(techGateOk(fossil, rich)).toBe(true)
+  })
+
+  it("★鎖は緩めない（前提を全部持っていないと引けない）", () => {
+    const has = TECHS.map(() => false)
+    const iron = TECH_INDEX.get("iron")!
+    expect(techPrereqOk(has, iron)).toBe(false)
+    // 鉄には青銅が、青銅には銅と交易が…と遡って全部要る
+    for (const n of ["stoneTools", "fire", "pottery", "agriculture", "copper",
+      "boats", "trade", "bronze"]) has[TECH_INDEX.get(n)!] = true
+    expect(techPrereqOk(has, iron)).toBe(true)
+  })
+
+  it("★すべての技術に維持費がある（トレードオフの無い技術は全員が持つ。罠 44）", () => {
+    for (const t of TECHS) expect(t.complexity).toBeGreaterThan(0)
+    // ★合計の維持費が 1 を超えること —— そうでないと Tainter の
+    //   収穫逓減が効かず、技術を増やすほど無条件に得になる
+    expect(sumTech(TECHS.map(() => true)).complexity).toBeGreaterThan(1)
+  })
+
   it.todo("★孤立した文明は技術を失う（Henrich のタスマニア効果）")
   it.todo("★由来 id で独立発明と伝播を区別できる")
 })
