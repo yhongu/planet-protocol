@@ -445,6 +445,13 @@ button:active { background: #0b1120; box-shadow: none; }
    幅 152px − 隙間 4×4px = 136px を 5 つで割るので、1 つ 27px まで。
    アイコンを 18px にして padding を詰める */
 .rail-strip { display: flex; gap: 4px; }
+
+/* ★知性の誕生の問いかけ。**惑星の履歴の山場**なので、
+   出来事のログに 1 行流すだけでは足りない */
+#bornPrompt { border-color: var(--accent); box-shadow: var(--glow); }
+#bornPrompt b { color: var(--accent); text-shadow: var(--glow-text); }
+#bornPrompt .born-btns { display: flex; gap: 8px; margin-top: 8px; }
+#bornPrompt button { flex: 1; }
 .rail-strip .act.icon { padding: 4px 2px; }
 .rail-strip .act.icon img { width: 18px; height: 18px; flex: 0 0 18px; }
 .act.icon { flex: 1; justify-content: center; padding: 5px 4px; }

@@ -29,6 +29,16 @@ export interface SetGlobalsMessage {
   patch: Partial<PlanetGlobals>
 }
 
+/**
+ * ★**降りる / 戻る**（設計方針 A-2）。
+ * 文明の刻みだけが 100 万年 → 100 年になり、**惑星の物理は粗くならない**
+ * （`SubsystemLoop` が各サブシステムの `preferredStepYears` を守るため）。
+ */
+export interface SetCivFocusMessage {
+  type: "setCivFocus"
+  focused: boolean
+}
+
 export interface SetParamsMessage {
   type: "setParams"
   patch: Partial<PlanetParams>
@@ -109,7 +119,8 @@ export interface ProgressMessage {
 }
 
 export type ToWorker =
-  | InitMessage | SetGlobalsMessage | SetParamsMessage | SetCarbonMessage
+  | InitMessage | SetGlobalsMessage | SetCivFocusMessage
+  | SetParamsMessage | SetCarbonMessage
   | RunMessage | InterveneMessage | RequestPhylogenyMessage
   | SaveMessage | LoadMessage | SkipToMessage
 
@@ -169,6 +180,12 @@ export interface TickMessage {
   /** GPU の解が信用できず CPU で解き直した回数（0 なら正常） */
   climateFallbacks: number
   /** 「次の出来事まで」で止まったか。UI が速度ボタンを戻すのに使う */
+  /**
+   * ★**知性が生まれた瞬間**（1 回だけ true）。
+   * 惑星の目線では文明は 1 フレームで生まれて滅びるので、
+   * **向こうから知らせないとプレイヤーは気づけない**（設計方針 A-2）。
+   */
+  intelligenceBorn?: boolean
   stoppedAtEvent: boolean
   /**
    * いま実際に使っている速度の段。

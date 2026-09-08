@@ -21,6 +21,9 @@ let yearsPerSecond = 0
 /** 次の出来事で止まる（`untilEvent`）。止まったら false に戻す */
 let untilEvent = false
 let stoppedAtEvent = false
+// ★知性が生まれた瞬間を 1 回だけ伝える（惑星の目線では見逃すため）
+let intelligenceBorn = false
+let sawIntelligence = false
 let speedMultiplier = 0
 /**
  * プレイヤーが要求した速度。**自動で落としても、これは覚えておく**
@@ -239,6 +242,15 @@ async function tickInner(): Promise<void> {
  * **状態を 1 回も返さないまま数十分回っていた**（画面は初期値のまま固まる）。
  */
 function postState(solveMs: number): void {
+  // ★**知性が生まれた瞬間を 1 回だけ知らせる。**
+  //   惑星の目線（1 歩 = 100 万年）では文明は 1 フレームで生まれて滅びるので、
+  //   向こうから知らせないとプレイヤーは気づけない（設計方針 A-2）
+  intelligenceBorn = false
+  if (world && !sawIntelligence && world.civ.state.emergedYear >= 0) {
+    sawIntelligence = true
+    intelligenceBorn = true
+  }
+
   if (!world) return
   const stats = world.stats!
   generation++
@@ -263,6 +275,8 @@ function postState(solveMs: number): void {
     yearsPerSecond,
     climateFallbacks: world.climateBackendFailures,
     stoppedAtEvent,
+    // ★**1 回だけ**立てる（毎ティック出すと止まり続ける）
+    ...(intelligenceBorn ? { intelligenceBorn: true } : {}),
     solveMs,
     // ★**GPU から落ちたことを黙らせない。** 例外で CPU に切り替わったら、
     //   その理由をそのまま出す（`docs/04-6`「解けなかったことは必ず外へ出す」）
@@ -373,6 +387,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       void initBackend(m)
       break
     }
+    case "setCivFocus":
+      // ★**降りる/戻る。** 文明の刻みだけが変わり、惑星の物理は粗くならない
+      if (world) world.civ.focused = m.focused
+      break
     case "setGlobals":
       if (world) {
         Object.assign(world.globals, m.patch)

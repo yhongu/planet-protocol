@@ -241,6 +241,31 @@ function boot(): void {
       $("loading").hidden = true
       lastGlobals = m.globals
       lastYears = m.years
+      // ★★**知性が生まれたら止めて問う**（設計方針 A-2）。
+      //   惑星の目線（1 歩 = 100 万年）では文明は 1 フレームで生まれて滅びるので、
+      //   **向こうから知らせないとプレイヤーは気づけない**。
+      //   ★ただし**降りるかどうかは選ばせる** —— 降りなくても文明は進む
+      if (m.intelligenceBorn) {
+        speed = 0
+        for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
+        document.querySelector(".sp[data-speed=\"0\"]")?.classList.add("active")
+        const el = $("bornPrompt")
+        el.hidden = false
+        el.innerHTML = `<b>★ 知性が生まれた</b>`
+          + `<div class="skip-sub">${whenLabel(m.years)}　`
+          + `この惑星に、象徴を扱う系統が現れました。<br>`
+          + `文明は地質時間では一瞬です —— <b>降りる</b>と時間の刻みが`
+          + `100 万年から 100 年になり、文明史を追えます。<br>`
+          + `★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>`
+          + `<div class="born-btns">`
+          + `<button id="bornDescend">降りる（100 年刻み）</button>`
+          + `<button id="bornStay">このまま惑星を見る</button></div>`
+        const close = () => { el.hidden = true }
+        ;(document.getElementById("bornDescend") as HTMLButtonElement)
+          ?.addEventListener("click", () => { post({ type: "setCivFocus", focused: true }); close() })
+        ;(document.getElementById("bornStay") as HTMLButtonElement)
+          ?.addEventListener("click", close)
+      }
       if (m.stoppedAtEvent && skipBtn.classList.contains("waiting")) {
         skipBtn.classList.remove("waiting")
         speed = 0

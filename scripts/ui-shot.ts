@@ -22,6 +22,19 @@ const SHOTS: Record<string, string> = {
   "phylogeny": `document.getElementById("phyloBtn").click()`,
   "armed": `document.querySelector('.iv[data-kind="volcano"]').click()`,
   "diag": `document.getElementById("detDiag").open = true`,
+  // ★知性の誕生の問いかけ（M6）。実際に知性が生まれるまで回すのは長いので、
+  //   **表示だけを出して重なりと収まりを見る**（罠 48: 撮るまで入ったと言わない）
+  "born": `(() => {
+    const el = document.getElementById("bornPrompt");
+    el.hidden = false;
+    el.innerHTML = '<b>★ 知性が生まれた</b>'
+      + '<div class="skip-sub">4.00 Ga　この惑星に、象徴を扱う系統が現れました。<br>'
+      + '文明は地質時間では一瞬です —— <b>降りる</b>と時間の刻みが'
+      + '100 万年から 100 年になり、文明史を追えます。<br>'
+      + '★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>'
+      + '<div class="born-btns"><button>降りる（100 年刻み）</button>'
+      + '<button>このまま惑星を見る</button></div>';
+  })()`,
   "title": `void 0`,
   "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
