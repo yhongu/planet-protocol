@@ -88,6 +88,30 @@ describe("文明（M6）", () => {
     expect(logisticStep(100, 50, 1e-3, 1e6)).toBeLessThan(100)
     expect(logisticStep(1, 100, 1e-3, 1e9)).toBeCloseTo(100, 6)
   })
+  it("★知性種が絶滅したら文明も畳まれる（作った種が消えて都市が残らない）", () => {
+    // ★実測で踏んだ: これを書く前は知性種 0 の惑星に**人口 21 億人が残り続けた**。
+    //   ロジスティックの K が 0 になるだけでは「増えない」しか意味しない
+    const civ = new Civilization({ enabled: 1, collapseTauYears: 1e5 })
+    civ.state.totalPopulation = 2.1e9
+    civ.state.energyPerCapita = 300
+    // 知性種がいない世界（クレードなし）で 100 万年
+    const fake = {
+      grid: { cellCount: 1, W: 1, H: 1, cellArea: [1], areaWeight: [1] },
+      store: { f32: () => ({ read: new Float32Array(1) }) },
+      life: { clades: [] },
+      globals: { yearsElapsed: 0 },
+    } as never
+    // ★1 歩では 0 にならない（τ=10 万年で 100 万年なら exp(−10) が残る）。
+    //   **指数減衰は 0 に漸近するだけ**なので、「いつ 0 と呼ぶか」は別の判断。
+    //   最初 1 歩で 0 を期待して落ちた —— テストが実態を教えてくれた
+    civ.update(fake, 1e6)
+    expect(civ.state.totalPopulation).toBeLessThan(2.1e9 * 1e-4)
+    civ.update(fake, 1e6)
+    civ.update(fake, 1e6)
+    expect(civ.state.totalPopulation).toBe(0)
+    expect(civ.state.energyPerCapita).toBe(0)
+  })
+
   it.todo("★崩壊が内生する（Tainter の収穫逓減。外から与えない）")
   it.todo("★孤立した文明は技術を失う（Henrich のタスマニア効果）")
   it.todo("★由来 id で独立発明と伝播を区別できる")

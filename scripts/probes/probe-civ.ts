@@ -39,7 +39,7 @@ if (arg("seedIntelligence", "1") === "1") {
 const smart = () => w.life.clades.filter((c) => hasCapability(c.phenotype, C_SYMBOLIC)).length
 console.log(`文明  章 ${CH}  ${(w.globals.yearsElapsed / 1e9).toFixed(2)}Gyr から `
   + `${GYR}Gyr  刻み ${(STEP / 1e6).toFixed(2)}Myr  enabled ${ENABLED}`)
-console.log("経過[Myr]  知性種  人口          土地利用%  1人あたりW  CO2    生物圏")
+console.log("経過[Myr]  知性種  人口          土地利用%  1人あたりW  CO2    生物圏  クレード  開墾CO2")
 
 const end = w.globals.yearsElapsed + GYR * 1e9
 let next = w.globals.yearsElapsed
@@ -60,7 +60,11 @@ const report = () => {
     + `${String(smart()).padStart(6)}  ${w.civ.state.totalPopulation.toExponential(3)}  `
     + `${(land > 0 ? 100 * u / land : 0).toFixed(2).padStart(8)}  `
     + `${w.civ.state.energyPerCapita.toFixed(0).padStart(9)}  `
-    + `${w.globals.co2.toFixed(0).padStart(5)}  ${w.globals.biosphereProxy.toFixed(2)}`)
+    + `${w.globals.co2.toFixed(0).padStart(5)}  ${w.globals.biosphereProxy.toFixed(2)}`
+    // ★**痕跡が出ているか**を同じ行で突き合わせる（罠 110）:
+    //   クレードが減り、CO2 が上がっていれば「文明が惑星を変えた」
+    + `  ${String(w.life.clades.length).padStart(6)}  `
+    + `${w.civ.state.landClearCo2Ppm.toFixed(1)}ppm`)
 }
 report()
 while (w.globals.yearsElapsed < end) {

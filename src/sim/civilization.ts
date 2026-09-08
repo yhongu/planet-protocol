@@ -154,6 +154,25 @@ export interface CivParams {
   seedPopulation: number
   /** 技術が無いときの 1 人あたりエネルギー [W/人]（狩猟採集 ≒ 火のみ） */
   baseEnergyW: number
+  /**
+   * ★**知性種が絶滅した後、人口が消えるまでの時定数** [yr]。
+   * 実測で、これを書かないと**知性種 0 の惑星に人口 21 億人が残り続けた**。
+   */
+  collapseTauYears: number
+  /**
+   * ★**文明が使った土地は、野生の生息地ではなくなる**（0..1。0 で従来）。
+   * 1 なら土地利用 100% のセルで環境収容力が 0 になる。
+   * ★これが人為的な絶滅の実体。**隕石を落とすのではなく住む場所を奪う**
+   * （地球の現在の絶滅の主因も生息地の破壊。Millennium Ecosystem Assessment）
+   */
+  habitatDisplacement: number
+  /**
+   * ★**開墾で大気に出る炭素** [mol C/m²]。
+   * 森林を農地に変えると、地上部と土壌の炭素の多くが大気に戻る。
+   * 温帯林で約 150 t-C/ha = **1250 mol C/m²**（Houghton の土地利用変化）。
+   * ★これが「降りなくても惑星の側に痕跡が出る」の主役。
+   */
+  landClearCarbonMolPerM2: number
 }
 
 export const EARTH_CIV: CivParams = {
@@ -171,6 +190,9 @@ export const EARTH_CIV: CivParams = {
   seedPopulation: 1e3,
   // 狩猟採集の 1 人あたりは約 300 W（食料 100 W + 火 200 W。White の目盛り）
   baseEnergyW: 300,
+  collapseTauYears: 1e5,
+  habitatDisplacement: 0.9,
+  landClearCarbonMolPerM2: 1250,
 }
 
 export interface CivState {
@@ -180,6 +202,8 @@ export interface CivState {
   energyPerCapita: number
   /** 知性種が現れた年（`yearsElapsed`）。まだなら -1 */
   emergedYear: number
+  /** ★開墾で大気に出した炭素の積算 [ppm]（診断・収支の相手） */
+  landClearCo2Ppm: number
 }
 
 /**
@@ -194,7 +218,7 @@ export class Civilization implements Subsystem {
   readonly maxStepYears = 1e9
   readonly params: CivParams
   readonly state: CivState = {
-    totalPopulation: 0, energyPerCapita: 0, emergedYear: -1,
+    totalPopulation: 0, energyPerCapita: 0, emergedYear: -1, landClearCo2Ppm: 0,
   }
 
   constructor(params?: Partial<CivParams>) {
@@ -236,11 +260,32 @@ export class Civilization implements Subsystem {
     for (const c of world.life.clades) {
       if (hasCapability(c.phenotype, C_SYMBOLIC)) lanes.push(c.lane)
     }
-    if (lanes.length === 0) return
+    // ★**知性種が絶滅したら文明も終わる。**
+    //   最初これを書かずに測ったら、知性種が 0 になった後も
+    //   **人口 21 億人が残り続けた**（＝作った種が絶滅したのに都市が残る）。
+    //   ★人口は勝手に消えない —— ロジスティックの K が 0 になるだけでは
+    //   「知性種がいない所には増えない」しか意味しないので、明示的に畳む
+    if (lanes.length === 0) {
+      if (this.state.totalPopulation > 0) {
+        const decay = Math.exp(-dtYears / p.collapseTauYears)
+        this.state.totalPopulation *= decay
+        for (let i = 0; i < world.grid.cellCount; i++) {
+          pop[i] = (pop[i] ?? 0) * decay
+          // 使われなくなった土地は野生に戻る（★炭素は戻さない。片道）
+          use[i] = relaxStep(use[i] ?? 0, 0, p.landUseTauYears, dtYears)
+        }
+        if (this.state.totalPopulation < 1) {
+          this.state.totalPopulation = 0
+          // ★人口 0 なのに「1 人あたり 300W」が出ていた（表示の食い違い）
+          this.state.energyPerCapita = 0
+        }
+      }
+      return
+    }
     const cell = world.store.f32("biomass").read
     const n = world.grid.cellCount
 
-    let total = 0
+    let total = 0, cleared = 0
     for (let y = 0; y < H; y++) {
       const areaM2 = world.grid.cellArea[y]!
       for (let x = 0; x < W; x++) {
@@ -276,10 +321,23 @@ export class Civilization implements Subsystem {
         //   ★要る土地 = 人口 × 1 人あたりの面積 / そのセルの陸の面積
         const needM2 = after * p.landPerPersonM2
         const target = Math.min(1, needM2 / Math.max(1, land * areaM2))
-        use[i] = relaxStep(u, target, p.landUseTauYears, dtYears)
+        const next = relaxStep(u, target, p.landUseTauYears, dtYears)
+        // ★**開墾した分だけ炭素が出る**（減った分は戻さない ——
+        //   放棄地に森が戻るのは別の時定数なので、まずは片道だけ入れる）
+        if (next > u) cleared += (next - u) * land * areaM2
+        use[i] = next
       }
     }
     this.state.totalPopulation = total
+    // ★**大気へ出す**。CO2 は混ざるので全球（`intervene` の巨大噴火と同じ作法）。
+    //   1 ppm = 2.13e15 g-C = 1.775e14 mol-C
+    if (cleared > 0 && p.landClearCarbonMolPerM2 > 0) {
+      const ppm = cleared * p.landClearCarbonMolPerM2 / 1.775e14
+      world.globals.co2 += ppm
+      // ★台帳のタグは M4 の時点で用意されていた（`society.emission`）
+      world.ledger.add("co2", ppm, "society.emission")
+      this.state.landClearCo2Ppm += ppm
+    }
     // ★エネルギー捕捉はまだ技術が無いので基準値のまま（実装の 5 番目で繋ぐ）
     this.state.energyPerCapita = total > 0 ? p.baseEnergyW : 0
   }

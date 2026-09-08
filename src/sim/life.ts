@@ -1479,6 +1479,12 @@ export class Life implements Subsystem {
     const runoff = world.store.f32("runoff").read
     const lf = world.store.f32("landFraction").read
     const ice = world.store.f32("iceFraction").read
+    // ★**文明が使った土地は、野生の生息地ではなくなる**（M6 の④）。
+    //   `civ.enabled = 0` なら `use` は全部 0 なので**1 ビットも動かない**。
+    //   ★これが「人為的な絶滅」の実体 —— 隕石を落とすのではなく、
+    //   **住む場所を奪う**（地球の現在の絶滅の主因も生息地の破壊）
+    const use = world.store.f32("landUse").read
+    const displace = world.civ.params.habitatDisplacement
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const i = y * W + x
@@ -1487,7 +1493,9 @@ export class Life implements Subsystem {
         const land = Math.max(0, runoff[i]) * p.landNutrientFromRunoff / p.phosphorusRef
         const supply = (1 - f) * sea + f * land
         const open = 1 - (ice[i] < 0 ? 0 : ice[i] > 1 ? 1 : ice[i])
-        K[i] = Math.min(1, supply) * open
+        // 陸の割合ぶんだけ効く（海は奪われない）
+        const wild = 1 - displace * f * (use[i] ?? 0)
+        K[i] = Math.min(1, supply) * open * (wild > 0 ? wild : 0)
       }
     }
   }
