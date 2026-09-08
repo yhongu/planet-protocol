@@ -96,6 +96,27 @@ export function logisticStep(n: number, k: number, r: number, dtYears: number): 
  * ★**緩和も解析で解く**（土地利用が目標へ近づく速さ）。
  * `x(t+dt) = target + (x − target)·exp(−dt/τ)`。オイラーだと刻みで変わる。
  */
+/**
+ * ★★**失伝の速さ**（Henrich 2004 のタスマニア効果）。
+ *
+ * 技術の維持には**人口規模と繋がり**が要る。学習は不完全なので、
+ * 集団が小さいと世代ごとに劣化し、**複雑な技術ほど先に失われる**。
+ *
+ *   λ = rate × 複雑さ / (人口 × 情報の保持)
+ *
+ * ★**目盛りが大事**。最初 rate = 3e4 にしたら、100 万年刻みでは確率が
+ * どの規模でも 1 に飽和し、**人口が 40 倍違っても失伝の回数が変わらなかった**
+ * （実測: 小さい文明 142 回 / 大きい文明 155 回 —— むしろ逆）。
+ * 3e2 に下げたら 小さい文明 60 回 / 大きい文明 38 回になった。
+ * ★同じ失敗を発明でもした —— **粗い時間では確率を小さく取らないと差が出ない。**
+ */
+export function techLossLambda(
+  complexity: number, pop: number, retention: number,
+  rate: number, popRef: number,
+): number {
+  return rate * complexity / (Math.max(popRef, pop) * Math.max(1e-9, retention))
+}
+
 export function relaxStep(x: number, target: number, tauYears: number, dtYears: number): number {
   if (!(tauYears > 0) || dtYears <= 0) return x
   const k = Math.exp(-dtYears / tauYears)
@@ -277,7 +298,11 @@ export const EARTH_CIV: CivParams = {
   complexityCost: 0.35,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
   inventionRate: 1.4e-13,
-  lossRate: 3e4,
+  // ★**3e4 → 3e2**（2026-09-08）。3e4 だと 100 万年刻みで確率が
+  //   どの規模でも 1 に飽和し、**人口が 40 倍違っても失伝の回数が変わらなかった**
+  //   （実測: 小さい文明 142 回 / 大きい文明 155 回 —— むしろ逆）。
+  //   3e2 なら 人口 5000 万で 70% / 24 億で 2.5% と **28 倍の差**が付く
+  lossRate: 3e2,
   lossPopRef: 1e4,
   habitatDisplacement: 0.9,
   landClearCarbonMolPerM2: 1250,
@@ -298,6 +323,10 @@ export interface Civ {
   tech: boolean[]
   /** その技術を**誰が最初に発明したか**。★収斂と伝播を分ける唯一の手段 */
   techOrigin: number[]
+  /** ★診断: この文明の人口の最盛期。**崩壊は「最盛期からどれだけ落ちたか」** */
+  peakPopulation: number
+  /** ★診断: この文明が失伝した回数（タスマニア効果が効いているかを見る） */
+  lostCount: number
 }
 
 /** 同時に存在できる文明の数。★場が u8 なので 255 まで */
@@ -406,11 +435,12 @@ export class Civilization implements Subsystem {
         }
       }
       if (inUse) continue
-      const lambda = p.lossRate * TECHS[k]!.complexity
-        / (Math.max(p.lossPopRef, pop) * retain)
+      const lambda = techLossLambda(
+        TECHS[k]!.complexity, pop, retain, p.lossRate, p.lossPopRef)
       if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
         has[k] = false
         civ.techOrigin[k] = -1
+        civ.lostCount++
         this.state.lost++
       }
     }
@@ -511,6 +541,7 @@ export class Civilization implements Subsystem {
           id, foundedYear: world.globals.yearsElapsed,
           population: p.seedPopulation, energyPerCapita: p.baseEnergyW,
           tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
+          peakPopulation: p.seedPopulation, lostCount: 0,
         })
         cid[i] = id
         pop[i] = p.seedPopulation
@@ -596,6 +627,9 @@ export class Civilization implements Subsystem {
     // --- 5. 接触（★重力モデルの、格子での素直な形＝接している長さ）---
     this.contact(world, cid, dtYears)
 
+    for (const c of this.state.civs) {
+      if (c.population > c.peakPopulation) c.peakPopulation = c.population
+    }
     // ★人口が消えた文明はたたむ（領域も返す）
     for (const civ of this.state.civs) {
       if (civ.population >= 1) continue

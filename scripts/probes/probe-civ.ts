@@ -76,8 +76,9 @@ while (w.globals.yearsElapsed < end) {
 }
 // ★**文明ごとの技術の中身**。同じ役割を別の技術で満たしているかを見る
 for (const c of w.civ.state.civs) {
-  console.log(`  文明 #${c.id}  人口 ${c.population.toExponential(2)}  `
-    + `1人 ${c.energyPerCapita.toFixed(0)}W  `
+  console.log(`  文明 #${c.id}  人口 ${c.population.toExponential(2)}`
+    + `（最盛 ${c.peakPopulation.toExponential(2)} = ${(100 * c.population / c.peakPopulation).toFixed(0)}%）`
+    + `  失伝 ${c.lostCount}  1人 ${c.energyPerCapita.toFixed(0)}W  `
     + TECHS.filter((_, i) => c.tech[i]).map((t) => t.what).join(""))
 }
 // ★★**同じ技術を、独立に発明したのか伝わったのか**（由来 id で分かる）

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import {
-  Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep, type Civ,
+  Civilization, EARTH_CIV, CIV_FIELDS, logisticStep, relaxStep, techLossLambda,
+  type Civ,
 } from "../src/sim/civilization"
 import {
   TECHS, TECH_INDEX, ROLE_PROVIDERS, techPrereqOk, techGateOk, sumTech,
@@ -119,7 +120,19 @@ describe("文明（M6）", () => {
     expect(civ.state.energyPerCapita).toBe(0)
   })
 
-  it.todo("★崩壊が内生する（Tainter の収穫逓減。外から与えない）")
+  it("★★崩壊が内生する（Tainter の収穫逓減。外から与えない）", () => {
+    // ★複雑さが上がるほど維持費が収量を食い、**収容力そのものが下がる**。
+    //   隕石も気候変動も与えていないのに人口が減る = 内生的な崩壊。
+    //   実測（顕生代の章・2000 万年）で、文明 #7 は最盛の 16%、#3 は 37% に落ちた
+    const p = EARTH_CIV
+    const upkeep = (complexity: number) => 1 - p.complexityCost * complexity
+    expect(upkeep(0)).toBe(1)                       // 技術が無ければ維持費も無い
+    expect(upkeep(1)).toBeLessThan(1)               // 技術を持つほど削られる
+    // ★複雑さが 1/complexityCost を超えると収量が 0 になる（＝崩壊の底）
+    expect(upkeep(1 / p.complexityCost + 0.1)).toBeLessThan(0)
+    // 収容力が現在の人口を下回れば、ロジスティックは**減る方向**に働く
+    expect(logisticStep(1e9, 5e8, 1e-3, 1e5)).toBeLessThan(1e9)
+  })
   it("★★惑星が許さない技術は永久に発明できない（火には酸素が要る）", () => {
     // ★燃焼限界 —— 大気の酸素が 16% 未満だと火は燃えない。
     //   実測: 原生代の章（O2 9%）では**石器と儀礼だけ**で止まり、
@@ -178,7 +191,25 @@ describe("文明（M6）", () => {
     expect(sumTech(TECHS.map(() => true)).complexity).toBeGreaterThan(1)
   })
 
-  it.todo("★孤立した文明は技術を失う（Henrich のタスマニア効果）")
+  it("★★孤立した文明は技術を失う（Henrich のタスマニア効果）", () => {
+    const p = EARTH_CIV
+    const lam = (pop: number, retention = 1) =>
+      techLossLambda(0.2, pop, retention, p.lossRate, p.lossPopRef)
+    // ★**小さい文明ほど速く失う**（人口に反比例）
+    expect(lam(5e7)).toBeGreaterThan(lam(2.4e9))
+    expect(lam(5e7) / lam(2.4e9)).toBeCloseTo(2.4e9 / 5e7, 0)
+    // ★**複雑な技術ほど先に失われる**
+    const simple = techLossLambda(0.02, 1e8, 1, p.lossRate, p.lossPopRef)
+    const complex = techLossLambda(0.5, 1e8, 1, p.lossRate, p.lossPopRef)
+    expect(complex).toBeGreaterThan(simple * 20)
+    // ★**情報の保持（文字・印刷）が失伝を抑える**
+    expect(lam(1e8, 3)).toBeLessThan(lam(1e8, 1))
+    // ★目盛りの確認: 100 万年刻みで**規模の差が確率に出る**こと。
+    //   最初 3e4 にしたら両方 1.0 に飽和して差が消えた（実測で気づいた）
+    const pSmall = 1 - Math.exp(-lam(5e7) * 1e6)
+    const pBig = 1 - Math.exp(-lam(2.4e9) * 1e6)
+    expect(pSmall).toBeGreaterThan(pBig * 5)
+  })
   it("★★由来 id で独立発明と伝播を区別できる（機能は収斂する）", () => {
     // ★`docs/02` の中心的主張の文明版。実測で「畜力を 4 文明が持ち、
     //   由来は 1 種類」＝ 1 つが発明して 3 つに伝わった、と読めた
@@ -186,6 +217,7 @@ describe("文明（M6）", () => {
     const mk = (id: number): Civ => ({
       id, foundedYear: 0, population: 1e6, energyPerCapita: 300,
       tech: TECHS.map(() => false), techOrigin: TECHS.map(() => -1),
+      peakPopulation: 1e6, lostCount: 0,
     })
     const a = mk(1), b = mk(2), c = mk(3)
     const fire = TECH_INDEX.get("fire")!
