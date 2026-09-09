@@ -399,23 +399,21 @@ export interface CivState {
 export class Civilization implements Subsystem {
   readonly name = "civilization"
   /**
-   * ★**降りると刻みが細かくなる**（設計方針 A-2 の⑥）。
+   * ★**外に対しては常に 100 万年**（2026-09-09 に直した）。
    *
-   * 惑星の目線では文明は 1 フレームで生まれて滅びる（×20 なら人類史 1 万年は
-   * 1/200 フレーム）。プレイヤーが「降りる」を選ぶと、ここが 100 年になる。
+   * ★**最初これを 100 年に切り替える実装にして壊した。**
+   * `SimLoop` は「**いちばん細かい刻みを要求するサブシステム**」に
+   * 全体を合わせる（`loop.ts` の `stepYears = min(preferredStepYears)`）ので、
+   * 文明が 100 年を要求すると**惑星ぜんぶが 100 年刻みになり、
+   * 1 ティックで 100 年しか進まなくなった** ——
+   * プレイヤーから見ると**速度ボタンが効かず、時間が止まって見える**
+   * （★実際に遊んで報告された。私の「各自の刻みを守るから粗くならない」は逆だった）。
    *
-   * ★**惑星の物理は粗くならない。** `SubsystemLoop` は各サブシステムが
-   * 自分の `preferredStepYears` まで溜めてから発火するので、
-   * 親の刻みが 100 年でも**炭素は 25kyr ごと・酸素は 1Myr ごと**に回る。
-   * 気候も `chunked()` が結合間隔（20 万年）ごとに解くので変わらない。
-   *
-   * ★**降りても降りなくても結果は同じでなければならない**（`tests/civilization`）。
-   * 確率は必ず `1 − exp(−λ·dt)` で作ってあるので、**ポアソン過程として
-   * 刻みに依らない**（n 回に割っても「1 回以上起きる確率」は同じ）。
+   * ★**正しい形は「文明が自分の中で細かく刻む」**。外からは 100 万年で呼ばれ、
+   * `focused` なら内部で `focusStepYears` に割って回す。
+   * 惑星の速さは変わらず、文明だけが細かくなる。
    */
-  get preferredStepYears(): number {
-    return this.focused ? this.params.focusStepYears : 1_000_000
-  }
+  readonly preferredStepYears = 1_000_000
   readonly maxStepYears = 1e9
   /** ★プレイヤーが「降りて」いるか。UI が切り替える */
   focused = false
@@ -563,6 +561,23 @@ export class Civilization implements Subsystem {
   }
 
   update(world: World, dtYears: number): void {
+    // ★**降りているときは、自分の中で細かく刻む**（外の刻みは変えない）。
+    //   確率はすべて `1 − exp(−λ·dt)` なので、割っても分布は変わらない
+    const sub = this.focused ? this.params.focusStepYears : dtYears
+    if (sub < dtYears) {
+      let left = dtYears
+      let guard = 0
+      while (left > 0 && guard++ < 20000) {
+        const q = Math.min(sub, left)
+        this.stepOnce(world, q)
+        left -= q
+      }
+      return
+    }
+    this.stepOnce(world, dtYears)
+  }
+
+  private stepOnce(world: World, dtYears: number): void {
     const p = this.params
     const pop = world.store.f32("population").read
     const use = world.store.f32("landUse").read

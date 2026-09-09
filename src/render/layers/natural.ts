@@ -210,6 +210,17 @@ export function renderNatural(
   const lfField = store.has("landFraction") ? store.f32("landFraction").read : null
   const soil = store.f32("soilMoisture").read
   const bio = store.has("biomassTotal") ? store.f32("biomassTotal").read : null
+  // ★★**文明を惑星の絵に描き込む**（2026-09-09）。
+  //   実際に遊んだ報告:「惑星レイヤーのまま降下したけど何も変わらなくて見栄えが悪い」。
+  //   **文明レイヤに切り替えないと見えない**のでは、降りた意味が薄い。
+  //   農地は色を変え、人口の濃い所は**夜の光**のように点る
+  const civPop = store.has("population") ? store.f32("population").read : null
+  const civUse = store.has("landUse") ? store.f32("landUse").read : null
+  let popRef = 0
+  if (civPop) {
+    for (let i = 0; i < grid.cellCount; i++) if (civPop[i]! > popRef) popRef = civPop[i]!
+    popRef = Math.max(1, popRef)
+  }
   const OW = W * ss, OH = H * ss
   const inv = 1 / ss
   const ocean = Math.max(0, Math.min(1, env.oceanWaterFraction))
@@ -346,9 +357,42 @@ export function renderNatural(
         shade = 0.78 + 0.22 * 2 * band((Math.max(-0.4, Math.min(0.4, s)) + 0.4) / 0.8,
           BANDS.shade, SOLID)
       }
-      out[o] = c[0] * shade
-      out[o + 1] = c[1] * shade
-      out[o + 2] = c[2] * shade
+      // ★**文明**。農地は黄土色に寄り、人口の濃い所は点として光る。
+      //   ★**セル内にばら撒かず、補間した値で塗る**（罠 82: 地図は数字と
+      //   同じことを言う）。光の点だけはディザで散らす —— 都市は「点」なので
+      let cr = c[0] * shade, cg = c[1] * shade, cb = c[2] * shade
+      // ★**補間しない。** 文明は陸の 1% 未満しか占めないので、
+      //   `sampleBilinear` で均すと**周りに溶けて消える**
+      //   （罠 32「混合の重みは均してはいけない」と同じ形。実測で見えなかった）
+      const ci = Math.min(H - 1, Math.max(0, Math.round(fy))) * W
+        + ((Math.round(fx) % W) + W) % W
+      // ★**陸の判定はセルの値で行う**（補間した `land` と食い違わないように）。
+      //   ★絵を見て「光の点が海にはみ出している」と思ったが、**数字で見たら
+      //   文明のセルは全部陸だった**（陸 50〜95%）—— 陸の割合が中途半端な
+      //   セルは絵でも海と陸が混じるので、そう見えただけ。
+      //   **絵の印象で判断せず、値を見ること**（今日 2 回外した）
+      const civLand = lfField ? (lfField[ci] ?? 0) : (e[ci]! >= 0 ? 1 : 0)
+      if (civPop && civUse && civLand >= 0.5 && land >= 0.5) {
+        const u = Math.max(0, Math.min(1, civUse[ci] ?? 0))
+        if (u > 0.02) {
+          // 農地（黄土色）。土地利用の割合で混ぜる
+          const t = Math.min(1, u * 1.2)
+          cr = cr * (1 - t) + 168 * t
+          cg = cg * (1 - t) + 150 * t
+          cb = cb * (1 - t) + 92 * t
+        }
+        const pn = Math.max(0, civPop[ci] ?? 0) / popRef
+        // ★**都市の光は「点」**。強さで面を塗ると惑星が黄色くなるので、
+        //   ディザの閾値を人口密度で決めて**点の密度**にする（罠 60 の作法）
+        if (pn > 0.05 && d < Math.min(0.6, Math.pow(pn, 0.6))) {
+          cr = cr * 0.35 + 255 * 0.65
+          cg = cg * 0.35 + 220 * 0.65
+          cb = cb * 0.35 + 150 * 0.65
+        }
+      }
+      out[o] = cr
+      out[o + 1] = cg
+      out[o + 2] = cb
       out[o + 3] = 255
       o += 4
     }
