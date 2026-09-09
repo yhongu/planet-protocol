@@ -718,6 +718,13 @@ export class Civilization implements Subsystem {
     // --- 5. 接触（★重力モデルの、格子での素直な形＝接している長さ）---
     this.contact(world, cid, dtYears)
 
+    // ★**誰も住んでいないセルは領域から外す。**
+    //   征服で奪ったが人口が付かないセルが「文明の領域」のまま残っていた
+    //   （実測: 陸 48% のセルが人口 0・土地利用 0% で領域だけ持っていた）。
+    //   ★地図では**国境の内側に空白**として見えるので、絵の嘘になる
+    for (let i = 0; i < n; i++) {
+      if ((cid[i] ?? 0) !== 0 && (pop[i] ?? 0) <= 0) cid[i] = 0
+    }
     for (const c of this.state.civs) {
       if (c.population > c.peakPopulation) c.peakPopulation = c.population
     }

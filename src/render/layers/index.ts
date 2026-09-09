@@ -426,38 +426,77 @@ export function cladeColor(id: number): readonly [number, number, number] {
  * `population` / `landUse` / `civId` の 3 つの場から出ている。
  */
 function civLayer(): LayerDef["render"] {
-  return (grid, store, out, ss) => {
-    const n = grid.cellCount
-    if (!store.has("population") || !store.has("civId")) {
-      perCell(grid, out, ss, () => [20, 22, 28] as const)
-      return
-    }
+  return (grid, store, out, ss, env) => {
+    // ★★**惑星の絵の上に、文明の情報を重ねる**（2026-09-09・ユーザの指摘）。
+    //
+    // 最初は「文明だけを色の塊で描く」実装にしたが、
+    // 遊んだ報告が「**文明レイヤーが面白くない**」だった。そのとおりで、
+    // 地形が消えると**どこに何があるか**が読めない。
+    // ★**惑星レイヤーの見た目 ＋ 文明の各種が文明レイヤー**（ユーザの言葉）。
+    renderNatural(grid, store, out, ss, env)
+    if (!store.has("civId") || !store.has("population")) return
+    const { W, H } = grid
+    const cid = store.u8("civId").read
     const pop = store.f32("population").read
     const use = store.f32("landUse").read
-    const cid = store.u8("civId").read
-    const e = store.f32("elevation").read
-    // ★明るさの基準は上位分位点（1 セルだけ桁違いだと他が真っ黒になる）
-    const vals: number[] = []
-    for (let i = 0; i < n; i++) if (pop[i]! > 0) vals.push(pop[i]!)
-    vals.sort((a, b) => a - b)
-    const mx = vals.length ? Math.max(1, vals[Math.floor(vals.length * 0.95)]!) : 1
-    perCell(grid, out, ss, (i) => {
-      const land = e[i]! >= 0
-      const base = land ? [58, 54, 46] as const : [12, 20, 36] as const
-      const id = cid[i] ?? 0
-      if (id === 0 || (pop[i] ?? 0) <= 0) return base
-      const col = cladeColor(id * 7)     // ★クレードと色がかぶらないようずらす
-      // 濃さ = 人口密度（下限を置く。薄い所が素の惑星と区別できないと意味がない）
-      const t = 0.4 + 0.6 * Math.pow(Math.min(1, (pop[i] ?? 0) / mx), 0.4)
-      // ★土地利用が高いほど灰色へ（農地・都市）
-      const u = Math.max(0, Math.min(1, use[i] ?? 0))
-      const g = 0.55 * u
-      return [
-        (base[0] + (col[0] - base[0]) * t) * (1 - g) + 150 * g,
-        (base[1] + (col[1] - base[1]) * t) * (1 - g) + 145 * g,
-        (base[2] + (col[2] - base[2]) * t) * (1 - g) + 135 * g,
-      ] as const
-    })
+    const n = grid.cellCount
+    let popRef = 0
+    for (let i = 0; i < n; i++) if (pop[i]! > popRef) popRef = pop[i]!
+    if (popRef <= 0) return
+    const OW = W * ss, OH = H * ss
+    for (let py = 0; py < OH; py++) {
+      const cy = Math.min(H - 1, (py / ss) | 0)
+      for (let px = 0; px < OW; px++) {
+        const cx = (px / ss) | 0
+        const i = cy * W + cx
+        const id = cid[i] ?? 0
+        if (id === 0) continue
+        const o = (py * OW + px) * 4
+        const col = cladeColor(id * 7)
+        // --- 領域を薄く染める（地形は透けたまま）---
+        const tint = 0.28
+        out[o] = out[o]! * (1 - tint) + col[0] * tint
+        out[o + 1] = out[o + 1]! * (1 - tint) + col[1] * tint
+        out[o + 2] = out[o + 2]! * (1 - tint) + col[2] * tint
+        // --- 国境（隣のセルが別の文明、または無主）---
+        // ★セルの縁の画素だけを塗る。**線は解像度で太さが変わらない**ように
+        //   1 画素に固定する（罠 9: 線は面積で測らない）
+        const ex = px % ss === 0 || px % ss === ss - 1
+        const ey = py % ss === 0 || py % ss === ss - 1
+        if (ex || ey) {
+          const w2 = cid[cy * W + ((cx + W - 1) % W)] ?? 0
+          const e2 = cid[cy * W + ((cx + 1) % W)] ?? 0
+          const n2 = cy > 0 ? (cid[(cy - 1) * W + cx] ?? 0) : id
+          const s2 = cy < H - 1 ? (cid[(cy + 1) * W + cx] ?? 0) : id
+          const edge = (px % ss === 0 && w2 !== id) || (px % ss === ss - 1 && e2 !== id)
+            || (py % ss === 0 && n2 !== id) || (py % ss === ss - 1 && s2 !== id)
+          if (edge) {
+            out[o] = out[o]! * 0.35 + col[0] * 0.65
+            out[o + 1] = out[o + 1]! * 0.35 + col[1] * 0.65
+            out[o + 2] = out[o + 2]! * 0.35 + col[2] * 0.65
+            continue
+          }
+        }
+        // --- 都市（人口の多いセルほど大きい点）---
+        // ★**中心に置く。** セル内にばら撒くと「散らばった村」に見えて、
+        //   人口密度の情報が読めない
+        const pn = (pop[i] ?? 0) / popRef
+        if (pn > 0.02) {
+          const r = Math.min(ss * 0.45, 0.6 + Math.pow(pn, 0.5) * ss * 0.5)
+          const dx = (px % ss) - (ss - 1) / 2, dy = (py % ss) - (ss - 1) / 2
+          if (dx * dx + dy * dy <= r * r) {
+            out[o] = 255; out[o + 1] = 232; out[o + 2] = 160
+          }
+        }
+        // --- 農地（土地利用が高いセルの縁を暗く）---
+        const u = use[i] ?? 0
+        if (u > 0.5 && (px + py) % 3 === 0) {
+          out[o] = out[o]! * 0.85 + 150 * 0.15
+          out[o + 1] = out[o + 1]! * 0.85 + 135 * 0.15
+          out[o + 2] = out[o + 2]! * 0.85 + 70 * 0.15
+        }
+      }
+    }
   }
 }
 
@@ -657,10 +696,10 @@ export const LAYERS: readonly LayerDef[] = [
         "最大 16 クレードが取り分で同居している。内訳は地図をクリックすると出る" } },
   { id: "civilization", label: "文明 ★", render: civLayer(),
     legend: { stops: [], min: "", max: "",
-      note: "★色は**どの文明か**、明るさは**人口密度**、灰色に寄るほど" +
-        "**土地利用（農地・都市）**が高い。描いている値はすべて " +
-        "`population` / `landUse` / `civId` の場から出ている —— " +
-        "**飾りの数字は 1 つも無い**。文明が無い惑星では素の地形が出る" } },
+      note: "★**惑星の絵に文明を重ねている**。薄い色 = どの文明の領域か、" +
+        "縁取り = 国境、明るい点 = 都市（人口が多いほど大きい）、" +
+        "細かい網目 = 農地。地形が透けているので**どこに住んでいるか**が読める。" +
+        "描いている値はすべて `population` / `landUse` / `civId` の場から出ている" } },
   { id: "diversity", label: "生命: 多様性 ★", render: diversityLayer(),
     legend: { stops: ramp((t) => sequentialColor(t)),
       min: "1（単独優占）", max: "8 以上",
