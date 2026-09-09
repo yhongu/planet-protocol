@@ -55,7 +55,7 @@ export class CivPanel {
 
   /**
    * ★**降りているか**（`setCivFocus`）。
-   * 降りると速度の段が人間の尺度になる（×1 = 10 年/秒 … ×20 = 200 年/秒）。
+   * 降りると速度の段が人間の尺度になる（×1 = 10 年/秒 … ×20 = 20 万年/秒）。
    */
   private focused = false
   /** 降りる / 惑星に戻る を切り替える。main が worker へ送る */
@@ -89,7 +89,7 @@ export class CivPanel {
     this.focused = v
     const b = this.root.querySelector("#civFocus") as HTMLButtonElement | null
     if (b) {
-      b.textContent = v ? "惑星に戻る（100 万年/秒）" : "降りる（10〜200 年/秒）"
+      b.textContent = v ? "惑星に戻る（100 万年/秒）" : "降りる（10 年〜20 万年/秒）"
       b.classList.toggle("on", v)
     }
   }

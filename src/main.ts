@@ -277,13 +277,14 @@ function boot(): void {
         el.innerHTML = `<b>★ 知性が生まれた</b>`
           + `<div class="skip-sub">${whenLabel(m.years)}　`
           + `この惑星に、象徴を扱う系統が現れました。<br>`
-          + `文明は地質時間では一瞬です —— <b>降りる</b>と時計が人間の尺度に`
-          + `替わり（×1 = 10 年/秒 … ×20 = 200 年/秒）、文明史を追えます。<br>`
-          + `いつでも「文明」タブから惑星に戻れます。<br>`
-          + `★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>`
+          + `最初の文明が建つのは<b>ここから 100〜200 万年後</b>です`
+          + `（惑星の速度なら数秒）。<br>`
+          + `★<b>いまはまだ降りないでください</b> —— 降りると 10〜500 年/秒なので、`
+          + `文明 0 の画面を数時間見ることになります。<br>`
+          + `文明が建ったらもう一度お知らせします。</div>`
           + `<div class="born-btns">`
-          + `<button id="bornDescend">降りる（10〜200 年/秒）</button>`
-          + `<button id="bornStay">このまま惑星を見る</button></div>`
+          + `<button id="bornStay">このまま惑星を見る</button>`
+          + `<button id="bornDescend" class="sub">それでも降りる</button></div>`
         // ★選び終わったら、止める前の速度で走り出す（止めっぱなしにしない）
         const close = () => {
           el.hidden = true
@@ -302,6 +303,47 @@ function boot(): void {
           })
         ;(document.getElementById("bornStay") as HTMLButtonElement)
           ?.addEventListener("click", close)
+      }
+      // ★★**降りるかを訊く本命**（2026-09-09）。
+      //   知性の誕生では早すぎた —— 実測で建国まで 100〜200 万年あり、
+      //   降りると 200 年/秒なので**文明 0 の画面を 2〜3 時間**見ることになった
+      //   （★プレイして報告された）。**見るものが出来た瞬間に訊く。**
+      if (m.civilizationFounded) {
+        if (speed > 0) lastSpeed = speed
+        speed = 0
+        post({ type: "run", speedMultiplier: 0 })
+        for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
+        document.querySelector(".sp[data-speed=\"0\"]")?.classList.add("active")
+        const el = $("bornPrompt")
+        el.hidden = false
+        const n = m.civ?.civs.length ?? 1
+        el.innerHTML = `<b>★ 最初の文明が生まれた</b>`
+          + `<div class="skip-sub">${whenLabel(m.years)}　`
+          + `${n} つの文明が惑星に建ちました。<br>`
+          + `<b>降りる</b>と時計が人間の尺度に替わり`
+          + `（×1 = 10 年/秒 … ×20 = 20 万年/秒）、文明史を追えます。<br>`
+          + `いつでも「文明」タブから惑星に戻れます。<br>`
+          + `★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>`
+          + `<div class="born-btns">`
+          + `<button id="civDescend">降りる（10 年〜20 万年/秒）</button>`
+          + `<button id="civStay">このまま惑星を見る</button></div>`
+        const closeCiv = () => {
+          el.hidden = true
+          if (lastSpeed > 0) {
+            speed = lastSpeed
+            for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
+            document.querySelector(`.sp[data-speed="${speed}"]`)?.classList.add("active")
+            post({ type: "run", speedMultiplier: speed })
+          }
+        }
+        ;(document.getElementById("civDescend") as HTMLButtonElement)
+          ?.addEventListener("click", () => {
+            post({ type: "setCivFocus", focused: true })
+            civPanel.setFocused(true)
+            closeCiv()
+          })
+        ;(document.getElementById("civStay") as HTMLButtonElement)
+          ?.addEventListener("click", closeCiv)
       }
       if (m.stoppedAtEvent && skipBtn.classList.contains("waiting")) {
         skipBtn.classList.remove("waiting")

@@ -31,11 +31,25 @@ const SHOTS: Record<string, string> = {
     el.hidden = false;
     el.innerHTML = '<b>★ 知性が生まれた</b>'
       + '<div class="skip-sub">4.00 Ga　この惑星に、象徴を扱う系統が現れました。<br>'
-      + '文明は地質時間では一瞬です —— <b>降りる</b>と時計が人間の尺度に'
-      + '替わり（×1 = 10 年/秒 … ×20 = 200 年/秒）、文明史を追えます。<br>'
+      + '最初の文明が建つのは<b>ここから 100〜200 万年後</b>です'
+      + '（惑星の速度なら数秒）。<br>'
+      + '★<b>いまはまだ降りないでください</b> —— 降りると 10〜500 年/秒なので、'
+      + '文明 0 の画面を数時間見ることになります。<br>'
+      + '文明が建ったらもう一度お知らせします。</div>'
+      + '<div class="born-btns"><button>このまま惑星を見る</button>'
+      + '<button class="sub">それでも降りる</button></div>';
+  })()`,
+  // ★**降りるかを訊く本命**（最初の文明が建った瞬間）
+  "civfound": `(() => {
+    const el = document.getElementById("bornPrompt");
+    el.hidden = false;
+    el.innerHTML = '<b>★ 最初の文明が生まれた</b>'
+      + '<div class="skip-sub">4.00 Ga　3 つの文明が惑星に建ちました。<br>'
+      + '<b>降りる</b>と時計が人間の尺度に替わり'
+      + '（×1 = 10 年/秒 … ×20 = 20 万年/秒）、文明史を追えます。<br>'
       + 'いつでも「文明」タブから惑星に戻れます。<br>'
       + '★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>'
-      + '<div class="born-btns"><button>降りる（10〜200 年/秒）</button>'
+      + '<div class="born-btns"><button>降りる（10 年〜20 万年/秒）</button>'
       + '<button>このまま惑星を見る</button></div>';
   })()`,
   "title": `void 0`,

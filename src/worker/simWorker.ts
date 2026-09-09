@@ -11,7 +11,7 @@ import type { SolveOptions } from "../sim/climate"
 import { landAreaFraction } from "../sim/world"
 import { saveWorld, applySnapshot } from "../sim/snapshot"
 import { WORLD_FIELDS } from "../sim/world"
-import { SPEED_STEPS, couplingForSpeed, tickYears } from "../sim/loop"
+import { SPEED_STEPS, couplingForSpeed, civStepForSpeed, tickYears } from "../sim/loop"
 import { initGpu } from "../gpu/device"
 import { GpuClimate } from "../gpu/gpuClimate"
 import type { CivSummary, FromWorker, ToWorker } from "./protocol"
@@ -24,6 +24,8 @@ let stoppedAtEvent = false
 // ★知性が生まれた瞬間を 1 回だけ伝える（惑星の目線では見逃すため）
 let intelligenceBorn = false
 let sawIntelligence = false
+/** ★最初の文明が建ったことを 1 回だけ知らせる */
+let civilizationFounded = false
 let speedMultiplier = 0
 /**
  * プレイヤーが要求した速度。**自動で落としても、これは覚えておく**
@@ -241,6 +243,23 @@ async function tickInner(): Promise<void> {
   timer = setTimeout(() => { void tick() }, delay)
 }
 
+
+/**
+ * ★**速度の段に合わせて、結合間隔と文明の刻みを揃える**（2026-09-09）。
+ *
+ * ★**3 つは一組で決まる。** 別々に置くと
+ * `substeps = ceil(進める年数 / 文明の刻み)` が上限 16 を超えて
+ * **速い段ほど遅くなる**（`CIV_SPEED_STEPS` の説明を読むこと）。
+ * だから設定する場所を 1 か所にまとめる（罠 65）。
+ */
+function applySpeedScale(mult: number): void {
+  if (!world) return
+  const focused = world.civ.focused
+  world.climateCouplingYears = couplingForSpeed(mult, focused)
+  world.civ.params.focusStepYears = focused ? civStepForSpeed(mult) : 100
+  yearsPerSecond = world.yearsPerSecond(mult)
+}
+
 /**
  * ★**文明の一覧を作る**（`TickMessage.civ`）。
  *
@@ -309,6 +328,8 @@ function postState(solveMs: number): void {
     sawIntelligence = true
     intelligenceBorn = true
   }
+  // ★**降りるかを訊く本命はこちら**（知性の誕生から 100〜200 万年あとに来る）
+  civilizationFounded = world ? world.civ.detectFirstCivilization() : false
 
   if (!world) return
   const stats = world.stats!
@@ -336,6 +357,7 @@ function postState(solveMs: number): void {
     stoppedAtEvent,
     // ★**1 回だけ**立てる（毎ティック出すと止まり続ける）
     ...(intelligenceBorn ? { intelligenceBorn: true } : {}),
+    ...(civilizationFounded ? { civilizationFounded: true } : {}),
     solveMs,
     // ★**GPU から落ちたことを黙らせない。** 例外で CPU に切り替わったら、
     //   その理由をそのまま出す（`docs/04-6`「解けなかったことは必ず外へ出す」）
@@ -377,8 +399,7 @@ function applySpeed(m: number): void {
   yearBank = 0
   speedMultiplier = m
   if (world) {
-    world.climateCouplingYears = couplingForSpeed(m, world.civ.focused)
-    yearsPerSecond = world.yearsPerSecond(m)
+    applySpeedScale(m)
   }
 }
 
@@ -449,13 +470,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case "setCivFocus":
       // ★**降りる/戻る。** 速度の段そのものが人間の尺度に替わる
-      //   （×1 = 10 年/秒 … ×20 = 200 年/秒。`loop.ts` の `CIV_SPEED_STEPS`）。
+      //   （×1 = 10 年/秒 … ×20 = 20 万年/秒。`loop.ts` の `CIV_SPEED_STEPS`）。
       //   ★切り替えた瞬間に年/秒と結合間隔を作り直すこと ——
       //   しないと次に速度ボタンを押すまで古い尺度のままになる
       if (world) {
         world.civ.focused = m.focused
-        world.climateCouplingYears = couplingForSpeed(speedMultiplier, m.focused)
-        yearsPerSecond = world.yearsPerSecond(speedMultiplier)
+        applySpeedScale(speedMultiplier)
         yearBank = 0
       }
       break
@@ -597,8 +617,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       badTicks = 0
       // ★**速い段ほど気候の結合を粗くする**（`SPEED_STEPS.couplingYears`）。
       // 計算費は結合間隔で決まるので、ここが「重い/軽い」の主な調整点
-      if (world) world.climateCouplingYears =
-        couplingForSpeed(m.speedMultiplier, world.civ.focused)
+      if (world) applySpeedScale(m.speedMultiplier)
       break
   }
 }

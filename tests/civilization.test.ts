@@ -7,7 +7,8 @@ import {
   TECHS, TECH_INDEX, ROLE_PROVIDERS, techPrereqOk, techGateOk, sumTech,
 } from "../src/sim/tech"
 import {
-  EPOCHS, SPEED_STEPS, CIV_SPEED_STEPS, resolveSpeed, couplingForSpeed, tickYears,
+  EPOCHS, SPEED_STEPS, CIV_SPEED_STEPS, resolveSpeed, couplingForSpeed,
+  civStepForSpeed, tickYears,
 } from "../src/sim/loop"
 
 /**
@@ -247,11 +248,26 @@ describe("文明（M6）", () => {
  */
 describe("降りたときの速度の段", () => {
   const epoch = EPOCHS.find((e) => e.id === "phanerozoic")!
-  it("×1 = 10 年/秒 … ×20 = 200 年/秒", () => {
+  it("×1 = 10 年/秒 … ×20 = 20 万年/秒", () => {
     expect(resolveSpeed(epoch, 1, true)).toBe(10)
-    expect(resolveSpeed(epoch, 5, true)).toBe(50)
-    expect(resolveSpeed(epoch, 10, true)).toBe(100)
-    expect(resolveSpeed(epoch, 20, true)).toBe(200)
+    expect(resolveSpeed(epoch, 5, true)).toBe(500)
+    expect(resolveSpeed(epoch, 10, true)).toBe(10_000)
+    expect(resolveSpeed(epoch, 20, true)).toBe(200_000)
+  })
+  it("★★文明史の弧（建国 → 産業 ≒ 9000 万年）が 10 分以内に見られる", () => {
+    // ★これが「降りる」の存在理由。実測で 200 年/秒だと 83 時間かかり、
+    //   降りても弧が追えなかった（★プレイして報告された）
+    const top = resolveSpeed(epoch, 20, true)
+    expect(9e7 / top / 60).toBeLessThan(10)
+  })
+  it("★★速い段ほど遅くなる（throttle）を起こさない", () => {
+    // `SubsystemLoop` は substeps = ceil(進める年数 / 文明の刻み) で刻み、
+    // **16 を超えると進行年数を減らす**。20 万年/秒で刻み 100 年にすると
+    // 1 歩に 100 サブステップ要る。3 つは一組で決めること
+    for (const st of CIV_SPEED_STEPS) {
+      const substeps = Math.ceil(st.couplingYears / st.civStepYears)
+      expect(substeps).toBeLessThanOrEqual(16)
+    }
   })
   it("降りていなければ惑星の段のまま（★既定を壊していないこと）", () => {
     for (const s of SPEED_STEPS) {
@@ -277,10 +293,13 @@ describe("降りたときの速度の段", () => {
     expect(civ.preferredStepYears).toBe(1_000_000)
     civ.focused = true
     expect(civ.preferredStepYears).toBe(EARTH_CIV.focusStepYears)
-    // ★**サブステップが溢れないこと。** `SubsystemLoop` は
-    //   min(preferredStepYears) に合わせるので、1 秒ぶんの年数を
-    //   その刻みで割った回数が上限（16）を超えると throttle される
+    // ★**刻みは段ごとに決まる**（`civStepForSpeed`）。
+    //   ワーカーが速度を変えるたびに `params.focusStepYears` を差し替えるので、
+    //   ここでも同じ手順を踏む —— **既定の 100 年で検定すると、
+    //   実際には使われない値を検定することになる**（罠 39: 対照が対照か）
+    civ.params.focusStepYears = civStepForSpeed(20)
+    expect(civ.preferredStepYears).toBe(1_000)
     const yps = resolveSpeed(epoch, 20, true)
-    expect(Math.ceil(tickYears(yps) / civ.preferredStepYears)).toBeLessThanOrEqual(16)
+    expect(tickYears(yps)).toBeLessThanOrEqual(couplingForSpeed(20, true))
   })
 })

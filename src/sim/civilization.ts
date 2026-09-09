@@ -247,9 +247,22 @@ export interface CivParams {
   /** 技術が無いときの 1 人あたりエネルギー [W/人]（狩猟採集 ≒ 火のみ） */
   baseEnergyW: number
   /**
-   * ★**建国の速さ** [1/yr]。知性種がいる無主の陸に文明が生まれる確率。
+   * ★**建国の速さ** [1/(セル·yr)]。知性種がいる無主の陸に文明が生まれる確率。
    * **複数の文明が別々の場所で育つ**ので、惑星の条件（大河・海）が違い、
    * 代替経路（灌漑/天水、舟/畜力）が自然に分かれる。
+   *
+   * ★★**較正**（2026-09-09。プレイして「降下したまま何秒待っても文明が 0」）。
+   * 1e-8 だと 1 Myr・1 セルあたり 1% で、住める陸 30 セルなら
+   * **最初の建国まで 300 万年**（`probe-founding.ts` で 5 実現とも 3.0Myr）。
+   * 降りると 200 年/秒なので、**プレイヤーは 4 時間待つ**ことになっていた。
+   *
+   * ★地球の目盛りは**解剖学的現生人類 30 万年前 → 最初の定住・農耕 1 万年前**、
+   * つまり知性から建国まで **約 29 万年**。10 倍上げて 1e-7 にすると
+   * 1 Myr・1 セルあたり 9.5%、30 セルで期待値 2.9 件 ——
+   * **最初の建国が 30 万年前後**になり地球と桁が合う。
+   * ★地球でも文明はメソポタミア・エジプト・インダス・中国・
+   * メソアメリカ・アンデスが数千年のうちに別々に興っており、
+   * 地質の解像度では**同時**である。複数がほぼ同時に建つのは正しい姿。
    */
   foundingRate: number
   /**
@@ -392,7 +405,7 @@ export const EARTH_CIV: CivParams = {
   collapseTauYears: 1e5,
   // 1000 万人の狩猟採集民が 1 万年に 1 つ発明する程度から始める
   // 100 万年に 1 セルあたり 1% 程度。★複数だが多すぎない数を狙う
-  foundingRate: 1e-8,
+  foundingRate: 1e-7,
   // 1000 年で 1km 進む程度（★人の移住の速さではなく、領域の拡大の速さ）
   expansionKmPerYear: 1e-3,
   // ★**伝播が主・独立発明が稀**にする（地球の姿）。実測で
@@ -501,7 +514,7 @@ export class Civilization implements Subsystem {
    *
    * ★いま固定をやめられるのは、**降りると速度の段そのものが
    * 人間の尺度になった**から（`loop.ts` の `CIV_SPEED_STEPS`:
-   * ×1 = 10 年/秒 … ×20 = 200 年/秒）。
+   * ×1 = 10 年/秒 … ×20 = 20 万年/秒）。
    * 1 秒に進める年数が 200 年なら、100 年刻みは「粗くなる」のではなく
    * **ちょうどよい**。片方だけ変えたのが前回の誤りだった。
    */
@@ -526,8 +539,16 @@ export class Civilization implements Subsystem {
   }
 
   /** ★状態のすぐ隣に置く（`CLAUDE.md` の 69） */
-  snapshot(): Record<string, unknown> { return { ...this.state } }
-  restore(v: Record<string, unknown>): void { Object.assign(this.state, v) }
+  snapshot(): Record<string, unknown> {
+    // ★「もう知らせたか」も状態。落とすと読み込むたびに問いかけが出る
+    return { ...this.state, announcedFirstCiv: this.announcedFirstCiv }
+  }
+  restore(v: Record<string, unknown>): void {
+    Object.assign(this.state, v)
+    this.announcedFirstCiv = v.announcedFirstCiv === true
+      // ★古いセーブ（この旗が無い）は、文明が居れば知らせ済みとみなす
+      || (Array.isArray(this.state.civs) && this.state.civs.length > 0)
+  }
 
   isActive(_world: World): boolean {
     return this.params.enabled > 0 && this.state.emergedYear >= 0
@@ -676,6 +697,23 @@ export class Civilization implements Subsystem {
    * ★**知性種が現れたか**を毎歩見る（`isActive` が false でも呼ばれるよう
    * `World` から直接呼ぶ）。`emergedYear` が立って初めて文明が動き出す。
    */
+  /**
+   * ★★**最初の文明が建った瞬間**（1 回だけ true。2026-09-09）。
+   *
+   * ★**「降りるか」を訊く正しい瞬間はここ。** 知性の誕生で訊いていたが、
+   * 実測（`probe-founding.ts`）で**知性から建国まで 100〜200 万年**あり、
+   * 降りると 200 年/秒なので**プレイヤーは 2〜3 時間、文明 0 の画面を見る**
+   * ことになっていた（★プレイして報告された）。
+   * その間に起きているのは「知性種が陸へ広がる」ことで、
+   * **物理としては正しいが、降りて見るものが無い**。
+   */
+  detectFirstCivilization(): boolean {
+    if (this.announcedFirstCiv || this.state.civs.length === 0) return false
+    this.announcedFirstCiv = true
+    return true
+  }
+  private announcedFirstCiv = false
+
   detectEmergence(world: World): boolean {
     if (this.state.emergedYear >= 0) return false
     for (const c of world.life.clades) {

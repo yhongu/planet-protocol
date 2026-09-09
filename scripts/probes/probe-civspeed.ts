@@ -11,16 +11,16 @@
 import { readFileSync } from "node:fs"
 import { gunzipSync } from "node:zlib"
 import { loadWorld } from "../../src/sim/snapshot"
-import { couplingForSpeed, tickYears } from "../../src/sim/loop"
+import { couplingForSpeed, civStepForSpeed, tickYears } from "../../src/sim/loop"
 import { GENE_KINDS } from "../../src/sim/genome"
 
 const OPT = { cgTol: 1e-2, maxOuter: 8, tol: 1e-4 } as const
 const C_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
 
 console.log("降りたときに 1 秒で何年進むか（★段の年/秒と一致するはず）")
-console.log("降下  倍率  段[年/秒]  結合[yr]  刻み[yr]  実際に進んだ[年]  壁時計[ms]")
+console.log("降下  倍率  段[年/秒]  結合[yr]  刻み[yr]  文明[yr]  実際に進んだ[年]  壁時計[ms]  弧[分]")
 for (const focused of [false, true]) {
-  for (const mult of [1, 20]) {
+  for (const mult of focused ? [1, 5, 10, 20] : [1, 20]) {
     const w = loadWorld(new Uint8Array(gunzipSync(
       readFileSync("public/chapters/phanerozoic.gaia"))))
     w.civ.params.enabled = 1
@@ -30,6 +30,8 @@ for (const focused of [false, true]) {
     for (let i = 0; i < w.grid.cellCount; i++) if (tot[i]! > bv) { bv = tot[i]!; best = i }
     if (best >= 0) w.intervene("injectGene", 1, best, C_SYMBOLIC)
     w.civ.focused = focused
+    // ★ワーカーの `applySpeedScale` と同じ組で設定する（別々に置くと throttle する）
+    if (focused) w.civ.params.focusStepYears = civStepForSpeed(mult)
     const yps = w.yearsPerSecond(mult)
     const coupling = couplingForSpeed(mult, focused)
     w.climateCouplingYears = coupling
@@ -41,10 +43,14 @@ for (const focused of [false, true]) {
     let n = 0
     while (bank >= step && n < 10000) { w.advance(step, OPT); bank -= step; n++ }
     const got = w.globals.yearsElapsed - before
+    // ★**弧（建国 → 産業 ≒ 9000 万年）を見るのに何分かかるか**を隣に出す
+    const arcMin = 9e7 / yps / 60
     console.log(`${(focused ? "降りる" : "惑星").padEnd(6)} ×${String(mult).padStart(2)}`
       + `  ${yps.toExponential(1).padStart(9)}  ${String(coupling).padStart(8)}`
-      + `  ${String(step).padStart(8)}  ${got.toExponential(2).padStart(15)}`
-      + `  ${String(Date.now() - t0).padStart(9)}`)
+      + `  ${String(step).padStart(8)}  ${String(w.civ.params.focusStepYears).padStart(8)}`
+      + `  ${got.toExponential(2).padStart(15)}`
+      + `  ${String(Date.now() - t0).padStart(9)}  ${arcMin.toFixed(1).padStart(6)}`)
   }
 }
-console.log("★実際に進んだ年数が段の年/秒とほぼ一致し、壁時計が 1000ms 未満なら合格")
+console.log("★実際に進んだ年数が段の年/秒と一致し、壁時計が 1000ms 未満なら合格")
+console.log("★★進んだ年数が段より小さければ **throttle**（サブステップ上限 16 に当たった）")

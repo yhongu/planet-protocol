@@ -1153,3 +1153,6 @@ button.primary:hover { background: #2c6288; }
 /* ★降りる / 惑星に戻る（`civPanel.ts`）。押せることが分かる幅を持たせる */
 .mini.wide { width: auto; padding: 2px 8px; margin-left: auto; margin-right: 6px; }
 .mini.wide.on { background: rgba(120, 200, 255, 0.22); border-color: #4a7fa6; }
+
+/* ★「それでも降りる」は勧めない選択肢なので目立たせない */
+.born-btns .sub { opacity: 0.65; font-weight: normal; }

@@ -186,6 +186,14 @@ export interface TickMessage {
    * **向こうから知らせないとプレイヤーは気づけない**（設計方針 A-2）。
    */
   intelligenceBorn?: boolean
+  /**
+   * ★**最初の文明が建った瞬間**（1 回だけ true。2026-09-09）。
+   *
+   * ★**「降りるか」を訊くのはここ。** 知性の誕生で訊いていたが、
+   * 実測で知性から建国まで 100〜200 万年あり、降りると 200 年/秒なので
+   * **2〜3 時間、文明 0 の画面を見る**ことになっていた。
+   */
+  civilizationFounded?: boolean
   stoppedAtEvent: boolean
   /**
    * いま実際に使っている速度の段。

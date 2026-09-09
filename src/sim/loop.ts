@@ -139,6 +139,23 @@ export const CIV_SPEED_STEPS: readonly {
   multiplier: number
   yearsPerSecond: number
   couplingYears: number
+  /**
+   * ★★**その段で文明を回す刻み** [yr]。
+   *
+   * ★**100 年に固定してはいけない。** `SubsystemLoop` は
+   * `substeps = ceil(進める年数 / min(preferredStepYears))` で刻み、
+   * **上限 16 を超えると throttle して進行年数を減らす**。
+   * 20 万年/秒で刻み 100 年なら 1 歩に 100 サブステップ要り、
+   * **速い段ほど遅くなる**（自分で作った罠 113 の形）。
+   *
+   * ★**粗くしてよい根拠**は契約そのもの —— 文明の量はすべて
+   * 解析積分（`logisticStep` / 2 状態のマルコフ連鎖）で書いてあり、
+   * **刻みを変えても結果が同じ**ことを `probe-focus.ts` で実測してある
+   * （刻み 100 倍で技術 1.3%・人口 19.6%）。
+   * だから「20 万年/秒で見ているときに 1000 年刻み」は近似ではなく、
+   * **見えない細かさを計算しないだけ**である。
+   */
+  civStepYears: number
 }[] = [
   // ★★**結合間隔を 1 年にしてはいけない。** `World.chunked` は
   //   `while (remaining > 1)` で刻むので、**1 年ちょうどの歩は 1 つも実行されず
@@ -146,15 +163,25 @@ export const CIV_SPEED_STEPS: readonly {
   //   数値の端数を捨てるための床であって、消してよいものではないので、
   //   **こちらの段を 2 年以上にする**。実測（`probe-civspeed.ts`）で
   //   4 段とも段の年/秒どおりに進み、壁時計は 100ms 未満
-  { multiplier: 1, yearsPerSecond: 10, couplingYears: 5 },
-  { multiplier: 5, yearsPerSecond: 50, couplingYears: 5 },
-  { multiplier: 10, yearsPerSecond: 100, couplingYears: 5 },
-  { multiplier: 20, yearsPerSecond: 200, couplingYears: 10 },
+  //  倍率  年/秒     結合    文明の刻み   ★弧（建国→産業 ≒ 9000 万年）を見る時間
+  { multiplier: 1, yearsPerSecond: 10, couplingYears: 5, civStepYears: 5 },
+  { multiplier: 5, yearsPerSecond: 500, couplingYears: 50, civStepYears: 25 },
+  { multiplier: 10, yearsPerSecond: 10_000, couplingYears: 1_000, civStepYears: 100 },
+  // ★**この段で文明史の弧が 7〜8 分で見られる**（9000 万年 ÷ 20 万年/秒 = 450 秒）
+  { multiplier: 20, yearsPerSecond: 200_000, couplingYears: 10_000, civStepYears: 1_000 },
 ]
 
 /** いま使う段の表。★**降りているかどうかで丸ごと切り替える** */
 export function speedStepsFor(civFocused: boolean) {
   return civFocused ? CIV_SPEED_STEPS : SPEED_STEPS
+}
+
+/**
+ * ★**降りているとき、その段で文明を回す刻み** [yr]。
+ * 段に無ければ 100 年（`EARTH_CIV.focusStepYears`）。
+ */
+export function civStepForSpeed(multiplier: number): number {
+  return CIV_SPEED_STEPS.find((s) => s.multiplier === multiplier)?.civStepYears ?? 100
 }
 
 /** その速度の段で使う結合間隔 [yr]。段に無ければ既定 */
