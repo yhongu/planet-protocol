@@ -18,6 +18,8 @@
 import type { CivInfo, CivSummary } from "../worker/protocol"
 import { TECHS, eraOf } from "../sim/tech"
 import { cladeColor } from "../render/layers"
+import { settlementImageUrl } from "../render/settlements"
+import { settlementOfIndices, SETTLEMENT_LABEL } from "./settlementGrade"
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 const rgb = (c: readonly [number, number, number]) =>
@@ -146,8 +148,16 @@ export class CivPanel {
     const decline = c.peakPopulation > 0 ? c.population / c.peakPopulation : 1
     const dying = decline < 0.7
     const sel = this.selected === c.id
+    // ★**その文明の集落の絵**（地図に置いているものと同じ）。
+    //   ★塗り替えないまま `<img src="icons/town-*.png">` を出すと
+    //   **ピンクの塊**になる（塗り替える場所をマゼンタで置いているため）
+    const stage = settlementOfIndices(c.tech)
+    const icon = settlementImageUrl(stage, c.id)
     let h = `<div class="civ-row${sel ? " sel" : ""}" data-civ="${c.id}">`
-      + `<div class="civ-name"><span class="civ-dot" style="background:${col}"></span>`
+      + `<div class="civ-name">`
+      + (icon
+        ? `<img class="civ-town" src="${icon}" alt="" title="${esc(SETTLEMENT_LABEL[stage])}">`
+        : `<span class="civ-dot" style="background:${col}"></span>`)
       + `<b>文明 #${c.id}</b> <span class="civ-era">${esc(era.material)}・${esc(era.society)}</span></div>`
       + `<div class="civ-nums">`
       + `<span>${pop(c.population)}</span>`

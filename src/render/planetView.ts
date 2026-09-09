@@ -8,6 +8,8 @@
 
 import type { Grid } from "../core/grid"
 import { creatureSprite, creatureShadow, gradeOf, MIN_CELL_PX } from "./creatures"
+import { settlementSprite, settlementShadow, MIN_TOWN_PX } from "./settlements"
+import type { Settlement } from "../ui/settlementGrade"
 import { GENE_KINDS } from "../sim/genome"
 /** 体の色の濃さの添字。★ホットループで `indexOf` を引かない */
 const ALBEDO_INDEX = GENE_KINDS.indexOf("albedoEffect")
@@ -36,6 +38,11 @@ export interface LayerEnv {
     capabilities?: number
     traits?: readonly number[]
   }[]
+  /**
+   * ★**文明ごとの集落の段階**（`settlementGrade.ts`）。
+   * 地図に置く建物の絵を選ぶのに使う。文明が無ければ空。
+   */
+  civStages?: ReadonlyMap<number, Settlement>
 }
 
 export type LayerFn = (
@@ -337,6 +344,7 @@ export class PlanetView {
     }
 
     this.drawCreatures(ctx, ox, oy, dw, first, last)
+    this.drawSettlements(ctx, ox, oy, dw, first, last)
     this.drawGraticule(ctx, ox, oy, dw, dh, first, last)
     if (this.targeting && this.hoverCell) {
       this.drawTarget(ctx, ox, oy, this.hoverCell)
@@ -433,8 +441,68 @@ export class PlanetView {
     void x0
   }
 
+  /**
+   * ★★**集落の絵をマスに置く**（`docs/07-art-spec.md` §7.7。2026-09-09）。
+   *
+   * ★プレイして「各時代で家のイラストが変わったり」と要望された。
+   * 生き物と同じ規則で置く —— **セルが十分大きいときだけ**、
+   * **文明の色に塗り替えて**、**1 ドットの影を敷いてから**。
+   *
+   * ★**生き物と違って間引かない。** 文明の領域は 1 惑星で数十セルしかなく、
+   * しかも**都市がある場所そのものが情報**なので、
+   * 間引くと「どこに人が住んでいるか」が嘘になる（罠 82: 地図は数字と同じことを言う）。
+   */
+  private drawSettlements(
+    ctx: CanvasRenderingContext2D,
+    ox: number, oy: number, dw: number, first: number, last: number,
+  ): void {
+    if (!this.showSettlements || this.scale < MIN_TOWN_PX) return
+    const stages = this.env.civStages
+    if (!stages || stages.size === 0) return
+    if (!this.store.has("civId") || !this.store.has("population")) return
+    const cid = this.store.u8("civId").read
+    const pop = this.store.f32("population").read
+    const { W, H } = this.grid
+    const { width, height } = this.viewportSize()
+    const y0 = Math.max(0, Math.floor(-oy / this.scale) - 1)
+    const y1 = Math.min(H - 1, Math.ceil((height - oy) / this.scale) + 1)
+    // ★生き物より少し小さく描く。生き物の【上】に重ねるので、
+    //   同じ大きさだと生き物が完全に隠れる
+    const size = Math.round(this.scale * 0.62)
+    ctx.imageSmoothingEnabled = false
+    for (let y = y0; y <= y1; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = y * W + x
+        const id = cid[i] ?? 0
+        if (id === 0 || !((pop[i] ?? 0) > 0)) continue
+        const stage = stages.get(id)
+        if (!stage) continue
+        const sprite = settlementSprite(stage, id)
+        if (!sprite) continue
+        const shadow = settlementShadow(stage, id)
+        for (let k = first; k <= last; k++) {
+          const sx = ox + k * dw + (x + 0.5) * this.scale - size / 2
+          // ★**中心より少し下**に置く。生き物は中心なので、重ねると
+          //   建物が生き物の上に乗って見える（地面に建っている感じになる）
+          const sy = oy + (y + 0.62) * this.scale - size / 2
+          if (sx > width || sx + size < 0 || sy > height || sy + size < 0) continue
+          ctx.globalAlpha = 1
+          if (shadow) {
+            ctx.globalAlpha = 0.45
+            ctx.drawImage(shadow, sx + 1.5, sy + 1.5, size, size)
+            ctx.globalAlpha = 1
+          }
+          ctx.drawImage(sprite, sx, sy, size, size)
+        }
+      }
+    }
+    ctx.globalAlpha = 1
+  }
+
   /** ★生き物の絵を出すか。レイヤ側が決める（`main.ts` が刺す）*/
   showCreatures = false
+  /** ★集落の絵を出すか。文明レイヤのときだけ立てる */
+  showSettlements = false
 
   /**
    * 照準の輪。**効く範囲（3x3 セル）をそのまま描く。**

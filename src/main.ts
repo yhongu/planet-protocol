@@ -17,6 +17,7 @@ import { EventPopup } from "./ui/eventPopup"
 import { Inspector } from "./ui/inspector"
 import { Phylogeny } from "./ui/phylogeny"
 import { CivPanel } from "./ui/civPanel"
+import { settlementOfIndices, type Settlement } from "./ui/settlementGrade"
 import { Chronicle } from "./ui/chronicle"
 import { LayerPicker } from "./ui/layerPicker"
 import { SavesPanel } from "./ui/savesPanel"
@@ -353,6 +354,12 @@ function boot(): void {
       syncAtmosphereUI(m.globals)
       // レイヤに惑星の状態を渡す（マグマオーシャンの判定など）
       roster = m.life.roster
+      // ★**文明ごとの集落の段階**（地図に置く建物の絵を選ぶ）。
+      //   技術は tick ごとに変わるので、ここで作り直す（8 文明 × 40 技術は軽い）
+      const civStages = new Map<number, Settlement>()
+      for (const c of m.civ?.civs ?? []) {
+        civStages.set(c.id, settlementOfIndices(c.tech))
+      }
       view?.setEnv({
         oceanWaterFraction: m.globals.oceanWaterFraction,
         steamFraction: m.globals.steamFraction,
@@ -361,6 +368,7 @@ function boot(): void {
         clades: roster.map((c) => ({
           id: c.id, lane: c.lane, capabilities: c.capabilities, traits: c.traits,
         })),
+        civStages,
       })
       // 虫眼鏡は開いていれば毎ティック追従する（生命は動く）
       if (grid && store) inspector.refresh(grid, store, roster)
@@ -984,9 +992,18 @@ const CREATURE_LAYERS = new Set(["natural", "biomass", "dominantClade", "diversi
  * **見たい人が明示的に入れる**形にしてある。
  */
 const creatureToggle = $<HTMLInputElement>("showCreatures")
+/**
+ * ★**集落の絵は文明レイヤと惑星の絵にだけ出す**（2026-09-09）。
+ * 標高や風化の図の上に建物を置いても、その図が言いたいことを邪魔する。
+ * ★生き物と同じつまみで切り替える —— **別々のつまみにすると、
+ * 「絵を消したのに建物が残る」**という食い違いになる。
+ */
+const TOWN_LAYERS = new Set(["civilization", "natural"])
+
 function applyCreatureSetting(): void {
   if (view) {
     view.showCreatures = creatureToggle.checked && CREATURE_LAYERS.has(layerSelect.value)
+    view.showSettlements = creatureToggle.checked && TOWN_LAYERS.has(layerSelect.value)
     view.invalidate()
   }
 }

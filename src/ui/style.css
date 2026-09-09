@@ -1156,3 +1156,6 @@ button.primary:hover { background: #2c6288; }
 
 /* ★「それでも降りる」は勧めない選択肢なので目立たせない */
 .born-btns .sub { opacity: 0.65; font-weight: normal; }
+
+/* ★文明ごとの集落の絵（地図に置いているものと同じ）。★拡大でぼかさない */
+.civ-town { width: 26px; height: 26px; image-rendering: pixelated; margin: -4px 0; }
