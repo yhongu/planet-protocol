@@ -67,6 +67,32 @@ const SHOTS: Record<string, string> = {
   "m-chron": `document.querySelector('.mtab[data-sheet="chron"]').click()`,
   "m-rail": `document.querySelector('.mtab[data-sheet="rail"]').click()`,
   "m-legend": `document.querySelector('.mtab[data-sheet="legend"]').click()`,
+  // ★文明の一覧（M6）。**知性が生まれるまで回すと数十分**かかるので、
+  //   実測の値（`probe-civ.ts` の 90Myr の行）を流し込んで見た目を確かめる
+  "civ": `(() => {
+    const mk = (id, founded, popN, peak, w, lost, tech, cells, km2, use) => ({
+      id, foundedYear: founded, population: popN, peakPopulation: peak,
+      energyPerCapita: w, lostCount: lost,
+      tech, techOrigin: tech.map((t, i) => 100 + i),
+      cells, areaKm2: km2, landUse: use,
+    });
+    const seq = (n) => Array.from({ length: n }, (_, i) => i);
+    const inject = () => window.__civPanel.setData({
+      emergedYear: 4.001e9, totalPopulation: 9.658e6, energyPerCapita: 24062,
+      landClearCo2Ppm: 37, invented: 651, lost: 790, transferred: 233, conquered: 1,
+      civs: [
+        mk(1, 4.02e9, 6.1e6, 8.0e6, 24500, 214, seq(35), 41, 4.2e6, 0.31),
+        mk(2, 4.03e9, 3.4e6, 3.4e6, 23100, 96, seq(24), 26, 2.6e6, 0.18),
+        mk(6, 4.07e9, 1.2e5, 9.0e5, 300, 3, [], 8, 0.7e6, 0.0),
+      ],
+    }, 4.09e9);
+    // ★毎ティックの setData(null) に上書きされるので、撮り終わるまで流し込み続ける
+    inject();
+    setInterval(inject, 100);
+    document.getElementById("civBtn").hidden = false;
+    document.getElementById("civBtn").click();
+    setTimeout(() => document.querySelector('[data-civ="1"]').click(), 400);
+  })()`,
   "saves": `document.getElementById("savesBtn").click()`,
   "science": `document.getElementById("legendSci").click()`,
   "manual": `document.getElementById("legendSci").click();`

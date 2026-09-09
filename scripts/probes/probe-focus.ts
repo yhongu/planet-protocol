@@ -29,25 +29,41 @@ const arg = (k: string, d: string) => {
   return i >= 0 ? argv[i + 1]! : d
 }
 const GYR = Number(arg("gyr", "0.02"))
+/**
+ * ★★**実現の数**（2026-09-09 に足した）。
+ *
+ * 1 本ずつ比べて「粗い 1.9e7 / 降りる 1.3e5、契約違反だ」と報告しかけた。
+ * ところが**同じ 100 年刻みの 2 本が 2.4e7 と 1.3e5**（200 倍）だった ——
+ * つまり**刻みの差ではなく、実現ごとの散らばり**である。
+ * 文明の立ち上がりは「農耕を引けたか」で**二峰**になるので、
+ * 1 本の値は刻みについて何も語らない（罠 3・22）。
+ * ★**判定は必ず複数の実現の中央値で。**
+ */
+const REALS = Number(arg("reals", "5"))
 const OPT = { cgTol: 1e-2, maxOuter: 12, tol: 1e-4 } as const
 const C_SYMBOLIC = GENE_KINDS.indexOf("capSymbolic")
 
-/** 章を読んで、知性を 1 つ投入した惑星を作る */
-function makeWorld(): World {
+/**
+ * 章を読んで、知性を 1 つ投入した惑星を作る。
+ * ★`rank` 番目に豊かなセルへ入れることで**別の実現**にする
+ * （seed を変えると惑星そのものが変わってしまい、刻みの比較にならない）。
+ */
+function makeWorld(rank: number): World {
   const w = loadWorld(new Uint8Array(gunzipSync(
     readFileSync("public/chapters/phanerozoic.gaia"))))
   w.civ.params.enabled = 1
   const tot = w.store.f32("biomassTotal").read
-  let best = -1, bv = 0
-  for (let i = 0; i < w.grid.cellCount; i++) if (tot[i]! > bv) { bv = tot[i]!; best = i }
-  if (best >= 0) w.intervene("injectGene", 1, best, C_SYMBOLIC)
+  const order = Array.from({ length: w.grid.cellCount }, (_, i) => i)
+    .sort((a, b) => (tot[b] ?? 0) - (tot[a] ?? 0))
+  const best = order[rank] ?? -1
+  if (best >= 0 && (tot[best] ?? 0) > 0) w.intervene("injectGene", 1, best, C_SYMBOLIC)
   return w
 }
 
 interface Result { pop: number; techs: number; civs: number; co2: number; use: number }
 
-function run(focused: boolean, stepYears: number): Result {
-  const w = makeWorld()
+function run(focused: boolean, stepYears: number, rank: number): Result {
+  const w = makeWorld(rank)
   w.civ.focused = focused
   const end = w.globals.yearsElapsed + GYR * 1e9
   while (w.globals.yearsElapsed < end) w.advance(stepYears, OPT)
@@ -70,14 +86,28 @@ function run(focused: boolean, stepYears: number): Result {
   }
 }
 
-console.log(`降りても降りなくても同じか  ${GYR}Gyr  章 phanerozoic`)
+console.log(`降りても降りなくても同じか  ${GYR}Gyr  章 phanerozoic  ${REALS} 実現の中央値`)
 console.log("条件                    人口        技術  文明  CO2    土地%")
+const med = (a: number[]) => {
+  const s = [...a].sort((x, y) => x - y)
+  return s.length % 2 ? s[(s.length - 1) / 2]! : (s[s.length / 2 - 1]! + s[s.length / 2]!) / 2
+}
+/** ★中央値を取る（実現ごとに二峰なので平均は代表しない） */
+function many(focused: boolean, stepYears: number): Result {
+  const rs: Result[] = []
+  for (let r = 0; r < REALS; r++) rs.push(run(focused, stepYears, r))
+  return {
+    pop: med(rs.map((r) => r.pop)), techs: med(rs.map((r) => r.techs)),
+    civs: med(rs.map((r) => r.civs)), co2: med(rs.map((r) => r.co2)),
+    use: med(rs.map((r) => r.use)),
+  }
+}
 // ★**中間の刻みも入れる。** 2 点だけだと「たまたま」と区別できない。
 //   刻みを細かくするほど一方向にずれるなら、それは系統的な偏り（罠 40）
 const rows: [string, Result][] = [
-  ["粗い（100 万年刻み）", run(false, 1e6)],
-  ["中間（1 万年刻み）", run(true, 1e5)],
-  ["★降りる（100 年刻み）", run(true, 1e4)],
+  ["粗い（100 万年刻み）", many(false, 1e6)],
+  ["中間（10 万年で結合）", many(true, 1e5)],
+  ["★降りる（1 万年で結合）", many(true, 1e4)],
 ]
 for (const [name, r] of rows) {
   console.log(`${name.padEnd(22)} ${r.pop.toExponential(3)}  ${String(r.techs).padStart(4)}`

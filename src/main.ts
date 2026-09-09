@@ -16,6 +16,7 @@ import { Timeline } from "./ui/timeline"
 import { EventPopup } from "./ui/eventPopup"
 import { Inspector } from "./ui/inspector"
 import { Phylogeny } from "./ui/phylogeny"
+import { CivPanel } from "./ui/civPanel"
 import { Chronicle } from "./ui/chronicle"
 import { LayerPicker } from "./ui/layerPicker"
 import { SavesPanel } from "./ui/savesPanel"
@@ -83,6 +84,12 @@ const timeline = new Timeline($<HTMLCanvasElement>("tlCanvas"))
 const eventPopup = new EventPopup($("eventPopup"))
 const inspector = new Inspector($("inspector"))
 const phylogeny = new Phylogeny($("phylogeny"))
+// ★文明の一覧（M6）。**知性が生まれるまでボタンごと出さない**
+const civPanel = new CivPanel($("civPanel"))
+// ★`scripts/ui-shot.ts` から偽のデータを流し込んで撮るための口。
+//   知性が生まれるまで実際に回すと数十分かかるので、**見た目だけを先に確かめる**
+//   （罠 48「撮るまで入ったと言わない」を、長い前提のある画面にも通すため）
+;(globalThis as unknown as { __civPanel?: CivPanel }).__civPanel = civPanel
 phylogeny.onRequest = () => post({ type: "requestPhylogeny" })
 let roster: readonly CladeInfo[] = []
 timeline.onHoverEvents = (evs) => {
@@ -390,6 +397,10 @@ function boot(): void {
         if (phylogeny.open) post({ type: "requestPhylogeny" })
       }
       timeline.set({ yearsElapsed: m.years, events: allEvents })
+
+      // ★文明。**ボタンは知性が生まれてから出す**（空の表は情報ではない）
+      civPanel.setData(m.civ ?? null, m.years)
+      $("civBtn").hidden = !civPanel.hasCivilization
 
       // 炭素
       if (m.carbon) {
@@ -786,7 +797,11 @@ $("settingsBtn").addEventListener("click", () => {
 })
 $("phyloBtn").addEventListener("click", () => {
   phylogeny.toggle()
-  if (phylogeny.open) { inspector.close(); $("settings").hidden = true }
+  if (phylogeny.open) { inspector.close(); $("settings").hidden = true; civPanel.close() }
+})
+$("civBtn").addEventListener("click", () => {
+  civPanel.toggle()
+  if (civPanel.open) { inspector.close(); $("settings").hidden = true; $("phylogeny").hidden = true }
 })
 $("settingsClose").addEventListener("click", () => { $("settings").hidden = true })
 

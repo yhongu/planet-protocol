@@ -1119,3 +1119,33 @@ button.primary:hover { background: #2c6288; }
 .titlescreen.fixed-planet #ttSeed,
 .titlescreen.fixed-planet #ttGrid,
 .titlescreen.fixed-planet #ttLand { opacity: 0.4; }
+
+/* ============================================================
+   文明の一覧（`civPanel.ts`）。★系譜と同じ `.panel.phylo` の中に置く
+   ============================================================ */
+.civ-body { overflow-y: auto; flex: 1 1 auto; padding: 0 8px 8px; }
+.civ-head { display: flex; gap: 14px; margin: 4px 0 2px; }
+.civ-head b { font-size: 15px; }
+.civ-row {
+  border: 1px solid var(--line, #2a3340); border-radius: 6px;
+  padding: 6px 8px; margin: 6px 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.02);
+}
+.civ-row.sel { background: rgba(255, 255, 255, 0.07); }
+.civ-name { display: flex; align-items: center; gap: 6px; }
+.civ-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.civ-era { opacity: 0.85; }
+.civ-nums { display: flex; gap: 10px; margin-top: 2px; }
+.civ-nums span { font-variant-numeric: tabular-nums; }
+.civ-sub { margin-top: 1px; }
+.civ-dying { color: #e8a13a; }
+.civ-tech { margin-top: 6px; border-top: 1px solid var(--line, #2a3340); padding-top: 5px; }
+.civ-group { margin: 3px 0; display: flex; flex-wrap: wrap; gap: 3px; align-items: baseline; }
+.civ-gname { opacity: 0.55; width: 66px; flex: 0 0 66px; }
+/* ★**持っていない技術も薄く出す。** 何が足りないかが見えないと、
+   技術ツリーがあることすら分からない */
+.civ-t {
+  border: 1px solid var(--line, #2a3340); border-radius: 3px;
+  padding: 0 4px; opacity: 0.3;
+}
+.civ-t.own { opacity: 1; background: rgba(120, 200, 255, 0.16); border-color: #4a7fa6; }

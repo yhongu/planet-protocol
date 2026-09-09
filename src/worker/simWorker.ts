@@ -14,7 +14,7 @@ import { WORLD_FIELDS } from "../sim/world"
 import { SPEED_STEPS, couplingForSpeed, tickYears } from "../sim/loop"
 import { initGpu } from "../gpu/device"
 import { GpuClimate } from "../gpu/gpuClimate"
-import type { FromWorker, ToWorker } from "./protocol"
+import type { CivSummary, FromWorker, ToWorker } from "./protocol"
 
 let world: World | null = null
 let yearsPerSecond = 0
@@ -236,6 +236,59 @@ async function tickInner(): Promise<void> {
 }
 
 /**
+ * ★**文明の一覧を作る**（`TickMessage.civ`）。
+ *
+ * ★領域のセル数・面積・土地利用は**場を走査しないと出せない**ので、
+ * ここで 1 回だけ数える（`civId` は u8 の場。文明の側は持っていない）。
+ * 文明は最大 8 なので、セル数ぶんの走査 1 周で足りる。
+ */
+function civSummary(): CivSummary | null {
+  if (!world) return null
+  const st = world.civ.state
+  if (st.emergedYear < 0) return null
+  const W = world.grid.W, H = world.grid.H
+  const cid = world.store.u8("civId").read
+  const use = world.store.f32("landUse").read
+  const lf = world.store.f32("landFraction").read
+  const cells = new Map<number, { n: number; km2: number; used: number; land: number }>()
+  for (let y = 0; y < H; y++) {
+    const km2 = world.grid.cellArea[y]! / 1e6
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x
+      const id = cid[i] ?? 0
+      if (id === 0) continue
+      const e = cells.get(id) ?? { n: 0, km2: 0, used: 0, land: 0 }
+      const f = lf[i] ?? 0
+      e.n++; e.km2 += km2 * f
+      e.used += (use[i] ?? 0) * km2 * f; e.land += km2 * f
+      cells.set(id, e)
+    }
+  }
+  return {
+    emergedYear: st.emergedYear,
+    totalPopulation: st.totalPopulation,
+    energyPerCapita: st.energyPerCapita,
+    landClearCo2Ppm: st.landClearCo2Ppm,
+    invented: st.invented, lost: st.lost,
+    transferred: st.transferred, conquered: st.conquered,
+    civs: st.civs.map((c) => {
+      const e = cells.get(c.id)
+      const tech: number[] = [], origin: number[] = []
+      for (let k = 0; k < c.tech.length; k++) {
+        if (c.tech[k]) { tech.push(k); origin.push(c.techOrigin[k] ?? -1) }
+      }
+      return {
+        id: c.id, foundedYear: c.foundedYear, population: c.population,
+        peakPopulation: c.peakPopulation, energyPerCapita: c.energyPerCapita,
+        lostCount: c.lostCount, tech, techOrigin: origin,
+        cells: e?.n ?? 0, areaKm2: e?.km2 ?? 0,
+        landUse: e && e.land > 0 ? e.used / e.land : 0,
+      }
+    }),
+  }
+}
+
+/**
  * ★**画面へ状態を返す。早送り中もここを通す。**
  *
  * 切り出す前は `tick` の中にべた書きだったので、早送りの分岐が
@@ -302,6 +355,7 @@ function postState(solveMs: number): void {
         bodyPlan: Array.from(c.bodyPlan),
       })),
     },
+    civ: civSummary(),
   })
   // ★出来事は 1 回だけ送る。早送り中も同じ関数を通るので、
   //   ここで消化しないと同じ出来事が何度も画面に出る

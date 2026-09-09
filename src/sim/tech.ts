@@ -301,3 +301,87 @@ export function techGateOk(kind: number, planet: Readonly<Record<PlanetGate, num
   const g = TECHS[kind]!.gate
   return g === undefined || planet[g.kind] >= g.min
 }
+
+/**
+ * ★★**「何をもって中世か、青銅器時代か」**（2026-09-09。ユーザの問い）。
+ *
+ * 結論: **時代は状態変数ではない。持っている技術の【読み方】である。**
+ * 台本を書かないのがこの企画の原則（`docs/00`）なので、
+ * 「いま中世」という旗を立てて中世らしく振る舞わせるのは逆。
+ * ★機構は技術ツリーだけで動かし、時代名は**後から付ける形容詞**にする。
+ *
+ * ★そして**1 本の軸では書けない**。考古学の三時代法（石器・青銅器・鉄器）は
+ * **素材**の話で、「中世」は**社会**の話 —— 別の軸である。
+ * 日本の縄文は「新石器なのに定住・土器」、アメリカ大陸は
+ * 「鉄器を経ずに国家」。1 本にまとめると必ず嘘になるので、**3 つ出す**:
+ *
+ *   1. 素材（三時代法）    ← 何で道具を作っているか
+ *   2. 社会（人類学の類型） ← Service 1962 の band / tribe / chiefdom / state
+ *   3. エネルギー          ← White の法則。1 人あたり W。**唯一の連続量**
+ *
+ * ★**この惑星では地球の名前が付かないことがある。** 化石燃料の門
+ * （`buriedC`）を満たさない惑星に「産業時代」は永久に来ない。
+ * そのときは素材が「鋼」で止まり、社会だけが「国家」まで行く ——
+ * **それが正しい。地球の歴史は 1 本の道ではない。**
+ */
+export interface Era {
+  /** 素材の段（三時代法） */
+  material: string
+  /** 社会の段（Service 1962） */
+  society: string
+  /** 1 人あたりエネルギーの言い換え（White の法則） */
+  energy: string
+}
+
+/** 素材の段。★**上から見て、最初に当たったもの**（後ろほど新しい） */
+const MATERIAL_LADDER: [string, string][] = [
+  ["semiconductor", "情報時代"],
+  ["electricity", "電気時代"],
+  ["steam", "産業時代"],
+  ["steel", "鋼の時代"],
+  ["iron", "鉄器時代"],
+  ["bronze", "青銅器時代"],
+  ["copper", "銅石器時代"],
+  ["pottery", "新石器時代"],
+  ["fire", "旧石器時代（火）"],
+  ["stoneTools", "旧石器時代"],
+]
+
+/**
+ * 社会の段。★**Service (1962) の 4 類型**。
+ * 判定は「その段の社会が持っていないと成り立たない技術」で行う ——
+ * 官僚制と法のある社会は国家、集約農業と儀礼のある社会は首長制、というように。
+ */
+const SOCIETY_LADDER: [string[], string][] = [
+  [["bureaucracy"], "国家"],
+  [["law"], "初期国家"],
+  [["irrigation", "rainfed"], "首長制"],
+  [["agriculture"], "部族（定住）"],
+  [["ritual"], "部族"],
+]
+
+/** White の法則の段（1 人あたり W）。★実測の値は `TECHS` の冒頭のコメント */
+const ENERGY_LADDER: [number, string][] = [
+  [50_000, "高エネルギー社会"],
+  [20_000, "産業社会"],
+  [3_000, "前近代の農業社会"],
+  [1_200, "初期農耕"],
+  [0, "狩猟採集"],
+]
+
+export function eraOf(has: readonly boolean[], energyW: number): Era {
+  let material = "石器以前"
+  for (const [name, label] of MATERIAL_LADDER) {
+    const k = TECH_INDEX.get(name)
+    if (k !== undefined && has[k]) { material = label; break }
+  }
+  let society = "群れ"
+  for (const [names, label] of SOCIETY_LADDER) {
+    if (names.some((n) => { const k = TECH_INDEX.get(n); return k !== undefined && has[k] })) {
+      society = label; break
+    }
+  }
+  let energy = "狩猟採集"
+  for (const [min, label] of ENERGY_LADDER) if (energyW >= min) { energy = label; break }
+  return { material, society, energy }
+}

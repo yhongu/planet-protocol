@@ -44,7 +44,7 @@ import type { World } from "./world"
 import type { Subsystem } from "./loop"
 import { GENE_KINDS, hasCapability } from "./genome"
 import {
-  TECHS, TECH_PREREQ, sumTech, techPrereqOk, techGateOk,
+  TECHS, TECH_PREREQ, ROLE_PROVIDERS, sumTech, techPrereqOk, techGateOk,
   type TechEffect, type PlanetGate,
 } from "./tech"
 import { felsicVolume } from "./tectonics"
@@ -107,19 +107,32 @@ export function logisticStep(n: number, k: number, r: number, dtYears: number): 
  * 技術の維持には**人口規模と繋がり**が要る。学習は不完全なので、
  * 集団が小さいと世代ごとに劣化し、**複雑な技術ほど先に失われる**。
  *
- *   λ = rate × 複雑さ / (人口 × 情報の保持)
+ *   λ = rate × 複雑さ² / (人口 × 情報の保持)
  *
  * ★**目盛りが大事**。最初 rate = 3e4 にしたら、100 万年刻みでは確率が
  * どの規模でも 1 に飽和し、**人口が 40 倍違っても失伝の回数が変わらなかった**
  * （実測: 小さい文明 142 回 / 大きい文明 155 回 —— むしろ逆）。
  * 3e2 に下げたら 小さい文明 60 回 / 大きい文明 38 回になった。
  * ★同じ失敗を発明でもした —— **粗い時間では確率を小さく取らないと差が出ない。**
+ *
+ * ★★**複雑さは 1 乗ではなく 2 乗**（2026-09-09）。
+ * 1 乗だと**石器（複雑さ 0.02）と科学（0.25）で失伝の速さが 12 倍しか違わない**。
+ * ところが地球のタスマニアは、骨器・漁労・防寒着を失っても**石器は保った**——
+ * 失われるのは「教える人が何人も要る技」で、
+ * **単純な技はほぼ絶対に失われない**。1 乗では両者を分けられず、
+ * 実測で**発明 24 回・失伝 24 回**（引いた端から全部落ちる）になった。
+ * 2 乗にすると 0.02 と 0.25 で **156 倍**になり、
+ * 「石器は保つが官僚制は保てない」小さな文明が書ける。
+ *
+ * ★較正はタスマニア: **人口 4000・複雑さ 0.1 の技を 8000 年で失う**
+ * → λ = 1.25e-4 = rate × 0.01 / 1e4（`lossPopRef`）→ **rate = 125**。
  */
 export function techLossLambda(
   complexity: number, pop: number, retention: number,
   rate: number, popRef: number,
 ): number {
-  return rate * complexity / (Math.max(popRef, pop) * Math.max(1e-9, retention))
+  return rate * complexity * complexity
+    / (Math.max(popRef, pop) * Math.max(1e-9, retention))
 }
 
 export function relaxStep(x: number, target: number, tauYears: number, dtYears: number): number {
@@ -164,6 +177,22 @@ export interface CivParams {
    * 陸 1.49e14 m² ×（`biomassTotal` の代表値 0.5）で割り戻して 17。
    * ★最初 1e-3 を当てずっぽうで置いたら**人口が 433 万人で頭打ち**になった
    * （現代の 3 桁下）。**それらしい数字でも桁を確かめること**（罠 13）
+   *
+   * ★★**そしてその 17 を既定に置いたのが間違いだった**（2026-09-09）。
+   * HANPP 25% は**全技術を持った現代**の値なので、17 は
+   * 「技術ゼロの狩猟採集民が現代と同じだけ自然を取れる」と言っていた。
+   * 実測（顕生代の章・技術 0）で **1 セルに 430 万人 = 40 人/km²**、
+   * つまり**集約農業なみの密度**が出ていた（狩猟採集は 0.1 人/km²）。
+   * これは罠 90 の**裏**——「まだ無い技術の見返りを既定で配っていた」。
+   * `agricultureGain` は同じ理由で 0 にしてあったのに、
+   * **その分母である基礎収量の方を見落としていた**（罠 24: 量を変える前に
+   * 「これは誰の較正の分母か」）。
+   *
+   * ★直し方: **17 は終点であって出発点ではない。**
+   * 全技術の `yieldGain` 合計は 218.8（`gross = 1 + 218.8 = 219.8` 倍）なので、
+   * 基礎を **17 / 219.8 = 0.077** に置くと、両端がどちらも地球に合う:
+   *   技術 0     0.077 → 1 セル 2e4 人 = **0.18 人/km²**（狩猟採集 0.1）
+   *   全技術 u=1 17    → 全球 **1.45e10 人**（現代 80 億と同じ桁）
    */
   yieldMolPerM2: number
   /**
@@ -179,12 +208,39 @@ export interface CivParams {
    */
   agricultureGain: number
   /**
-   * ★**1 人を養うのに要る土地** [m²/人]。
+   * ★**1 人が耕せる土地** [m²/人]。
    * 地球の農地 5.0e13 m²（5000 万 km²・牧草地を含む）÷ 80 億人 = 6250 m²/人。
-   * これで「人口が少なければ土地も使わない」が成り立つ。
+   *
+   * ★★**これは「水準」ではなく「速さ」の制限**（2026-09-09 に直した）。
+   * 前は `目標の土地利用 = 人口 × これ / 面積` と書いていた ——
+   * つまり**必要な分しか開墾しない**。それだと輪の利得が 1 を大きく下回り、
+   * 農耕を発明しても土地利用が上がらず**人口が狩猟採集のまま**だった。
+   * いまは**目標は常に `maxLandUse`** で、これは
+   * 「その人口では全部を耕しきれないぶん、開墾が遅い」という**律速**に使う。
    */
   landPerPersonM2: number
-  /** 土地利用が目標へ近づく時定数 [yr] */
+  /**
+   * ★**耕せる土地の上限**（陸のうちの割合）。
+   *
+   * ★較正: 地球は**居住可能な陸の約半分が農地・牧草地**
+   * （FAO / Ellis & Ramankutty）。砂漠・氷・急斜面・都市は耕せない。
+   * ★この 0.5 が効いて、全技術の惑星の人口が
+   * 6.9e7 ×（1 + 218.8 × 0.5）= **76 億人**になる —— 現在の地球と同じ。
+   * **両端（狩猟採集 0.1 人/km² と現代 80 億人）が独立に合う**のは、
+   * 基礎収量・技術の倍率・この上限が別々の根拠を持っているから（罠 110）。
+   */
+  maxLandUse: number
+  /**
+   * 土地利用が目標へ近づく時定数 [yr]。★これに**労働の律速**が掛かる
+   * （`landPerPersonM2` を見ること）。
+   *
+   * ★★**5e4 は地質の時計だった**（2026-09-09）。
+   * 地球で農耕が 1 つの地域を覆うのにかかったのは **2000 年ほど**
+   * （肥沃な三日月地帯 → ヨーロッパ）。5e4 だと**農耕を発明した文明が、
+   * 土地を耕し終える前に必ず崩壊する**（実測で土地利用が 0.8% で頭打ち、
+   * 人口 160 万人）。★罠 113 そのもの ——
+   * **前提が満たされた後は速いのが正しい姿。**
+   */
   landUseTauYears: number
   /** ★**最初の 1 人**。0 はロジスティックの不動点なので、種を置かないと増えない */
   seedPopulation: number
@@ -240,8 +296,8 @@ export interface CivParams {
   /**
    * ★★**複雑さの維持費**（Tainter『複雑社会の崩壊』）。
    *
-   * 技術は収量を上げるが、**維持に資源を食う**。収量から
-   * `これ × 複雑さの合計` を引く。複雑さは足し算で増えるので、
+   * 技術は収量を上げるが、**維持に資源を食う**。収量に
+   * `1 / (1 + これ × 複雑さの合計)` を掛ける。複雑さは足し算で増えるので、
    * **技術を増やすほど 1 つあたりの見返りが減る（収穫逓減）**。
    *
    * ★**これが無いと崩壊が起きない。** 実測（繋ぐ前）で人口が
@@ -249,6 +305,19 @@ export interface CivParams {
    * 表に `complexity` を書いたのに**どこからも読まれていなかった**（罠 46）。
    * ★崩壊を隕石や気候で外から与えると台本になる。
    * **内生させるための唯一の経路がこれ。**
+   *
+   * ★★**最初は引き算（`1 − これ × 複雑さ`）で、0 でクランプしていた**。
+   * 全技術の複雑さの合計は **6.69** なので、0.35 では
+   * `1 − 2.34 = −1.34` → **クランプで 0**。つまり
+   * **複雑さが 2.86 を超えた文明は食料がゼロになって必ず餓死する**、
+   * という収穫逓減ではない**崖**だった（罠 112 ——
+   * クランプの中に連続量を入れると、そのパラメータが死ぬ）。
+   * しかも**画面には何も出ない**ので、産業まで届いた文明が
+   * なぜ滅びるのか分からなかった。
+   *
+   * ★飽和の形（`1/(1+kc)`）にすれば常に正で、Tainter の言う
+   * 「限界収益の逓減」そのものになる。0.1 なら全技術で **0.60** ——
+   * **維持費が総生産の 4 割**という、重いが致命的ではない値。
    */
   complexityCost: number
   /**
@@ -262,6 +331,14 @@ export interface CivParams {
    * それは**1 つの技術**の話。40 技術が並行に引かれると実効で 40 倍速くなるので、
    * 2 桁下げて 1.4e-13 にした。実測で発明 1616 回・伝播 12 回だったのが、
    * ★**地球の姿（伝播が主・独立発明は稀）**に寄る。
+   *
+   * ★★**その 1.4e-13 は、間違った人口の上で較正されていた**（2026-09-09）。
+   * `yieldMolPerM2` が 220 倍大きかったので、狩猟採集の段階でも
+   * 人口が 10⁷ 出ていた。基礎収量を直したら**発明が 220 倍遅くなり**、
+   * 実測で 90Myr のあいだ技術 0 のままだった（罠 14 そのもの ——
+   * **量を変える前に「これは誰の較正の分母か」**）。
+   * 地球の値に戻し、並行に引ける技術が実際には 3〜5 本しか開いていないので
+   * 1 桁だけ下げて **5e-12**。
    */
   inventionRate: number
   /**
@@ -304,10 +381,11 @@ export const EARTH_CIV: CivParams = {
   // 狩猟採集の人口増加は年 0.01〜0.1%。農耕で 0.1〜1%
   growthRate: 1e-3,
   demographicTransitionW: 2000,
-  yieldMolPerM2: 17,
+  yieldMolPerM2: 0.077,
   agricultureGain: 0,
   landPerPersonM2: 6250,
-  landUseTauYears: 5e4,
+  maxLandUse: 0.5,
+  landUseTauYears: 2e3,
   seedPopulation: 1e3,
   // 狩猟採集の 1 人あたりは約 300 W（食料 100 W + 火 200 W。White の目盛り）
   baseEnergyW: 300,
@@ -325,14 +403,14 @@ export const EARTH_CIV: CivParams = {
   minLandFraction: 0.5,
   focusStepYears: 100,
   riverRefDischarge: 5e4,
-  complexityCost: 0.35,
+  complexityCost: 0.1,
   // ★地球に較正: 1000 万人の社会が 5000 年で文字を発明する（50% の確率）
-  inventionRate: 1.4e-13,
+  inventionRate: 5e-12,
   // ★**3e4 → 3e2**（2026-09-08）。3e4 だと 100 万年刻みで確率が
   //   どの規模でも 1 に飽和し、**人口が 40 倍違っても失伝の回数が変わらなかった**
   //   （実測: 小さい文明 142 回 / 大きい文明 155 回 —— むしろ逆）。
   //   3e2 なら 人口 5000 万で 70% / 24 億で 2.5% と **28 倍の差**が付く
-  lossRate: 3e2,
+  lossRate: 125,
   lossPopRef: 1e4,
   habitatDisplacement: 0.9,
   landClearCarbonMolPerM2: 1250,
@@ -446,8 +524,30 @@ export class Civilization implements Subsystem {
    * **失伝**（Henrich 2004 のタスマニア効果）: 確率 ∝ 複雑さ /(人口 × 情報の保持)。
    * ★**孤立した小さな文明は、複雑な技術から先に失う。**
    *
-   * ★確率は必ず `1 − exp(−λ·dt)` で作る —— **刻みに依らないため**
-   * （`λ·dt` と書くと 100 年刻みと 100 万年刻みで別の惑星になる）。
+   * ★★**発明と失伝を別々に抽選してはいけない**（2026-09-09 に直した）。
+   *
+   * 前は「まず発明の抽選、次に失伝の抽選」と 2 段に書いていた。どちらも
+   * `1 − exp(−λ·dt)` なので**1 つずつ見れば刻みに依らない**が、
+   * **2 つ合わせると依る** —— 1 歩の中で「引いて、その後に失う」が
+   * 起こり得ないからである。`λ·dt` が 1 を超えると
+   * **発明の確率は 1 に飽和するのに、その後の失伝は数えられない**。
+   *
+   * 実測の見積り（人口 3 万・石器）:
+   *
+   *   真の平衡     λi/(λi+λl) = 0.081
+   *   100 年刻み                0.081  ← 合う
+   *   100 万年刻み              0.165  ← **2 倍多い**
+   *
+   * ★**正しい形は 2 状態のマルコフ連鎖を解析で解くこと。**
+   * 「持っている / 持っていない」の 2 状態で、両方向の速さが歩の中で一定なら
+   *
+   *   平衡 p* = λi/(λi+λl)、  減衰 = exp(−(λi+λl)·dt)
+   *   P(持っている | いま持っている)   = p* + (1−p*)·減衰
+   *   P(持っている | いま持っていない) = p* · (1−減衰)
+   *
+   * ★**人口のロジスティックと同じ作法**（`logisticStep`）——
+   * 解析解があるものは 1 歩で厳密に解く。片方の λ が 0 なら
+   * 元の `1 − exp(−λ·dt)` にそのまま戻る。
    */
   private evolveTech(
     civ: Civ, planet: Record<PlanetGate, number>, eff: TechEffect, dtYears: number,
@@ -455,49 +555,59 @@ export class Civilization implements Subsystem {
     const p = this.params
     const has = civ.tech
     const pop = civ.population
-    // --- 発明 ---
-    if (pop > 0) {
-      for (let k = 0; k < TECHS.length; k++) {
-        if (has[k] || !techPrereqOk(has, k) || !techGateOk(k, planet)) continue
-        const lambda = p.inventionRate * pop
-        if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
-          has[k] = true
-          // ★**由来 id**。誰が最初に発明したかを残す（収斂と伝播を分ける）
-          civ.techOrigin[k] = this.state.invented
-          this.state.invented++
-        }
-      }
-    }
-    // --- 失伝 ---
     const retain = 1 + eff.retention
+    // ★**「使われているか」は歩の初めの状態で決める。**
+    //   走査しながら `has` を書き換えると、**添字の順で結果が変わる**
+    //   （決定論は保てるが、40 番目の技術だけ扱いが違う惑星になる）
+    const inUse = this.techsInUse(has)
     for (let k = 0; k < TECHS.length; k++) {
-      if (!has[k]) continue
-      // ★前提になっている技術は、それに依存する技術がある限り失われない
-      //   （使い続けているものは忘れない）。
-      //   ★**役割経由の依存も見ること** —— 最初 `needs.includes(名前)` だけを
-      //   見ていたので、**口承を失っても法が残った**（法の前提は役割「記録」）。
-      //   実測で「法・貨幣・官僚制を持つのに文字も口承も無い」文明が出た
-      let inUse = false
-      for (let j = 0; j < TECHS.length && !inUse; j++) {
-        if (!has[j]) continue
-        for (const group of TECH_PREREQ[j]!) {
-          // その前提を満たしているのが**この技術だけ**なら、失うと下流が壊れる
-          if (!group.includes(k)) continue
-          let others = 0
-          for (const alt of group) if (alt !== k && has[alt]) others++
-          if (others === 0) { inUse = true; break }
-        }
-      }
-      if (inUse) continue
-      const lambda = techLossLambda(
-        TECHS[k]!.complexity, pop, retain, p.lossRate, p.lossPopRef)
-      if (this.rng.nextFloat() < 1 - Math.exp(-lambda * dtYears)) {
+      const own = has[k] === true
+      // ★λi は「持っていなかったとしたら発明する速さ」、
+      //   λl は「持っていたとしたら失う速さ」。**現在の状態に依らず両方出す**
+      const canGet = pop > 0 && techPrereqOk(has, k) && techGateOk(k, planet)
+      const li = canGet ? p.inventionRate * pop : 0
+      const ll = own && inUse[k] ? 0
+        : techLossLambda(TECHS[k]!.complexity, pop, retain, p.lossRate, p.lossPopRef)
+      const sum = li + ll
+      if (!(sum > 0)) continue
+      const eq = li / sum
+      const decay = Math.exp(-sum * dtYears)
+      const pHave = own ? eq + (1 - eq) * decay : eq * (1 - decay)
+      const now = this.rng.nextFloat() < pHave
+      if (now === own) continue
+      if (now) {
+        has[k] = true
+        // ★**由来 id**。誰が最初に発明したかを残す（収斂と伝播を分ける）
+        civ.techOrigin[k] = this.state.invented
+        this.state.invented++
+      } else {
         has[k] = false
         civ.techOrigin[k] = -1
         civ.lostCount++
         this.state.lost++
       }
     }
+  }
+
+  /**
+   * ★**下流が使っている技術は失われない**（使い続けているものは忘れない）。
+   *
+   * ★**役割経由の依存も見ること** —— 最初 `needs.includes(名前)` だけを
+   * 見ていたので、**口承を失っても法が残った**（法の前提は役割「記録」）。
+   * 実測で「法・貨幣・官僚制を持つのに文字も口承も無い」文明が出た。
+   */
+  private techsInUse(has: readonly boolean[]): boolean[] {
+    const out = new Array<boolean>(TECHS.length).fill(false)
+    for (let j = 0; j < TECHS.length; j++) {
+      if (!has[j]) continue
+      for (const group of TECH_PREREQ[j]!) {
+        // その前提を満たしているのが**1 つだけ**なら、失うと下流が壊れる
+        let only = -1, n = 0
+        for (const alt of group) if (has[alt]) { only = alt; n++ }
+        if (n === 1) out[only] = true
+      }
+    }
+    return out
   }
 
   /**
@@ -659,11 +769,15 @@ export class Civilization implements Subsystem {
 
     // --- 3. 文明ごとの技術と、その効果 ---
     const effs = new Map<number, TechEffect>()
+    /** ★**農耕の役割を持っているか。** 狩猟採集民は土地を開墾しない */
+    const farming = new Map<number, boolean>()
+    const FARM_ROLE = ROLE_PROVIDERS.get("farming") ?? []
     for (const civ of this.state.civs) {
       const planet = this.measurePlanet(world, civ.id)
       const eff = sumTech(civ.tech)
       effs.set(civ.id, eff)
       this.evolveTech(civ, planet, eff, dtYears)
+      farming.set(civ.id, FARM_ROLE.some((k) => civ.tech[k]))
       civ.energyPerCapita = civ.population > 0 ? p.baseEnergyW + eff.energyW : 0
       civ.population = 0     // 下のセルの走査で数え直す
     }
@@ -685,7 +799,7 @@ export class Civilization implements Subsystem {
         const u = Math.max(0, Math.min(1, use[i] ?? 0))
         // ★**収量は技術が上げ、複雑さの維持費が削る**（Tainter の収穫逓減）
         const gross = 1 + (p.agricultureGain + eff.yieldGain) * u
-        const upkeep = 1 - p.complexityCost * eff.complexity
+        const upkeep = 1 / (1 + p.complexityCost * eff.complexity)
         const food = (bio[i] ?? 0) * land * areaM2 * p.yieldMolPerM2
           * gross * (upkeep > 0 ? upkeep : 0)
         const k = here > 0 ? food / Math.max(1e-9, p.foodPerPerson) : 0
@@ -700,9 +814,19 @@ export class Civilization implements Subsystem {
         pop[i] = after
         total += after
         civ.population += after
-        const needM2 = after * p.landPerPersonM2
-        const target = Math.min(1, needM2 / Math.max(1, land * areaM2))
-        const next = relaxStep(u, target, p.landUseTauYears, dtYears)
+        // ★★**開墾は「必要な分だけ」ではなく「働ける分まで」進む**（Boserup）。
+        //   前は `target = 人口 × 1 人あたりの土地 / 面積` と書いていたが、
+        //   これは**人口が土地の【水準】を決める**式で、輪の利得が
+        //   219 × 2.9e-6 = 0.0006 にしかならず、**農耕を持っても土地利用が
+        //   ほぼ 0 のまま人口が狩猟採集の水準（6900 万人）で止まった**。
+        //   地球の因果は逆で、**農民は開墾を続け、人口が後から追う**。
+        //   だから人口が決めるのは**水準ではなく速さ**（労働が律速）。
+        const farm = farming.get(id) === true
+        const target = farm ? p.maxLandUse : 0
+        const workableM2 = after * p.landPerPersonM2
+        const wantM2 = land * areaM2 * p.maxLandUse
+        const tau = p.landUseTauYears * Math.max(1, wantM2 / Math.max(1, workableM2))
+        const next = relaxStep(u, target, tau, dtYears)
         // ★**炭素は「これまでの最大」を超えた分だけ出る**（片道）。
         //   増分（`next > u`）で数えると、土地利用が揺れるたびに足してしまい、
         //   **刻みを細かくするほど CO2 が膨らむ**（実測: 1 万年刻みで 4071ppm、

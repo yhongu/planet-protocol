@@ -61,6 +61,8 @@
             <span>系譜</span></button>
           <button id="savesBtn" class="act icon tab" title="保存と読み込み・時代を選んで始める">
             <span>記録</span></button>
+          <button id="civBtn" class="act icon tab" title="文明の一覧（人口・技術・失伝）" hidden>
+            <span>文明</span></button>
           <button id="settingsBtn" class="act icon tab" title="惑星の作り直しと物理のつまみ">
             <span>設定</span></button>
         </div>
@@ -230,6 +232,13 @@
            ★由来 id で相同（受け継いだ）と収斂（別々に発明した）を分ける
            ============================================================ -->
       <div id="phylogeny" class="panel phylo" hidden></div>
+
+      <!-- ============================================================
+           文明の一覧。**何を発明し、何を失伝したか**。
+           ★プレイヤーの「技術とかなにを獲得しているかも分からん」への答え。
+           知性が生まれるまでボタンごと出さない（空の表は情報ではない）
+           ============================================================ -->
+      <div id="civPanel" class="panel phylo" hidden></div>
 
       <!-- ============================================================
            設定ドロワー。**惑星を作り直すつまみと物理のつまみ**。

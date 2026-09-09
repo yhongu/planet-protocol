@@ -222,6 +222,56 @@ export interface TickMessage {
      */
     roster: CladeInfo[]
   }
+  /**
+   * ★**文明の一覧**（M6。2026-09-09 に足した）。
+   *
+   * ★足した理由はプレイヤーの言葉そのまま ——
+   * 「**技術とかなにを獲得しているかも分からん**」。
+   * 地図には人口と領域しか出ておらず、**この惑星の文明が何を発明し、
+   * 何を失伝したかを見る場所がどこにも無かった**（罠 94 の
+   * 「その量は誰が見張っているか」の UI 版）。
+   *
+   * 知性が生まれていなければ `null`（★**何も起きていない惑星で
+   * 空の表を出さない**）。
+   */
+  civ: CivSummary | null
+}
+
+/** 文明 1 つぶんの名簿（`TickMessage.civ.civs`） */
+export interface CivInfo {
+  id: number
+  foundedYear: number
+  population: number
+  peakPopulation: number
+  energyPerCapita: number
+  /** 失伝した回数（★タスマニア効果が効いているかを見る） */
+  lostCount: number
+  /** 持っている技術の添字（`tech.ts` の `TECHS`） */
+  tech: number[]
+  /**
+   * 持っている技術の**由来 id**（`tech` と同じ並び）。
+   * ★**同じ由来なら伝播、違えば独立発明**（生命の相同/収斂と同じ仕組み）
+   */
+  techOrigin: number[]
+  /** 領域のセル数と、その面積 [km²] */
+  cells: number
+  areaKm2: number
+  /** 領域のうち農地・都市にした割合（0..1） */
+  landUse: number
+}
+
+export interface CivSummary {
+  /** 知性が現れた年（`yearsElapsed`） */
+  emergedYear: number
+  totalPopulation: number
+  energyPerCapita: number
+  /** 開墾で大気に出した炭素の積算 [ppm] */
+  landClearCo2Ppm: number
+  invented: number
+  lost: number
+  transferred: number
+  conquered: number
+  civs: CivInfo[]
 }
 
 /** 系譜の 1 行。`history` の全クレード（絶滅したものも含む） */
