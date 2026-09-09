@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs"
 import { gunzipSync } from "node:zlib"
 import { loadWorld } from "../../src/sim/snapshot"
 import { GENE_KINDS, hasCapability } from "../../src/sim/genome"
-import { TECHS } from "../../src/sim/tech"
+import { TECHS, eraOf } from "../../src/sim/tech"
 
 const argv = process.argv.slice(2)
 const arg = (k: string, d: string) => {
@@ -73,6 +73,21 @@ report()
 while (w.globals.yearsElapsed < end) {
   w.advance(STEP, OPT)
   if (w.globals.yearsElapsed >= next) { report(); next += GYR * 1e9 / 10 }
+}
+// ★★**同じ惑星に、どれだけ違う時代が同居しているか**（2026-09-09）。
+//   プレイして「情報時代と旧石器時代が並んでいる」と報告された。
+//   地球の 1900 年も産業ヨーロッパと狩猟採集民が同時にいたので**同居は正しい**が、
+//   **技術が伝わっていないだけ**かもしれない。伝播の回数と隣に並べて見る（罠 110）
+{
+  const rows = w.civ.state.civs.map((c) => {
+    const has = new Array<boolean>(TECHS.length).fill(false)
+    for (let i = 0; i < TECHS.length; i++) if (c.tech[i]) has[i] = true
+    const e = eraOf(has, c.energyPerCapita)
+    return `#${c.id} ${e.material}・${e.society}（${e.energy}）`
+      + ` 人口 ${c.population.toExponential(1)}`
+  })
+  console.log("\n★いま同居している時代")
+  console.log(rows.map((r) => "  " + r).join("\n"))
 }
 // ★**文明ごとの技術の中身**。同じ役割を別の技術で満たしているかを見る
 for (const c of w.civ.state.civs) {

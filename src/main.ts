@@ -253,7 +253,16 @@ function boot(): void {
       //   **向こうから知らせないとプレイヤーは気づけない**。
       //   ★ただし**降りるかどうかは選ばせる** —— 降りなくても文明は進む
       if (m.intelligenceBorn) {
+        // ★★**本当に止める。** ここは `speed` とボタンの見た目だけを変えていて、
+        //   **ワーカーへ `run` を送っていなかった**ので、
+        //   「一時停止」の見た目のまま惑星が走り続け、
+        //   **読んでいるあいだに文明が数千万年進んでいた**
+        //   （★プレイして報告された。罠 79 の裏 ——
+        //   「画面がそう言っていること」と「惑星が止まっていること」は別）。
+        //   ★止める前の速度は覚えておき、選び終わったら戻す
+        if (speed > 0) lastSpeed = speed
         speed = 0
+        post({ type: "run", speedMultiplier: 0 })
         for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
         document.querySelector(".sp[data-speed=\"0\"]")?.classList.add("active")
         const el = $("bornPrompt")
@@ -267,7 +276,16 @@ function boot(): void {
           + `<div class="born-btns">`
           + `<button id="bornDescend">降りる（100 年刻み）</button>`
           + `<button id="bornStay">このまま惑星を見る</button></div>`
-        const close = () => { el.hidden = true }
+        // ★選び終わったら、止める前の速度で走り出す（止めっぱなしにしない）
+        const close = () => {
+          el.hidden = true
+          if (lastSpeed > 0) {
+            speed = lastSpeed
+            for (const o of document.querySelectorAll(".sp")) o.classList.remove("active")
+            document.querySelector(`.sp[data-speed="${speed}"]`)?.classList.add("active")
+            post({ type: "run", speedMultiplier: speed })
+          }
+        }
         ;(document.getElementById("bornDescend") as HTMLButtonElement)
           ?.addEventListener("click", () => { post({ type: "setCivFocus", focused: true }); close() })
         ;(document.getElementById("bornStay") as HTMLButtonElement)
