@@ -600,6 +600,12 @@ interface IvInfo {
   local: string
   /** そのあと惑星がどう応じうるか（確定ではない） */
   may: string
+  /**
+   * ★**実測した目安**。無ければ省略。
+   * 「機構はあるのに使い方が分からない」を埋めるための行で、
+   * **測った値だけを書く**（推測を書くと罠 50 と同じ嘘になる）。
+   */
+  tip?: string
   /** 空振りする条件。無ければ省略 */
   fail?: string
 }
@@ -633,8 +639,16 @@ const IV_INFO: Record<IvKind, IvInfo> = {
   nudgeTrait: {
     now: "そのマスの優占クレードの遺伝子を 1 本強める（無ければ 1 本足す）",
     local: "変わるのはそのクレードだけ。惑星の他の場所には即座には及ばない",
-    may: "**能力が手に入るわけではない。** その形質が有利なら選択が伸ばし、"
+    may: "★能力が手に入るわけではない。その形質が有利なら選択が伸ばし、"
       + "不利なら次の 100 万年で戻す。効いたかどうかは系譜タブで読める",
+    // ★**実測した目安を書く**（2026-09-09）。遊んで「知性が生まれない」と
+    //   報告があったが、機構は足りていて**押す回数**が足りていなかった。
+    //   顕生代の章から: 5 回では届かず、**5000 万年ごとに 10 回で知性が生まれた**
+    // ★**この欄は装飾を変換していない**（エスケープのみ）。`**` を書くと
+    //   字のまま出る（罠 71 と同じ症状。撮って気づいた）
+    tip: "★1 回では戻される。顕生代の章からなら、生命のいちばん濃いマスで "
+      + "5000 万年ごとに 10 回（×20 なら 25 秒に 1 回）押すと知性が生まれた"
+      + "（実測）。5 回では届かない",
     fail: "そのマスに生命がいないと空振り",
   },
   injectGene: {
@@ -683,6 +697,7 @@ function setArmed(kind: IvKind | null, btn?: HTMLButtonElement): void {
       `<div class="iv-k">即時</div><div class="iv-v">${esc(info.now)}</div>` +
       `<div class="iv-k">その場</div><div class="iv-v">${esc(info.local)}</div>` +
       `<div class="iv-k">起こりうること</div><div class="iv-v">${esc(info.may)}</div>` +
+      (info.tip ? `<div class="iv-k">目安</div><div class="iv-v">${esc(info.tip)}</div>` : "") +
       (info.fail ? `<div class="iv-k warnk">空振り</div><div class="iv-v">${esc(info.fail)}</div>` : "") +
       `<div class="iv-go">地図をクリック　·　Esc で中止</div>`
   }

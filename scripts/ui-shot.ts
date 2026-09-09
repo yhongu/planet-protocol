@@ -21,6 +21,8 @@ const SHOTS: Record<string, string> = {
   "settings": `document.getElementById("settingsBtn").click()`,
   "phylogeny": `document.getElementById("phyloBtn").click()`,
   "armed": `document.querySelector('.iv[data-kind="volcano"]').click()`,
+  // ★神の手（脳）の説明。**測った目安**が出ているかを確かめる
+  "armed-brain": `document.querySelector('.iv[data-gene="brain"]').click()`,
   "diag": `document.getElementById("detDiag").open = true`,
   // ★知性の誕生の問いかけ（M6）。実際に知性が生まれるまで回すのは長いので、
   //   **表示だけを出して重なりと収まりを見る**（罠 48: 撮るまで入ったと言わない）
