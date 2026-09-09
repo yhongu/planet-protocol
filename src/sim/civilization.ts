@@ -491,7 +491,23 @@ export class Civilization implements Subsystem {
    * `focused` なら内部で `focusStepYears` に割って回す。
    * 惑星の速さは変わらず、文明だけが細かくなる。
    */
-  readonly preferredStepYears = 1_000_000
+  /**
+   * ★★**降りたら 100 年、惑星を見ているときは 100 万年**（2026-09-09）。
+   *
+   * ★**前は 100 万年で固定していた**（`SimLoop` が
+   * `stepYears = min(preferredStepYears)` で全体を合わせるので、
+   * 文明が 100 年を要求すると惑星ぜんぶが 100 年刻みになり、
+   * **速度ボタンが効かず時間が止まって見えた**）。
+   *
+   * ★いま固定をやめられるのは、**降りると速度の段そのものが
+   * 人間の尺度になった**から（`loop.ts` の `CIV_SPEED_STEPS`:
+   * ×1 = 10 年/秒 … ×20 = 200 年/秒）。
+   * 1 秒に進める年数が 200 年なら、100 年刻みは「粗くなる」のではなく
+   * **ちょうどよい**。片方だけ変えたのが前回の誤りだった。
+   */
+  get preferredStepYears(): number {
+    return this.focused ? this.params.focusStepYears : 1_000_000
+  }
   readonly maxStepYears = 1e9
   /** ★プレイヤーが「降りて」いるか。UI が切り替える */
   focused = false

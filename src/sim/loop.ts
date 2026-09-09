@@ -114,10 +114,53 @@ export const SPEED_STEPS: readonly {
   { multiplier: 20, yearsPerSecond: 2_000_000, couplingYears: 200_000 },
 ]
 
+/**
+ * ★★**降りたときの速度の段**（2026-09-09。プレイして要望された）。
+ *
+ * 惑星の段（10 万〜200 万年/秒）では、**文明史の 1 万年が 0.005 秒**で
+ * 通り過ぎる。実測で「知性の誕生 → 産業」が 60Myr = ×20 で **30 秒**、
+ * その中の農耕から産業までは**まばたきの間**しか映らない。
+ *
+ * ★**降りたら時計を人間の尺度に替える。** これで設計方針 A-2 の
+ * 「降りる」が初めて意味を持つ ——
+ * 惑星を見るときは 100 万年/秒、文明を見るときは 100 年/秒。
+ *
+ * ★**倍率の番号は同じ**（×1 ×5 ×10 ×20）ので、ボタンも押し方も変わらない。
+ * 変わるのは 1 秒あたりの年数だけ。
+ *
+ * ★結合間隔は**その段の刻みまで細かくする**。惑星の段では
+ * 「刻みを結合より細かくしても solve が減らない」ので粗くしていたが、
+ * ここでは逆に**結合が粗いと時間が進まない**（`simWorker` の
+ * `step = max(刻み, 結合)` が 5 万年になり、10 年/秒では 5000 秒かかる）。
+ * 気候を余分に解くのは無駄ではあっても**誤りではない**（準静的なので
+ * 細かく解くほど正確）。
+ */
+export const CIV_SPEED_STEPS: readonly {
+  multiplier: number
+  yearsPerSecond: number
+  couplingYears: number
+}[] = [
+  // ★★**結合間隔を 1 年にしてはいけない。** `World.chunked` は
+  //   `while (remaining > 1)` で刻むので、**1 年ちょうどの歩は 1 つも実行されず
+  //   時間が完全に止まる**（実測: ×1 で 1 秒に 0 年）。
+  //   数値の端数を捨てるための床であって、消してよいものではないので、
+  //   **こちらの段を 2 年以上にする**。実測（`probe-civspeed.ts`）で
+  //   4 段とも段の年/秒どおりに進み、壁時計は 100ms 未満
+  { multiplier: 1, yearsPerSecond: 10, couplingYears: 5 },
+  { multiplier: 5, yearsPerSecond: 50, couplingYears: 5 },
+  { multiplier: 10, yearsPerSecond: 100, couplingYears: 5 },
+  { multiplier: 20, yearsPerSecond: 200, couplingYears: 10 },
+]
+
+/** いま使う段の表。★**降りているかどうかで丸ごと切り替える** */
+export function speedStepsFor(civFocused: boolean) {
+  return civFocused ? CIV_SPEED_STEPS : SPEED_STEPS
+}
+
 /** その速度の段で使う結合間隔 [yr]。段に無ければ既定 */
-export function couplingForSpeed(multiplier: number): number {
-  const step = SPEED_STEPS.find((s) => s.multiplier === multiplier)
-  return step ? step.couplingYears : 50_000
+export function couplingForSpeed(multiplier: number, civFocused = false): number {
+  const step = speedStepsFor(civFocused).find((s) => s.multiplier === multiplier)
+  return step ? step.couplingYears : (civFocused ? 5 : 50_000)
 }
 
 export function epochAt(yearsElapsed: number, totalYears = 4.5e9): EpochDef {
@@ -263,10 +306,11 @@ export class SimLoop {
  * 実測のレート（進んだ年数 ÷ 実時間）を出すと 100.5 や 145 のように揺れて
  * FPS のように見える。追いつけていないことは `throttled` で示せばよい。
  */
-export function resolveSpeed(epoch: EpochDef, multiplier: number): number {
+export function resolveSpeed(epoch: EpochDef, multiplier: number, civFocused = false): number {
   if (multiplier <= 0) return 0
-  const step = SPEED_STEPS.find((s) => s.multiplier === multiplier)
-  const yps = step ? step.yearsPerSecond : multiplier * SPEED_STEPS[0].yearsPerSecond
+  const table = speedStepsFor(civFocused)
+  const step = table.find((s) => s.multiplier === multiplier)
+  const yps = step ? step.yearsPerSecond : multiplier * table[0]!.yearsPerSecond
   return Math.max(MIN_YEARS_PER_SECOND,
     Math.min(MAX_YEARS_PER_SECOND, epoch.maxYearsPerSecond, yps))
 }

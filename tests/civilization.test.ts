@@ -6,6 +6,9 @@ import {
 import {
   TECHS, TECH_INDEX, ROLE_PROVIDERS, techPrereqOk, techGateOk, sumTech,
 } from "../src/sim/tech"
+import {
+  EPOCHS, SPEED_STEPS, CIV_SPEED_STEPS, resolveSpeed, couplingForSpeed, tickYears,
+} from "../src/sim/loop"
 
 /**
  * ★★**時間解像度の独立性**（M6 の設計上の契約。2026-09-08）。
@@ -233,5 +236,51 @@ describe("文明（M6）", () => {
     expect(origins.size).toBe(2)                    // 2 系統の由来
     expect(a.techOrigin[fire]).toBe(c.techOrigin[fire])  // ★a→c は伝播
     expect(a.techOrigin[fire]).not.toBe(b.techOrigin[fire]) // a と b は収斂
+  })
+})
+
+/**
+ * ★★**降りたら時計が人間の尺度になる**（2026-09-09。プレイして要望された）。
+ *
+ * 惑星の段（10 万〜200 万年/秒）では文明史の 1 万年が 0.005 秒で通り過ぎる。
+ * ★**倍率の番号は変えず（×1 ×5 ×10 ×20）、1 秒あたりの年数だけ替える。**
+ */
+describe("降りたときの速度の段", () => {
+  const epoch = EPOCHS.find((e) => e.id === "phanerozoic")!
+  it("×1 = 10 年/秒 … ×20 = 200 年/秒", () => {
+    expect(resolveSpeed(epoch, 1, true)).toBe(10)
+    expect(resolveSpeed(epoch, 5, true)).toBe(50)
+    expect(resolveSpeed(epoch, 10, true)).toBe(100)
+    expect(resolveSpeed(epoch, 20, true)).toBe(200)
+  })
+  it("降りていなければ惑星の段のまま（★既定を壊していないこと）", () => {
+    for (const s of SPEED_STEPS) {
+      expect(resolveSpeed(epoch, s.multiplier, false)).toBe(s.yearsPerSecond)
+    }
+  })
+  it("★★時間が止まらない: 刻みが結合間隔より小さくならない罠", () => {
+    // `simWorker` は step = max(tickYears, coupling) で進める。
+    // 結合が 5 万年のままだと 10 年/秒では 5000 秒かかって**画面が凍る**。
+    // ★**1 秒あたり少なくとも 1 歩は進むこと**を検査する
+    for (const st of CIV_SPEED_STEPS) {
+      const yps = resolveSpeed(epoch, st.multiplier, true)
+      const step = Math.max(tickYears(yps), couplingForSpeed(st.multiplier, true))
+      expect(step).toBeLessThanOrEqual(yps)
+      // ★★`World.chunked` は `while (remaining > 1)` で刻むので、
+      //   **1 年ちょうどの歩は 1 つも実行されない**（実測で 1 秒に 0 年進んだ）。
+      //   段の側が 2 年以上であることを見張る
+      expect(step).toBeGreaterThan(1)
+    }
+  })
+  it("★文明の刻みは降りたときだけ細かくなる", () => {
+    const civ = new Civilization({ enabled: 1 })
+    expect(civ.preferredStepYears).toBe(1_000_000)
+    civ.focused = true
+    expect(civ.preferredStepYears).toBe(EARTH_CIV.focusStepYears)
+    // ★**サブステップが溢れないこと。** `SubsystemLoop` は
+    //   min(preferredStepYears) に合わせるので、1 秒ぶんの年数を
+    //   その刻みで割った回数が上限（16）を超えると throttle される
+    const yps = resolveSpeed(epoch, 20, true)
+    expect(Math.ceil(tickYears(yps) / civ.preferredStepYears)).toBeLessThanOrEqual(16)
   })
 })

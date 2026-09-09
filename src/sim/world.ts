@@ -399,9 +399,12 @@ export class World {
     return epochAt(this.globals.yearsElapsed, PLANET_AGE_YEARS)
   }
 
-  /** 現在のエポックと速度倍率から、1 実時間秒あたりの進行年数を返す */
+  /**
+   * 現在のエポックと速度倍率から、1 実時間秒あたりの進行年数を返す。
+   * ★**降りていれば人間の尺度の段**（×1 = 10 年/秒）を使う。
+   */
   yearsPerSecond(multiplier: number): number {
-    return resolveSpeed(this.epoch, multiplier)
+    return resolveSpeed(this.epoch, multiplier, this.civ.focused)
   }
 
   /**
@@ -558,6 +561,10 @@ export class World {
     const fired: Record<string, number> = {}
     let remaining = years
     let guard = 0
+    // ★**`> 1` は端数を捨てる床。** 1 年ちょうどの歩は 1 度も実行されない ——
+    //   文明の速度の段（`CIV_SPEED_STEPS`）を 1 年結合にしたとき、
+    //   **1 秒に 0 年しか進まなかった**（`probe-civspeed.ts` で見つけた）。
+    //   段の側を 2 年以上にすること。ここを 0 にすると端数で回り続ける
     while (remaining > 1 && guard++ < 4096) {
       const q = Math.min(this.climateCouplingYears, remaining)
       // エアロゾルは指数的に減衰する（成層圏の滞留時間は数年）

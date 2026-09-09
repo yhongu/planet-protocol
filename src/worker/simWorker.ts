@@ -129,6 +129,12 @@ async function tickInner(): Promise<void> {
   // ★**本当にそこまで回す。** 決め打ちの初期値を置くと、その惑星の歴史が
   // 嘘になる。時間はかかるので、**16ms ごとに進捗を返して画面を止めない**
   if (skipTarget > 0) {
+    // ★**早送りは惑星の尺度で行う。** 降りたままだと 1 秒に 200 年しか進まず、
+    //   章まで数万年かかる（`CIV_SPEED_STEPS`）。早送りは地質の動作なので戻す
+    if (world.civ.focused) {
+      world.civ.focused = false
+      world.climateCouplingYears = couplingForSpeed(20)
+    }
     const budgetMs = performance.now() + 16
     while (world.globals.yearsElapsed < skipTarget && performance.now() < budgetMs) {
       // ★物理上限の段（×20）で回す。それより速くすると風化サーモスタットの
@@ -187,7 +193,7 @@ async function tickInner(): Promise<void> {
   // `world.chunked` は `min(結合間隔, 残り)` で刻むので、刻みの方が小さいと
   // 結合を粗くしても solve の回数が減らない（＝節約にならない）。
   // ×20 なら 刻み 100kyr・結合 200kyr → 実際は 100kyr ごとに solve していた
-  const coupling = couplingForSpeed(speedMultiplier)
+  const coupling = couplingForSpeed(speedMultiplier, world.civ.focused)
   const step = Math.max(tickYears(yearsPerSecond), coupling)
   let advanced = false
   if (step > 0) {
@@ -371,7 +377,7 @@ function applySpeed(m: number): void {
   yearBank = 0
   speedMultiplier = m
   if (world) {
-    world.climateCouplingYears = couplingForSpeed(m)
+    world.climateCouplingYears = couplingForSpeed(m, world.civ.focused)
     yearsPerSecond = world.yearsPerSecond(m)
   }
 }
@@ -442,8 +448,16 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break
     }
     case "setCivFocus":
-      // ★**降りる/戻る。** 文明の刻みだけが変わり、惑星の物理は粗くならない
-      if (world) world.civ.focused = m.focused
+      // ★**降りる/戻る。** 速度の段そのものが人間の尺度に替わる
+      //   （×1 = 10 年/秒 … ×20 = 200 年/秒。`loop.ts` の `CIV_SPEED_STEPS`）。
+      //   ★切り替えた瞬間に年/秒と結合間隔を作り直すこと ——
+      //   しないと次に速度ボタンを押すまで古い尺度のままになる
+      if (world) {
+        world.civ.focused = m.focused
+        world.climateCouplingYears = couplingForSpeed(speedMultiplier, m.focused)
+        yearsPerSecond = world.yearsPerSecond(speedMultiplier)
+        yearBank = 0
+      }
       break
     case "setGlobals":
       if (world) {
@@ -583,7 +597,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       badTicks = 0
       // ★**速い段ほど気候の結合を粗くする**（`SPEED_STEPS.couplingYears`）。
       // 計算費は結合間隔で決まるので、ここが「重い/軽い」の主な調整点
-      if (world) world.climateCouplingYears = couplingForSpeed(m.speedMultiplier)
+      if (world) world.climateCouplingYears =
+        couplingForSpeed(m.speedMultiplier, world.civ.focused)
       break
   }
 }

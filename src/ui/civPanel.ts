@@ -53,12 +53,28 @@ export class CivPanel {
   /** 惑星の経過年（★「何年前に建国したか」を出すのに要る） */
   private years = 0
 
+  /**
+   * ★**降りているか**（`setCivFocus`）。
+   * 降りると速度の段が人間の尺度になる（×1 = 10 年/秒 … ×20 = 200 年/秒）。
+   */
+  private focused = false
+  /** 降りる / 惑星に戻る を切り替える。main が worker へ送る */
+  onSetFocus: ((focused: boolean) => void) | null = null
+
   constructor(root: HTMLElement) {
     this.root = root
     root.innerHTML =
-      `<div class="row title">文明<button id="civClose" class="mini">✕</button></div>` +
+      `<div class="row title">文明` +
+      `<button id="civFocus" class="mini wide"></button>` +
+      `<button id="civClose" class="mini">✕</button></div>` +
       `<div class="civ-body"></div>`
     root.querySelector("#civClose")!.addEventListener("click", () => this.close())
+    // ★★**戻る道を必ず作る。** 「降りる」しか無いと、
+    //   一度降りたプレイヤーは 200 年/秒に取り残される（45 億年は進めない）
+    root.querySelector("#civFocus")!.addEventListener("click", () => {
+      this.setFocused(!this.focused)
+      this.onSetFocus?.(this.focused)
+    })
     root.addEventListener("click", (e) => {
       const el = (e.target as HTMLElement).closest("[data-civ]")
       if (!el) return
@@ -66,6 +82,16 @@ export class CivPanel {
       this.selected = this.selected === id ? -1 : id
       this.render()
     })
+  }
+
+  /** 外から降下の状態を合わせる（モーダルで降りたときなど） */
+  setFocused(v: boolean): void {
+    this.focused = v
+    const b = this.root.querySelector("#civFocus") as HTMLButtonElement | null
+    if (b) {
+      b.textContent = v ? "惑星に戻る（100 万年/秒）" : "降りる（10〜200 年/秒）"
+      b.classList.toggle("on", v)
+    }
   }
 
   get open(): boolean { return !this.root.hidden }

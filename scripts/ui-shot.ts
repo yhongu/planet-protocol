@@ -31,10 +31,11 @@ const SHOTS: Record<string, string> = {
     el.hidden = false;
     el.innerHTML = '<b>★ 知性が生まれた</b>'
       + '<div class="skip-sub">4.00 Ga　この惑星に、象徴を扱う系統が現れました。<br>'
-      + '文明は地質時間では一瞬です —— <b>降りる</b>と時間の刻みが'
-      + '100 万年から 100 年になり、文明史を追えます。<br>'
+      + '文明は地質時間では一瞬です —— <b>降りる</b>と時計が人間の尺度に'
+      + '替わり（×1 = 10 年/秒 … ×20 = 200 年/秒）、文明史を追えます。<br>'
+      + 'いつでも「文明」タブから惑星に戻れます。<br>'
       + '★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>'
-      + '<div class="born-btns"><button>降りる（100 年刻み）</button>'
+      + '<div class="born-btns"><button>降りる（10〜200 年/秒）</button>'
       + '<button>このまま惑星を見る</button></div>';
   })()`,
   "title": `void 0`,

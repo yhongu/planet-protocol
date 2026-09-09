@@ -86,6 +86,13 @@ const inspector = new Inspector($("inspector"))
 const phylogeny = new Phylogeny($("phylogeny"))
 // ★文明の一覧（M6）。**知性が生まれるまでボタンごと出さない**
 const civPanel = new CivPanel($("civPanel"))
+civPanel.setFocused(false)
+civPanel.onSetFocus = (f) => {
+  post({ type: "setCivFocus", focused: f })
+  // ★**尺度が変わったら速度表示も変わる。** 走っていれば同じ倍率で走り直す
+  //   （年/秒はワーカーが返す `yearsPerSecond` に出る）
+  if (speed > 0) post({ type: "run", speedMultiplier: speed })
+}
 // ★`scripts/ui-shot.ts` から偽のデータを流し込んで撮るための口。
 //   知性が生まれるまで実際に回すと数十分かかるので、**見た目だけを先に確かめる**
 //   （罠 48「撮るまで入ったと言わない」を、長い前提のある画面にも通すため）
@@ -270,11 +277,12 @@ function boot(): void {
         el.innerHTML = `<b>★ 知性が生まれた</b>`
           + `<div class="skip-sub">${whenLabel(m.years)}　`
           + `この惑星に、象徴を扱う系統が現れました。<br>`
-          + `文明は地質時間では一瞬です —— <b>降りる</b>と時間の刻みが`
-          + `100 万年から 100 年になり、文明史を追えます。<br>`
+          + `文明は地質時間では一瞬です —— <b>降りる</b>と時計が人間の尺度に`
+          + `替わり（×1 = 10 年/秒 … ×20 = 200 年/秒）、文明史を追えます。<br>`
+          + `いつでも「文明」タブから惑星に戻れます。<br>`
           + `★<b>降りなくても文明は進みます</b>（結果は同じです）。</div>`
           + `<div class="born-btns">`
-          + `<button id="bornDescend">降りる（100 年刻み）</button>`
+          + `<button id="bornDescend">降りる（10〜200 年/秒）</button>`
           + `<button id="bornStay">このまま惑星を見る</button></div>`
         // ★選び終わったら、止める前の速度で走り出す（止めっぱなしにしない）
         const close = () => {
@@ -287,7 +295,11 @@ function boot(): void {
           }
         }
         ;(document.getElementById("bornDescend") as HTMLButtonElement)
-          ?.addEventListener("click", () => { post({ type: "setCivFocus", focused: true }); close() })
+          ?.addEventListener("click", () => {
+            post({ type: "setCivFocus", focused: true })
+            civPanel.setFocused(true)   // ★戻るボタンの見た目を合わせる
+            close()
+          })
         ;(document.getElementById("bornStay") as HTMLButtonElement)
           ?.addEventListener("click", close)
       }
