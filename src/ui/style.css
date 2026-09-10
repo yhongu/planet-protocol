@@ -1276,10 +1276,17 @@ button.primary:hover { background: #2c6288; }
 .es-desc { font-size: 11.5px; line-height: 1.7; color: var(--fg); }
 .es-sec { margin: 12px 0 6px; font-size: 11px; color: var(--dim);
   border-left: 2px solid #8cc8d8; padding-left: 7px; }
-.es-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0;
+.es-row { display: flex; align-items: center; gap: 8px; padding: 3px 0;
   font-size: 11.5px; border-bottom: 1px dotted rgba(120, 150, 180, 0.18); }
 .es-row span { color: var(--dim); }
-.es-row b { font-family: var(--mono, monospace); }
+/* ★点線は「名前と値をつなぐ線」。伸びる場所はここだけ */
+.es-row s { flex: 1 1 auto; height: 1px; background: rgba(120, 150, 180, 0.18); }
+.es-row b { font-family: var(--mono, monospace); white-space: nowrap; }
+.es-ico { font-style: normal; width: 14px; text-align: center; opacity: 0.8; }
+/* ★カルーセルの点。広い画面では出さない（カードが全部見えているので要らない） */
+.era-dots { grid-area: dots; display: none; justify-content: center; gap: 7px; }
+.ed { width: 7px; height: 7px; background: rgba(120, 150, 180, 0.3); }
+.ed.on { background: #8cc8d8; }
 .es-foot { margin-top: 10px; font-size: 10.5px; line-height: 1.65; color: var(--dim); }
 /* --- 時間軸 --- */
 /* ★幅は時代の長さに比例（`flex` を JS が入れる）。等分にすると
@@ -1295,11 +1302,85 @@ button.primary:hover { background: #2c6288; }
 .era-btns { grid-area: btns; display: flex; justify-content: space-between; gap: 10px; }
 .era-btns button { padding: 10px 26px; font-size: 13px; }
 
-/* 狭い画面では 1 列に落とす（罠 72: 入るかは撮ってから言う） */
-@media (max-width: 900px) {
-  .ttl-screen { grid-template-columns: 1fr; }
-  .ttl-stage { display: none; }
-  .ttl-era { grid-template-columns: 1fr;
-    grid-template-areas: "head" "cards" "side" "time" "adv" "btns"; }
-  .era-cards { grid-template-columns: repeat(2, 1fr); }
+/* ============================================================
+   ★★ スマホ（プレイヤーのモック 2026-09-10）
+   ★**球を消さない。** 最初にここを `display: none` にして撮ったら、
+   「惑星が回っている」というこの画面の唯一の主題が消えていた（罠 72 の
+   「撮ってから言う」で気づいた）。狭い画面では**縦に積む**のであって、
+   大事な物を落とすのではない。
+   ============================================================ */
+@media (max-width: 760px) {
+  /* --- タイトル --- */
+  .ttl-screen {
+    grid-template-columns: 1fr; grid-template-rows: auto 1fr auto;
+    justify-items: center; align-content: center; gap: 3vh;
+    padding: 4vh 18px 60px; overflow-x: hidden;
+  }
+  .ttl-title { position: static; text-align: center; }
+  /* ★字間が広いので、`vw` だけで決めると必ずはみ出す（実測: 390px で溢れた）。
+     **字間ごと縮める**こと */
+  .ttl-name {
+    font-size: clamp(19px, 6.4vw, 34px); letter-spacing: 0.10em;
+    border-bottom: none; white-space: nowrap;
+  }
+  .ttl-name::before, .ttl-name::after {
+    content: ""; display: inline-block; width: 5vw; max-width: 26px; height: 1px;
+    vertical-align: middle; margin: 0 9px; background: rgba(150, 180, 210, 0.5);
+  }
+  .ttl-title { width: 100%; }
+  .ttl-sub { letter-spacing: 0.3em; font-size: 11px; }
+  .ttl-globe { width: min(66vw, 34vh); height: min(66vw, 34vh); }
+  .ttl-menu { width: 100%; padding: 0; border: none; background: none; gap: 10px; }
+  .ttl-item { justify-content: center; padding: 15px; font-size: 15px; }
+  .ttl-item.small { font-size: 14px; padding: 14px; }
+  /* 下の帯は seed と一言だけ。テストの件数は畳む */
+  .ttl-bar { justify-content: center; gap: 10px; font-size: 10px; }
+  .ttl-bar > span:nth-child(2), .ttl-ver { display: none; }
+
+  /* --- 開始時代 --- */
+  /* ★★**grid のままにしない。** `auto` の行は器が足りないと縮むので、
+     カードの球が**上半分だけ切れて**表示された（実測。撮って気づいた）。
+     縦に積むだけなら flex にして、**中身の高さを保ったまま画面を送る**方が正しい。
+     DOM の並び（見出し→カード→点→パラメータ→時間軸→詳細→ボタン）が
+     そのまま欲しい順なので、`order` も要らない */
+  .ttl-era {
+    display: flex; flex-direction: column; gap: 10px; padding: 12px 0 14px;
+  }
+  .ttl-era > * { flex: 0 0 auto; }
+  .era-head { text-align: center; border-left: none; padding: 0 14px; }
+  .era-head b { font-size: 22px; }
+  /* ★★**横に流して選ぶ。** 両側に少しだけ隣を覗かせる（11vw）ので、
+     「まだ他にもある」ことが説明なしで分かる */
+  .era-cards {
+    display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory; padding: 0 11vw; scrollbar-width: none;
+  }
+  .era-cards::-webkit-scrollbar { display: none; }
+  .ttl-card2 { flex: 0 0 78vw; scroll-snap-align: center; }
+  .c2-head b { font-size: 17px; }
+  /* ★★**球の大きさは幅ではなく【高さ】で決める。** 幅（78vw）で決めると、
+     縦長の端末ほど余るのに横長の端末では溢れる —— 実測で 390x844 では
+     ボタンが折り返しの下に沈んだ。1 画面に収めたい物が下にあるときは、
+     いちばん大きい物を `vh` で抑えること */
+  .c2-globe { width: min(100%, 25vh); height: min(100%, 25vh); margin: 0 auto; display: block; }
+  .era-dots { display: flex; }
+  .era-time { display: none; }
+  /* ★`align-self: start` は縦並びの grid では「上に寄せる」だが、
+     flex の縦積みでは**「幅を内容に縮める」**になる。同じ宣言が
+     並び方で意味を変えるので、モバイル側で戻すこと（実測で欄が半分になった） */
+  .era-side { align-self: stretch; }
+  .era-side, .era-adv, .era-btns { margin: 0 14px; }
+  /* ★★**カードに出ている物を、下でもう一度出さない。**
+     名前・年代・一行・難易度はカードにあるので、狭い画面では
+     **パラメータだけ**にする。重複を削るだけで 150px 空いて、
+     ボタンが折り返しの下に沈まなくなった（実測） */
+  .es-head, .es-name, .es-ga, .es-tag, .es-desc { display: none; }
+  /* ★但し書きもカードに出ている（「配布ずみ」/「その場で計算」の札）ので落とす */
+  .es-foot { display: none; }
+  .es-sec { margin-top: 0; }
+  .es-row { padding: 5px 0; font-size: 12px; }
+  .era-btns button { flex: 1 1 0; padding: 14px 0; }
 }
+
+/* ボタンの山括弧は飾り。★字面の一部ではないので薄くする */
+.era-btns i { font-style: normal; opacity: 0.55; padding: 0 4px; }

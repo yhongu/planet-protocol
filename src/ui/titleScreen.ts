@@ -126,6 +126,8 @@ export class TitleScreen {
     return `<div class="ttl-era">
       <div class="era-head"><b>開始時代</b><span>惑星の初期状態を選択</span></div>
       <div class="era-cards">${cards}</div>
+      <div class="era-dots">${CHAPTERS.map((c) =>
+        `<i class="ed" data-id="${c.id}"></i>`).join("")}</div>
       <aside class="era-side" id="ttSide"></aside>
       <div class="era-time">${CHAPTERS.map((c, i) => {
         // ★★**時間軸は実際の長さに比例させる。** 4 等分にすると
@@ -158,8 +160,8 @@ export class TitleScreen {
         <div class="ttl-note">地球は 0.29。小さくすると水惑星、大きくすると乾いた惑星</div>
       </details>
       <div class="era-btns">
-        <button id="ttBack">← 戻る</button>
-        <button id="ttStart" class="primary">この時代から開始</button>
+        <button id="ttBack"><i>‹</i> 戻る</button>
+        <button id="ttStart" class="primary">この時代から開始 <i>›</i></button>
       </div>
     </div>`
   }
@@ -169,7 +171,14 @@ export class TitleScreen {
     const c = CHAPTERS.find((x) => x.id === id)!
     const ship = this.chapters.find((x) => x.id === id)
     const note = ERA_NOTE[id]
-    const row = (k: string, v: string) => `<div class="es-row"><span>${k}</span><b>${v}</b></div>`
+    // ★行の絵は**目印**であって情報ではない。狭い画面で行を目で追うためのもの
+    const ICON: Record<string, string> = {
+      "全球平均気温": "🌡", "CO₂": "☁", "O₂": "◯", "海面水": "💧",
+      "生命": "🧬", "生きている系統": "🧬", "大酸化事変": "◯", "格子": "▦",
+    }
+    const row = (k: string, v: string) =>
+      `<div class="es-row"><i class="es-ico">${ICON[k] ?? "・"}</i>`
+      + `<span>${k}</span><s></s><b>${v}</b></div>`
     const num = (n: number, d = 0) => n.toLocaleString(undefined,
       { minimumFractionDigits: d, maximumFractionDigits: d })
     return `<div class="es-head">選択中の時代</div>`
@@ -250,6 +259,23 @@ export class TitleScreen {
     }
   }
 
+  /**
+   * ★**配られた章では seed も大きさも陸の割合も効かない。**
+   * 触れるのに効かないつまみは、嘘をついているのと同じ。
+   * ★カードを押したときと、スマホで流して選んだときの**両方から呼ぶ**ので
+   * 1 か所にまとめてある（罠 65）。
+   */
+  private applyFixedPlanet(card: HTMLElement): void {
+    const ship = !!card.dataset.chapter
+    this.root.classList.toggle("fixed-planet", ship)
+    for (const el of this.root.querySelectorAll<HTMLElement>(
+      "#ttSeed, #ttGrid, #ttLand, #ttDice")) {
+      (el as HTMLInputElement).disabled = ship
+    }
+    const note = this.root.querySelector<HTMLElement>("#ttFixed")
+    if (note) note.hidden = !ship
+  }
+
   private wire(): void {
     const q = <T extends HTMLElement>(s: string): T | null => this.root.querySelector<T>(s)
     this.wireGlobe()
@@ -262,8 +288,37 @@ export class TitleScreen {
       for (const t of this.root.querySelectorAll<HTMLElement>(".et")) {
         t.classList.toggle("on", t.dataset.id === on?.dataset.id)
       }
+      for (const d of this.root.querySelectorAll<HTMLElement>(".ed")) {
+        d.classList.toggle("on", d.dataset.id === on?.dataset.id)
+      }
     }
     side()
+    // ★★**スマホでは横に流して選ぶ**（プレイヤーのモック 2026-09-10）。
+    //   ★選択の主は**画面の中央にあるカード**。指で流した結果と、
+    //   選ばれている物が食い違うと、押した覚えのない時代で始まってしまう
+    const strip = q<HTMLElement>(".era-cards")
+    if (strip) {
+      let timer = 0
+      strip.addEventListener("scroll", () => {
+        clearTimeout(timer)
+        timer = window.setTimeout(() => {
+          // 横に流せない（＝広い画面）ときは何もしない
+          if (strip.scrollWidth <= strip.clientWidth + 4) return
+          const mid = strip.scrollLeft + strip.clientWidth / 2
+          let best: HTMLElement | null = null, bestD = Infinity
+          for (const c of strip.querySelectorAll<HTMLElement>(".ttl-card2")) {
+            const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - mid)
+            if (d < bestD) { bestD = d; best = c }
+          }
+          if (best && !best.classList.contains("on")) {
+            for (const o of strip.querySelectorAll(".ttl-card2")) o.classList.remove("on")
+            best.classList.add("on")
+            side()
+            this.applyFixedPlanet(best)
+          }
+        }, 90)
+      })
+    }
     for (const b of this.root.querySelectorAll<HTMLButtonElement>("[data-go]")) {
       b.addEventListener("click", () => {
         const go = b.dataset.go
@@ -287,16 +342,9 @@ export class TitleScreen {
         for (const o of this.root.querySelectorAll(".ttl-card2")) o.classList.remove("on")
         c.classList.add("on")
         side()
-        // ★**配られた章では seed も大きさも陸の割合も効かない。**
-        //   触れるのに効かないつまみは、嘘をついているのと同じ
-        const ship = !!c.dataset.chapter
-        this.root.classList.toggle("fixed-planet", ship)
-        for (const el of this.root.querySelectorAll<HTMLElement>(
-          "#ttSeed, #ttGrid, #ttLand, #ttDice")) {
-          (el as HTMLInputElement).disabled = ship
-        }
-        const note = this.root.querySelector<HTMLElement>("#ttFixed")
-        if (note) note.hidden = !ship
+        this.applyFixedPlanet(c)
+        // ★スマホでは押したカードを中央へ寄せる（流して選ぶのと同じ状態にする）
+        c.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })
       })
     }
     for (const s of this.root.querySelectorAll<HTMLButtonElement>(".ttl-save")) {
