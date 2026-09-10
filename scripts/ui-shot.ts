@@ -57,24 +57,24 @@ const SHOTS: Record<string, string> = {
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
   // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
   "creatures": `(() => {
-    document.querySelector('.ttl-btn[data-go="new"]').click();
+    document.querySelector('.ttl-item[data-go="new"]').click();
     setTimeout(() => {
-      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      document.querySelector('.ttl-card2[data-chapter="phanerozoic"]').click();
       setTimeout(() => document.getElementById("ttStart").click(), 200);
     }, 200);
   })()`,
   // ★虫眼鏡: 顕生代の章を読み、生き物のいるマスを押して中身を開く
   "inspect": `(() => {
-    document.querySelector('.ttl-btn[data-go="new"]').click();
+    document.querySelector('.ttl-item[data-go="new"]').click();
     setTimeout(() => {
-      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      document.querySelector('.ttl-card2[data-chapter="phanerozoic"]').click();
       setTimeout(() => document.getElementById("ttStart").click(), 200);
     }, 200);
   })()`,
   "chapter": `(() => {
-    document.querySelector('.ttl-btn[data-go="new"]').click();
+    document.querySelector('.ttl-item[data-go="new"]').click();
     setTimeout(() => {
-      document.querySelector('.ttl-ch[data-chapter="phanerozoic"]').click();
+      document.querySelector('.ttl-card2[data-chapter="phanerozoic"]').click();
       setTimeout(() => document.getElementById("ttStart").click(), 200);
     }, 200);
   })()`,
@@ -108,6 +108,8 @@ const SHOTS: Record<string, string> = {
     document.getElementById("civBtn").click();
     setTimeout(() => document.querySelector('[data-civ="1"]').click(), 400);
   })()`,
+  // ★神の手（1 タイルに畳んだ中身）。**押さないと出ない部品**なので撮る
+  "god": `document.getElementById("godBtn").click()`,
   "saves": `document.getElementById("savesBtn").click()`,
   "science": `document.getElementById("legendSci").click()`,
   "manual": `document.getElementById("legendSci").click();`
@@ -163,7 +165,10 @@ async function main(): Promise<void> {
   await sleep(3000)
   if (!TITLE_SHOTS.has(name)) {
     await send("Runtime.evaluate", {
-      expression: `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+      // ★クラス名は `.ttl-item`（2026-09-10 にタイトルを作り直した）。
+      //   ここが古いと**全部のスクショがタイトルのまま撮れて、
+      //   「入った」と言えなくなる**（罠 48 の足元）
+      expression: `document.querySelector('.ttl-item[data-go="new"]').click()`,
     })
     await sleep(400)
     await send("Runtime.evaluate", {

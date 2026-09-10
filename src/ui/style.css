@@ -288,9 +288,13 @@ button:active { background: #0b1120; box-shadow: none; }
 .rail-hint.armed { color: #ffd678; }
 
 /* --- 左下: レイヤと凡例 --- */
+/* ★★**列の右隣から始める。** 列が「絵の下に名前」のタイル 9 個になって
+   下へ伸びたので、`left: 12px` のままだと**凡例の上に列が乗った**
+   （撮って気づいた。罠 48）。同じ数字が 2 か所にあるなら変数にする ——
+   列の幅は `--rail-w` */
 .legend {
-  left: 12px; bottom: 96px; top: auto; width: 276px; padding: 8px 10px 10px;
-  max-height: 46vh;
+  left: calc(var(--rail-w) + 14px); bottom: 96px; top: auto;
+  width: 264px; padding: 8px 10px 10px; max-height: 40vh;
 }
 .legend-head select { font-size: 11.5px; }
 .legend-head { display: flex; gap: 6px; align-items: center; }
@@ -1020,145 +1024,7 @@ button.primary:hover { background: #2c6288; }
    ★閾値は 860px。ここを切ると「左の列 + 地図 + 右の列」が成り立たない
    ------------------------------------------------------------------ */
 .mtabs { display: none; }
-
-@media (max-width: 860px) {
-  /* --- 下タブ --- */
-  .mtabs {
-    position: absolute; left: 0; right: 0; bottom: 0; z-index: 70;
-    display: flex; gap: 1px; padding: 0;
-    background: var(--panel); border-top: 1px solid var(--line);
-    box-shadow: inset 0 1px 0 var(--edge-hi);
-  }
-  .mtab { flex: 1; padding: 10px 2px; font-size: 11px; border-radius: 0;
-    border: 0; background: transparent; box-shadow: none; color: var(--dim); }
-  .mtab.on { color: var(--fg); background: #232e3c;
-    box-shadow: inset 0 2px 0 var(--accent); }
-
-  /* --- パネルはシートになる --- */
-  #rightCol, .rail, .legend, .lp, .saves, .sci, .drawer, .phylo {
-    position: absolute; left: 0; right: 0; top: auto;
-    bottom: 44px;                       /* 下タブのぶん */
-    width: auto; max-width: none;
-    max-height: 58vh; overflow-y: auto;
-    z-index: 65;
-    border-left: 0; border-right: 0;
-    display: none;
-  }
-  #app[data-sheet="dash"] #rightCol,
-  #app[data-sheet="rail"] .rail,
-  #app[data-sheet="legend"] .legend { display: block; }
-  #app[data-sheet="chron"] #rightCol { display: block; }
-  /* 「状態」と「年代記」は同じ列にあるので、いらない方を隠す */
-  #app[data-sheet="dash"] #chronicle { display: none; }
-  #app[data-sheet="chron"] #dash { display: none; }
-  #rightCol { display: none; gap: 0; }
-  #rightCol > .panel { max-height: none; }
-  /* 「その他」で開く物は、開いたときだけ出す（`hidden` が効く） */
-  .lp:not([hidden]), .saves:not([hidden]), .sci:not([hidden]),
-  .drawer:not([hidden]), .phylo:not([hidden]) { display: block; }
-
-  /* --- 左の列は横並びに畳む --- */
-  .rail { flex-direction: row; flex-wrap: wrap; gap: 5px; padding: 10px 10px 12px; }
-  .rail-title { width: 100%; margin: 2px 0 0; }
-  .rail .iv { width: auto; flex: 1 1 40%; }
-  .rail-strip { flex: 1 1 100%; }
-  .rail-hint { flex: 1 1 100%; }
-
-  /* --- 時間バーは下タブの上に、1 行で --- */
-  #timeline { bottom: 44px; padding: 0 0 4px; }
-  #timeline > .timebar { gap: 8px; padding: 5px 8px; flex-wrap: nowrap;
-    overflow-x: auto; }
-  #timebar .seedtag, #timebar .mode, #timebar .rate { display: none; }
-  #tlCanvas { height: 28px; margin: 3px 8px 0; width: calc(100% - 16px); }
-  .tlinfo { display: none; }
-  .sp { min-width: 34px; padding: 6px 6px; }
-  .sp.skip { font-size: 10px; }
-
-  /* --- 上中央の帯は邪魔なので消す（タッチにホバーは無い）--- */
-  .hoverbar { display: none; }
-  /* 出来事のカードは画面幅いっぱいに */
-  #eventPopup { left: 8px; right: 8px; transform: none; top: 8px; }
-  .epop-card { max-width: none; }
-  .epop-anim { display: none; }
-
-  /* --- 最初の画面 --- */
-  .ttl-card { width: auto; margin: 0 10px; padding: 16px 14px; }
-  .ttl-chapters { grid-template-columns: 1fr; }
-  .ttl-name { font-size: 18px; }
-
-  /* --- 早送りの進捗 --- */
-  .skipbar { width: auto; left: 10px; right: 10px; transform: translateY(-50%); }
-
-  /* --- 科学の解説とレイヤ選択はシートなので幅いっぱい --- */
-  .lp-grid { grid-template-columns: 1fr 1fr; }
-  .man-row { grid-template-columns: 84px 1fr; }
-}
-
-@media (max-width: 860px) {
-  /* ★シートは【時間バーの上】に出す。時間バーを覆うと、
-     状態を読みながら止められない（読みたいのは動いているときだから） */
-  #rightCol, .rail, .legend, .lp, .saves, .sci, .drawer, .phylo {
-    bottom: 84px; max-height: calc(100vh - 140px);
-  }
-  /* シートが開いている間は時間【軸】だけ畳む。速度の段は残す */
-  #app[data-sheet]:not([data-sheet=""]) #tlCanvas { display: none; }
-  #app[data-sheet]:not([data-sheet=""]) #timeline { padding-bottom: 0; }
-
-  /* ★シートを `display: block` にすると flex が死ぬ。
-     介入の列は横並びなので、可視化は `flex` で行うこと
-     （実測でボタンが縦 1 列・幅 103px に潰れた） */
-  #app[data-sheet="rail"] .rail { display: flex; }
-  .rail .iv { flex: 1 1 calc(50% - 3px); min-width: 0; }
-  .rail .rail-strip .act { flex: 1; }
-}
-/* 配られている章の印。★「押したらすぐ始まる」ことが見えないと意味がない */
-.ttl-ready { font-style: normal; font-size: 9px; color: var(--good);
-  border: 1px solid rgba(127,196,106,0.4); padding: 0 5px; margin-top: 3px;
-  align-self: flex-start; }
-.ttl-note.fixed { color: #ffe6b0; }
-.titlescreen.fixed-planet #ttSeed,
-.titlescreen.fixed-planet #ttGrid,
-.titlescreen.fixed-planet #ttLand { opacity: 0.4; }
-
-/* ============================================================
-   文明の一覧（`civPanel.ts`）。★系譜と同じ `.panel.phylo` の中に置く
-   ============================================================ */
-.civ-body { overflow-y: auto; flex: 1 1 auto; padding: 0 8px 8px; }
-.civ-head { display: flex; gap: 14px; margin: 4px 0 2px; }
-.civ-head b { font-size: 15px; }
-.civ-row {
-  border: 1px solid var(--line, #2a3340); border-radius: 6px;
-  padding: 6px 8px; margin: 6px 0; cursor: pointer;
-  background: rgba(255, 255, 255, 0.02);
-}
-.civ-row.sel { background: rgba(255, 255, 255, 0.07); }
-.civ-name { display: flex; align-items: center; gap: 6px; }
-.civ-dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-.civ-era { opacity: 0.85; }
-.civ-nums { display: flex; gap: 10px; margin-top: 2px; }
-.civ-nums span { font-variant-numeric: tabular-nums; }
-.civ-sub { margin-top: 1px; }
-.civ-dying { color: #e8a13a; }
-.civ-tech { margin-top: 6px; border-top: 1px solid var(--line, #2a3340); padding-top: 5px; }
-.civ-group { margin: 3px 0; display: flex; flex-wrap: wrap; gap: 3px; align-items: baseline; }
-.civ-gname { opacity: 0.55; width: 66px; flex: 0 0 66px; }
-/* ★**持っていない技術も薄く出す。** 何が足りないかが見えないと、
-   技術ツリーがあることすら分からない */
-.civ-t {
-  border: 1px solid var(--line, #2a3340); border-radius: 3px;
-  padding: 0 4px; opacity: 0.3;
-}
-.civ-t.own { opacity: 1; background: rgba(120, 200, 255, 0.16); border-color: #4a7fa6; }
-
-/* ★降りる / 惑星に戻る（`civPanel.ts`）。押せることが分かる幅を持たせる */
-.mini.wide { width: auto; padding: 2px 8px; margin-left: auto; margin-right: 6px; }
-.mini.wide.on { background: rgba(120, 200, 255, 0.22); border-color: #4a7fa6; }
-
-/* ★「それでも降りる」は勧めない選択肢なので目立たせない */
-.born-btns .sub { opacity: 0.65; font-weight: normal; }
-
-/* ★文明ごとの集落の絵（地図に置いているものと同じ）。★拡大でぼかさない */
-.civ-town { width: 26px; height: 26px; image-rendering: pixelated; margin: -4px 0; }
+.mtop { display: none; }
 
 /* ============================================================
    ★★ タイトルと開始時代の画面（プレイヤーのモック 2026-09-10）
@@ -1384,3 +1250,198 @@ button.primary:hover { background: #2c6288; }
 
 /* ボタンの山括弧は飾り。★字面の一部ではないので薄くする */
 .era-btns i { font-style: normal; opacity: 0.55; padding: 0 4px; }
+
+/* ============================================================
+   ★★ 状態のタブと鈴（プレイヤーのモック 2026-09-10）
+   ============================================================ */
+.st-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 8px; }
+.st-tab {
+  padding: 7px 0; font-size: 12px; color: var(--dim); cursor: pointer;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line);
+}
+.st-tab.on { color: var(--fg); border-color: #8cc8d8; background: rgba(140, 200, 216, 0.14); }
+.st-body { display: block; }
+.st-body[hidden] { display: none; }
+/* ★★**毎秒読む 6 つを 2 列に**（モック）。線は下線の帯にして場所を取らない */
+.st-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin-bottom: 6px; }
+.st-grid .stat {
+  position: relative; display: flex; align-items: baseline; justify-content: space-between;
+  gap: 6px; padding: 5px 2px 6px; border-bottom: 1px solid var(--line);
+}
+.st-grid .stat span { font-size: 11px; color: var(--dim); }
+.st-grid .stat b { font-family: var(--mono, monospace); font-weight: 600; font-size: 12.5px;
+  text-align: right; }
+/* ★テクトニクス様式だけ語が長い（「マグマオーシャン」8 字）。
+   2 列に収まらず**行の途中で折れた**ので、この行だけ字を小さくする */
+.st-grid .stat:last-child b { font-size: 10.5px; }
+/* ★線は行の下端に敷く。値の隣に置くと 2 列に収まらない */
+.st-grid .spark { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 10px;
+  opacity: 0.5; pointer-events: none; }
+
+/* ★見出しの気温は大きく、状態の 1 語はその隣（モックの「15.97℃ 落ち着いている」） */
+.dash-hero .hero-v { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.dash-now { font-size: 12px; color: #8cc8d8; font-weight: normal; }
+.chron { max-height: 46vh; overflow-y: auto; }
+/* ★畳むボタンは広い画面では要らない（縦に余裕がある） */
+.st-fold { display: none; position: absolute; right: 8px; top: 44px;
+  width: 26px; height: 22px; background: transparent; border: 0;
+  color: var(--dim); cursor: pointer; font-size: 13px; }
+/* --- 鈴 --- */
+/* ★**枠の内側に置く。** 最初 `translate(38%, -38%)` で外へ出したら
+   画面の端で切れた（撮って気づいた。罠 48） */
+.bell {
+  position: absolute; top: 6px; right: 6px;
+  width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+  background: var(--panel); border: 1px solid var(--line); cursor: pointer; z-index: 3;
+}
+.bell:hover { border-color: #8cc8d8; }
+.bell-ico { font-size: 17px; }
+.bell-n {
+  position: absolute; top: -7px; right: -7px; min-width: 18px; padding: 0 4px;
+  font-size: 10px; line-height: 16px; text-align: center; color: #fff;
+  background: #c4483c; border: 1px solid #1a1614;
+}
+
+/* ============================================================
+   ★★ 左の列（プレイヤーのモック 2026-09-10）
+   絵の下に名前。介入と「開くもの」を同じ形にして、間に仕切りを入れる
+   ============================================================ */
+:root { --rail-w: 74px; }
+.rail { display: flex; flex-direction: column; gap: 3px; padding: 6px; width: var(--rail-w); }
+.rv {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; width: 100%; padding: 5px 2px 4px; cursor: pointer;
+  background: rgba(16, 22, 30, 0.82); border: 1px solid var(--line); color: var(--fg);
+}
+.rv img { width: 24px; height: 24px; image-rendering: pixelated; }
+.rv .rv-ico { font-style: normal; font-size: 19px; line-height: 24px; }
+.rv span { font-size: 10.5px; letter-spacing: 0.02em; }
+/* ★★`display: flex` は `[hidden]` を上書きする。**知性が生まれるまで
+   出さない「文明」タイルが出ていた**（撮って気づいた）。
+   表示を持つ規則を書いたら、必ず `[hidden]` も書くこと */
+.rv[hidden] { display: none; }
+.rv:hover { border-color: #8cc8d8; background: rgba(30, 46, 62, 0.9); }
+/* ★構えている介入は枠を光らせる（どれを持っているかが一目で分かる） */
+.rv.armed, .rv.on { border-color: #8cc8d8; background: rgba(140, 200, 216, 0.16); }
+.rail-sep { height: 1px; margin: 5px 4px; background: var(--line); }
+/* --- 神の手の中身 --- */
+.godmenu {
+  position: absolute; left: calc(var(--rail-w) + 8px); top: 6px; z-index: 6;
+  display: flex; flex-direction: column; gap: 4px; padding: 8px;
+  background: var(--panel); border: 1px solid var(--line);
+}
+.godmenu[hidden] { display: none; }
+.gm-title { font-size: 11px; color: var(--dim); margin-bottom: 2px; }
+.gm {
+  display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px;
+  background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); cursor: pointer;
+}
+.gm img { width: 22px; height: 22px; image-rendering: pixelated; }
+.gm span { font-size: 11.5px; }
+.gm:hover { border-color: #8cc8d8; }
+.rail-hint { position: absolute; left: calc(var(--rail-w) + 14px); bottom: 60px;
+  width: 264px; margin: 0; }
+
+/* ★★**この塊はファイルの末尾に置くこと。** 最初これを途中に書いたら、
+   後ろにあるデスクトップの `.rail` と `.bell` に上書きされて、
+   **鈴が 2 つ出て介入が縦のまま**になった（撮って気づいた。罠 48）。
+   同じ強さの規則は【後に書いた方】が勝つ。上書きしたい側を後ろへ。 */
+/* ============================================================
+   ★★ スマホのゲーム画面（プレイヤーのモック 2026-09-10）
+   ★**状態カード・介入の行・速度・時間軸は常時出す。**
+   前は全部シートに畳んでいたので、**見るたびに開いて閉じる**必要があった。
+   タブに残すのは「開くもの」（系譜・記録・文明・設定）だけ。
+   ============================================================ */
+@media (max-width: 860px) {
+  /* --- 上バー --- */
+  .mtop {
+    position: absolute; left: 0; right: 0; top: 0; z-index: 60;
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .mt-btn {
+    position: relative; width: 34px; height: 32px; font-size: 15px;
+    background: transparent; border: 0; color: var(--fg); cursor: pointer;
+  }
+  .mt-btn i {
+    position: absolute; top: 0; right: 0; min-width: 15px; padding: 0 3px;
+    font-style: normal; font-size: 9px; line-height: 14px; color: #fff;
+    background: #c4483c;
+  }
+  .mt-seed { font-family: var(--mono, monospace); font-size: 11px; color: var(--dim); }
+  .mt-epoch { font-size: 13px; font-weight: 600; margin-left: auto; }
+  .mt-age { font-family: var(--mono, monospace); font-size: 11.5px; color: var(--dim); }
+
+  /* --- 下タブ --- */
+  .mtabs {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 70;
+    display: flex; gap: 1px; padding: 0;
+    background: var(--panel); border-top: 1px solid var(--line);
+  }
+  .mtab { flex: 1; padding: 10px 2px; font-size: 11px; border-radius: 0;
+    border: 0; background: transparent; box-shadow: none; color: var(--dim); }
+  .mtab[hidden] { display: none; }
+  .mtab.on { color: var(--fg); background: #232e3c;
+    box-shadow: inset 0 2px 0 var(--accent); }
+
+  /* --- ★状態カードは上バーの下に常時出す（シートにしない） --- */
+  #rightCol {
+    position: absolute; left: 0; right: 0; top: 46px; bottom: auto;
+    width: auto; max-width: none; z-index: 55; display: block;
+  }
+  #dash { max-height: 30vh; overflow-y: auto; border-left: 0; border-right: 0; }
+  /* ★履歴のタブだけは長いので、開いたときに伸ばす */
+  #dash:has(.st-body[data-for="log"]:not([hidden])) { max-height: 60vh; }
+  .bell { display: none; }              /* 鈴は上バーへ移した */
+
+  /* --- ★介入は横 1 行。地図の下・速度の上 --- */
+  .rail {
+    /* ★時間軸（下タブの上・高さ約 90px）に乗らない位置。
+       118px だと**速度の行が介入の下に隠れた**（撮って気づいた） */
+    position: absolute; left: 0; right: 0; bottom: 142px; top: auto; z-index: 55;
+    flex-direction: row; width: auto; gap: 5px; padding: 6px 8px;
+    overflow-x: auto; scrollbar-width: none;
+    background: linear-gradient(to top, rgba(6, 9, 14, 0.92), rgba(6, 9, 14, 0));
+    border: 0;
+  }
+  .rail::-webkit-scrollbar { display: none; }
+  .rv { flex: 1 0 62px; }
+  /* ★開くものは下タブにあるので、列からは落とす（同じ物を 2 か所に置かない） */
+  .rail-sep, .rv.tab { display: none; }
+  .rail-hint { display: none; }
+  .godmenu { left: 8px; right: 8px; top: auto; bottom: 200px; }
+  /* ★赤道/極は詳しい方の数字。狭い画面では落として地図に場所を渡す */
+  #dash .hero-sub { display: none; }
+
+  /* --- 時間軸は下タブのすぐ上。★残すのは速度だけ --- */
+  #timeline { bottom: 42px; padding-bottom: 2px; }
+  /* ★★**同じ物を 2 か所に出さない。** seed・時代・年代は上バーへ移したのに
+     時間バーにも残っていて、**介入の行と重なって折り返した**
+     （撮って気づいた。罠 48） */
+  #tSeed, #tEpoch, #tMode, #tAge, #tRate, #tlInfo { display: none; }
+  .timebar { justify-content: center; padding: 4px 6px; }
+  .speeds { display: flex; gap: 4px; flex-wrap: nowrap; overflow-x: auto;
+    scrollbar-width: none; }
+  .speeds::-webkit-scrollbar { display: none; }
+  .speeds button { flex: 0 0 auto; padding: 9px 12px; font-size: 12px; }
+
+  /* --- 開くパネルはシート（一度に 1 枚） --- */
+  .legend, .lp, .saves, .sci, .drawer, .phylo {
+    position: absolute; left: 0; right: 0; top: auto; bottom: 42px;
+    width: auto; max-width: none; max-height: 58vh; overflow-y: auto;
+    z-index: 65; border-left: 0; border-right: 0;
+  }
+  /* ★★**凡例は常時出さない。** 広い画面では左下に置きっぱなしでよいが、
+     スマホでは**下半分を占領して地図が見えなくなった**（撮って気づいた）。
+     ☰ で開くシートにする */
+  .legend { display: none; }
+  #app[data-sheet="legend"] .legend { display: block; }
+
+  /* ★状態カードは畳める（モックの v）。畳むと気温と一言だけになる */
+  #dash { max-height: 26vh; }
+  #app[data-fold="1"] #dash .st-grid,
+  #app[data-fold="1"] #dash #detDiag,
+  #app[data-fold="1"] #dash .hero-sub { display: none; }
+  #app[data-fold="1"] #dash { max-height: none; }
+  .st-fold { display: block; }
+}

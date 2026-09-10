@@ -449,7 +449,11 @@ function boot(): void {
         ? "まだ生まれていない"
         : (L.goeYear >= 0 ? "大酸化事変の後" : "無酸素の生物圏")
       $("dClades").textContent = L.originYear < 0 ? "—" : String(L.clades)
-      $("dBio").textContent = L.originYear < 0 ? "—" : L.biomass.toFixed(2)
+      // ★生物圏は「環境」と「生命」の両タブに出る。**書き込みも両方へ** ——
+      //   片方だけ更新すると、タブを切り替えた瞬間に古い数字が出る
+      const bioText = L.originYear < 0 ? "—" : L.biomass.toFixed(2)
+      $("dBio").textContent = bioText
+      $("dBio2").textContent = bioText
 
       // --- スパークライン。★標本は【年】で取る（フレームではない）---
       const yr = m.years
@@ -466,6 +470,10 @@ function boot(): void {
       }
       drawSparkline($<HTMLCanvasElement>("spT"), "temp", "rgba(232,162,74,0.85)")
       $("dNow").textContent = nowLine(m)
+      // ★スマホの上バー。**同じ値を 2 か所に出すので、書き込みも 2 か所へ**
+      $("mSeed").textContent = $("tSeed").textContent ?? ""
+      $("mEpoch").textContent = m.epoch
+      $("mAge").textContent = $("tAge").textContent ?? ""
 
       // タイムラインと出来事ログ
       if (m.newEvents.length) {
@@ -502,6 +510,11 @@ const chronicle = new Chronicle($("chronicle"))
 
 function renderEventLog(): void {
   chronicle.set(allEvents)
+  // ★鈴の件数。**見ていない間に何があったか**を 1 つの数字で常に出す
+  for (const id of ["bellCount", "mBellN"]) {
+    const n = document.getElementById(id)
+    if (n) n.textContent = String(allEvents.length)
+  }
 }
 
 /**
@@ -1198,25 +1211,47 @@ function readInfo(b: Uint8Array): { width: number; height: number; seed: string 
 //
 // ★**一度に 1 枚だけ出す。** 幅 390px に左の列 152 + 右の列 300 は入らない。
 // 押した札をもう一度押すと閉じる（地図を全画面で見たいときがある）
+/**
+ * ★★**下タブは「開くもの」だけ**（プレイヤーのモック 2026-09-10）。
+ *
+ * 前は 状態 / 年代記 / 介入 / レイヤ / その他 の 5 枚だったが、
+ * **状態と介入と速度は常時出す**ように変えたので、タブに要るのは
+ * 惑星（＝全部畳んで地図を見る）と、開くパネル 4 枚だけになった。
+ */
 for (const b of document.querySelectorAll<HTMLButtonElement>(".mtab")) {
   b.addEventListener("click", () => {
-    const app = document.getElementById("app")!
-    const want = b.dataset.sheet!
-    if (want === "more") {
-      // 「その他」は系譜・記録・設定・解説をまとめて開く入口
-      app.dataset.sheet = ""
-      for (const o of document.querySelectorAll(".mtab")) o.classList.remove("on")
-      void savesPanel.toggle()
-      return
-    }
-    const same = app.dataset.sheet === want
-    app.dataset.sheet = same ? "" : want
+    const want = b.dataset.sheet ?? ""
     for (const o of document.querySelectorAll(".mtab")) o.classList.remove("on")
-    if (!same) b.classList.add("on")
-    // シートを開いたら、上に重なる物は畳む
-    if (!same) { layerPicker.close(); savesPanel.close(); science.close() }
+    b.classList.add("on")
+    // ★**一度に 1 枚だけ**。幅 390px に 2 枚は入らない
+    $("phylogeny").hidden = true
+    $("civPanel").hidden = true
+    $("settings").hidden = true
+    layerPicker.close(); savesPanel.close(); science.close(); inspector.close()
+    if (want === "phylo") { phylogeny.toggle(); post({ type: "requestPhylogeny" }) }
+    else if (want === "saves") void savesPanel.toggle()
+    else if (want === "civ") civPanel.toggle()
+    else if (want === "settings") $("settings").hidden = false
   })
 }
+
+// ★上バー（スマホ）。☰ は凡例、鈴は履歴、歯車は設定
+$("mMenu").addEventListener("click", () => {
+  const app = document.getElementById("app")!
+  app.dataset.sheet = app.dataset.sheet === "legend" ? "" : "legend"
+})
+// ★状態カードを畳む（縦の狭い画面で、地図が見えなくなるのを防ぐ）
+$("stFold").addEventListener("click", () => {
+  const app = document.getElementById("app")!
+  const on = app.dataset.fold === "1"
+  app.dataset.fold = on ? "" : "1"
+  $("stFold").textContent = on ? "⌄" : "⌃"
+})
+$("mBell").addEventListener("click", () => showStatusTab("log"))
+$("mGear").addEventListener("click", () => {
+  const d = $("settings")
+  d.hidden = !d.hidden
+})
 
 void title.show()
 // 起動時に pushAtmosphere() を呼んではいけない。
@@ -1224,3 +1259,42 @@ void title.show()
 // 冥王代の初期状態（CO2 10%・暗い太陽）を上書きしてしまう。
 // スライダーの方を最初のティックの実態に合わせる（syncAtmosphereUI）。
 requestAnimationFrame(frame)
+
+/**
+ * ★★**状態のタブ**（環境 / 生命 / 履歴。プレイヤーのモック 2026-09-10）。
+ *
+ * これまでは 1 枚に全部が縦に積まれていて、**知りたい 1 つを探すのに
+ * 全部を読む**必要があった。1 画面が 1 つの問いに答えるようにする。
+ */
+function showStatusTab(id: string): void {
+  for (const b of document.querySelectorAll<HTMLElement>(".st-tab")) {
+    b.classList.toggle("on", b.dataset.tab === id)
+  }
+  for (const b of document.querySelectorAll<HTMLElement>(".st-body")) {
+    b.hidden = b.dataset.for !== id
+  }
+  // ★開いたタブの中の線を描き直す（隠れている間は幅が 0 なので描けていない）
+  view?.invalidate()
+}
+for (const b of document.querySelectorAll<HTMLElement>(".st-tab")) {
+  b.addEventListener("click", () => showStatusTab(b.dataset.tab ?? "env"))
+}
+// ★鈴を押したら履歴へ。**件数を出すだけで中身へ行けないのは不親切**
+$("bellBtn").addEventListener("click", () => showStatusTab("log"))
+
+/**
+ * ★**神の手は 1 タイルに畳んである**（モック 2026-09-10）。押すと横に開く。
+ * ★列に 5 つ並べると凡例と重なる（罠 48 で実際に重なった）。
+ */
+$("godBtn").addEventListener("click", () => {
+  const m = $("godMenu")
+  m.hidden = !m.hidden
+  $("godBtn").classList.toggle("on", !m.hidden)
+})
+// ★中の 1 つを構えたら畳む（構えたまま開きっぱなしだと地図が隠れる）
+for (const b of document.querySelectorAll<HTMLElement>("#godMenu .iv")) {
+  b.addEventListener("click", () => {
+    $("godMenu").hidden = true
+    $("godBtn").classList.remove("on")
+  })
+}

@@ -16,57 +16,57 @@
            （つまみは歯車のドロワーへ）。
            ============================================================ -->
       <div id="rail" class="rail">
-        <div class="rail-title">介入</div>
-        <button class="iv act" data-kind="volcano" data-icon="ev-lip" data-key="1">
-          <img src="icons/ev-lip.png" alt="" /><span>巨大噴火</span>
+        <!-- ★★**絵の下に名前**（プレイヤーのモック 2026-09-10）。
+             介入（ゲームの動詞）と、開くもの（系譜・記録・文明・設定）を
+             1 本の列に同じ形で並べ、間に仕切りを入れる -->
+        <button class="rv iv act" data-kind="volcano" data-icon="ev-lip" data-key="1">
+          <img src="icons/ev-lip.png" alt="" /><span>噴火</span>
         </button>
-        <button class="iv act" data-kind="impact" data-icon="ev-impact" data-key="2">
+        <button class="rv iv act" data-kind="impact" data-icon="ev-impact" data-key="2">
           <img src="icons/ev-impact.png" alt="" /><span>隕石</span>
         </button>
-        <button class="iv act" data-kind="plateNudge" data-icon="ev-tectonic-mode" data-key="3">
+        <button class="rv iv act" data-kind="plateNudge" data-icon="ev-tectonic-mode" data-key="3">
           <img src="icons/ev-tectonic-mode.png" alt="" /><span>プレート</span>
         </button>
-        <button class="iv act" data-kind="uplift" data-icon="ev-supercontinent-form" data-key="4">
+        <button class="rv iv act" data-kind="uplift" data-icon="ev-supercontinent-form" data-key="4">
           <img src="icons/ev-supercontinent-form.png" alt="" /><span>造山</span>
         </button>
-        <!-- ★神の手（生命への介入）。**能力を与えるのではなく勾配を傾ける**。
-             縦に伸びると凡例と重なるので、こちらはアイコンだけの横並びにする -->
-        <div class="rail-title" style="margin-top:6px">神の手</div>
-        <div class="rail-strip">
-          <button class="iv act icon" data-kind="nudgeTrait" data-gene="photosynthesis"
-            title="光合成へ傾向を押す（能力を与えるのではない）">
-            <img src="icons/cap-oxygenic-photo.png" alt="" /></button>
-          <button class="iv act icon" data-kind="nudgeTrait" data-gene="brain"
-            title="脳へ傾向を押す">
-            <img src="icons/cap-symbolic.png" alt="" /></button>
-          <button class="iv act icon" data-kind="nudgeTrait" data-gene="oxygenDemand"
-            title="好気呼吸へ傾向を押す">
-            <img src="icons/cap-eukaryotic.png" alt="" /></button>
-          <!-- ★**埋没を押す**（2026-09-08）。今日の実測で、遺骸の分解されにくさが
-               惑星の酸素を支配すると分かった（酸素の乏しい惑星 7.7% / 8.5% が、
-               押し続けると 26.5% / 20.4% まで上がる。`probe-intervene.ts`）。
-               ★押すのは形質であって酸素ではない —— 不利な惑星では選択が戻す -->
-          <button class="iv act icon" data-kind="nudgeTrait" data-gene="recalcitrance"
-            title="遺骸の分解されにくさへ傾向を押す（埋没 → 酸素）">
-            <img src="icons/ev-goe.png" alt="" /></button>
-          <button class="iv act icon" data-kind="transferGenes"
-            title="水平伝播（同じマスの 2 系統で遺伝子を渡す）">
-            <img src="icons/ev-speciation.png" alt="" /></button>
-        </div>
-        <div class="rail-hint" id="railHintIdle">選んでから地図をクリック<br><b>1-4</b> 介入 · <b>空白</b> 停止<br><b>, .</b> 速度 · <b>[ ]</b> レイヤ</div>
-        <!-- ★**行を増やさないこと。** 列が伸びると凡例と重なる（罠 48）。
-             3 つ目を足すときは同じ段に入れて、絵は落とす -->
-        <div class="rail-strip">
-          <button id="phyloBtn" class="act icon tab" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
-            <span>系譜</span></button>
-          <button id="savesBtn" class="act icon tab" title="保存と読み込み・時代を選んで始める">
-            <span>記録</span></button>
-          <button id="civBtn" class="act icon tab" title="文明の一覧（人口・技術・失伝）" hidden>
-            <span>文明</span></button>
-          <button id="settingsBtn" class="act icon tab" title="惑星の作り直しと物理のつまみ">
-            <span>設定</span></button>
-        </div>
+        <!-- ★**神の手は 1 タイルに畳む。** 生命への介入は 5 つあるが、
+             列に 5 つ並べると凡例と重なる（罠 48 で実際に重なった）。
+             押すと横に開く -->
+        <button class="rv" id="godBtn" title="生命への介入（能力を与えるのではなく勾配を傾ける）">
+          <img src="icons/cap-symbolic.png" alt="" /><span>神の手</span>
+        </button>
+
+        <div class="rail-sep"></div>
+
+        <button class="rv tab" id="phyloBtn" title="生命の系譜（誰から分かれ、いつ絶滅したか）">
+          <img src="icons/ev-speciation.png" alt="" /><span>系譜</span></button>
+        <button class="rv tab" id="savesBtn" title="保存と読み込み・時代を選んで始める">
+          <i class="rv-ico">🗂</i><span>記録</span></button>
+        <button class="rv tab" id="civBtn" title="文明の一覧（人口・技術・失伝）" hidden>
+          <i class="rv-ico">🏛</i><span>文明</span></button>
+        <button class="rv tab" id="settingsBtn" title="惑星の作り直しと物理のつまみ">
+          <i class="rv-ico">⚙</i><span>設定</span></button>
       </div>
+
+      <!-- ★神の手の中身。列の横に開く。**ここに置く物は「傾向を押す」だけ**で、
+           能力を与えるものではない（`docs/03` の介入の原則） -->
+      <div id="godMenu" class="godmenu" hidden>
+        <div class="gm-title">神の手 <span class="hint">押すのは形質。結果は決めない</span></div>
+        <button class="iv act gm" data-kind="nudgeTrait" data-gene="photosynthesis">
+          <img src="icons/cap-oxygenic-photo.png" alt="" /><span>光合成</span></button>
+        <button class="iv act gm" data-kind="nudgeTrait" data-gene="brain">
+          <img src="icons/cap-symbolic.png" alt="" /><span>脳</span></button>
+        <button class="iv act gm" data-kind="nudgeTrait" data-gene="oxygenDemand">
+          <img src="icons/cap-eukaryotic.png" alt="" /><span>好気呼吸</span></button>
+        <button class="iv act gm" data-kind="nudgeTrait" data-gene="recalcitrance">
+          <img src="icons/ev-goe.png" alt="" /><span>埋没</span></button>
+        <button class="iv act gm" data-kind="transferGenes">
+          <img src="icons/ev-speciation.png" alt="" /><span>水平伝播</span></button>
+      </div>
+
+      <div class="rail-hint" id="railHintIdle">選んでから地図をクリック<br><b>1-4</b> 介入 · <b>空白</b> 停止<br><b>, .</b> 速度 · <b>[ ]</b> レイヤ</div>
 
       <!-- ============================================================
            左下: いま見ているレイヤと凡例。
@@ -98,38 +98,58 @@
            状態は中身ぶん・年代記が残りを取る形にする。
            ============================================================ -->
       <div id="rightCol">
+      <!-- ============================================================
+           ★★**状態はタブで 3 つに分ける**（プレイヤーのモック 2026-09-10）。
+           これまでは 1 枚に「気温・大気・固体地球・生命・診断・年代記」が
+           縦に積まれていて、**知りたい 1 つを探すのに全部を読む**必要があった。
+           環境 / 生命 / 履歴 に分けると、1 画面が 1 つの問いに答える。
+           ★**id は変えない。** `main.ts` が 30 個以上の id へ書き込んでいるので、
+           入れ物だけ組み替える（中身の配線を触らない = 壊れる場所が減る）
+           ============================================================ -->
+      <!-- ★★**鈴と件数**（モック 2026-09-10）。出来事が何件起きたかを
+           **常に 1 つの数字**で出す。45.4 億年を眺めるゲームで、
+           「見ていない間に何があったか」が分からないのが一番いけない。
+           押すと履歴のタブが開く -->
+      <button id="bellBtn" class="bell" title="起きた出来事（押すと履歴）">
+        <span class="bell-ico">🔔</span><span id="bellCount" class="bell-n">0</span>
+      </button>
       <div id="dash" class="panel">
+        <div class="st-tabs">
+          <button class="st-tab on" data-tab="env">環境</button>
+          <button class="st-tab" data-tab="life">生命</button>
+          <button class="st-tab" data-tab="log">履歴</button>
+        </div>
+
+        <!-- ★狭い画面で畳むためのつまみ（モックの v）。広い画面では出さない -->
+        <button id="stFold" class="st-fold" title="畳む / 開く">⌄</button>
+        <div class="st-body" data-for="env">
         <div class="dash-hero">
-          <div class="hero-k">全球平均気温</div>
-          <div class="hero-v"><span id="dMean">—</span><canvas id="spT" class="spark hero-spark"></canvas></div>
+          <div class="hero-v"><span id="dMean">—</span>
+            <!-- ★**いま何が起きているか**の 1 語。数字を 14 個読んで
+                 自分で組み立てさせない -->
+            <span id="dNow" class="dash-now">—</span>
+            <canvas id="spT" class="spark hero-spark"></canvas></div>
           <div class="hero-sub">赤道 / 極 <span id="dGrad" class="num">—</span></div>
         </div>
 
-        <!-- ★**いま何が起きているか**の 1 行。
-             数字を 14 個読んで自分で組み立てさせない -->
-        <div id="dNow" class="dash-now">—</div>
-
-        <!-- ★主要な量には【線】を付ける。値だけの表は、変化を読むのに
-             「さっきの画面を覚えていること」を要求する（sparkline.ts） -->
-        <div class="section">大気</div>
-        <div class="row stat sp"><span>CO₂</span>
-          <canvas class="spark" data-sp="co2"></canvas><span id="dCo2" class="num">—</span></div>
-        <div class="row stat sp"><span>O₂</span>
-          <canvas class="spark" data-sp="o2"></canvas><span id="dO2" class="num">—</span></div>
-        <div class="row stat sp"><span>氷被覆率</span>
-          <canvas class="spark" data-sp="ice"></canvas><span id="dIce" class="num">—</span></div>
-
-        <div class="section">固体地球</div>
-        <div class="row stat"><span>テクトニクス様式</span><span id="dMode" class="num">—</span></div>
-        <div class="row stat sp"><span>陸地面積</span>
-          <canvas class="spark" data-sp="land"></canvas><span id="dLand" class="num">—</span></div>
-
-        <!-- ★生命は M5 で入っているのに画面に無かった -->
-        <div class="section">生命</div>
-        <div class="row stat"><span>状態</span><span id="dLife" class="num">—</span></div>
-        <div class="row stat"><span>クレード数</span><span id="dClades" class="num">—</span></div>
-        <div class="row stat sp"><span>生物圏</span>
-          <canvas class="spark" data-sp="bio"></canvas><span id="dBio" class="num">—</span></div>
+        <!-- ★★**毎秒読む 6 つを 2 列に**（モック 2026-09-10）。
+             1 列に節見出し付きで並べると縦に伸びて、**知りたい 1 つを探すのに
+             全部を読む**ことになる。★線（sparkline）は残す ——
+             値だけの表は、変化を読むのに「さっきの画面を覚えていること」を
+             要求する。**下線の帯**にして場所を取らない形にした -->
+        <div class="st-grid">
+          <div class="stat sp"><span>CO₂</span><b id="dCo2" class="num">—</b>
+            <canvas class="spark" data-sp="co2"></canvas></div>
+          <div class="stat sp"><span>陸地面積</span><b id="dLand" class="num">—</b>
+            <canvas class="spark" data-sp="land"></canvas></div>
+          <div class="stat sp"><span>O₂</span><b id="dO2" class="num">—</b>
+            <canvas class="spark" data-sp="o2"></canvas></div>
+          <div class="stat sp"><span>生物圏</span><b id="dBio2" class="num">—</b>
+            <canvas class="spark" data-sp="bio"></canvas></div>
+          <div class="stat sp"><span>氷被覆率</span><b id="dIce" class="num">—</b>
+            <canvas class="spark" data-sp="ice"></canvas></div>
+          <div class="stat"><span>様式</span><b id="dMode" class="num">—</b></div>
+        </div>
 
         <details id="detDiag">
           <summary>診断</summary>
@@ -154,16 +174,24 @@
           <div class="section">CO₂ の収支 <span class="hint">どちらのレジームで除去されたか</span></div>
           <div id="cpCo2"></div>
         </details>
+        </div><!-- /環境 -->
 
+        <!-- ★生命は M5 で入っているのに画面に無かった。いまは 1 タブ持つ -->
+        <div class="st-body" data-for="life" hidden>
+          <div class="row stat"><span>状態</span><span id="dLife" class="num">—</span></div>
+          <div class="row stat"><span>クレード数</span><span id="dClades" class="num">—</span></div>
+          <div class="row stat sp"><span>生物圏</span>
+            <canvas class="spark" data-sp="bio"></canvas><span id="dBio" class="num">—</span></div>
+          <div id="lifeMore" class="st-more"></div>
+        </div>
+
+        <!-- ★年代記はここ。**起きたことのログが画面で一番奥にあった**ので、
+             状態と同じ高さのタブに引き上げた -->
+        <div class="st-body" data-for="log" hidden>
+          <div id="chronicle" class="chron"></div>
+        </div>
       </div>
 
-      <!-- ============================================================
-           ★**年代記。** これまで出来事は右パネルの数字 14 行と診断の
-           【下】に畳まれていた。45.4 億年を眺めるゲームで、
-           起きたことのログが画面で一番奥にあった。
-           状態の表と同じ大きさの独立した部品にする。
-           ============================================================ -->
-      <div id="chronicle" class="panel"></div>
       </div>
 
       <!-- ============================================================
@@ -316,12 +344,25 @@
            横に並べる場所が無いので、パネルを下から出るシートにして
            **一度に 1 枚だけ**出す。広い画面では出ない（CSS で消す）。
            ============================================================ -->
+      <!-- ★★**スマホの上バー**（プレイヤーのモック 2026-09-10）。
+           ☰ でレイヤ、seed と時代、鈴（件数）、歯車。
+           ★広い画面では出さない（同じ物が左の列と右のパネルにある） -->
+      <div id="mtop" class="mtop">
+        <button id="mMenu" class="mt-btn" title="レイヤと凡例">☰</button>
+        <span id="mSeed" class="mt-seed">—</span>
+        <span id="mEpoch" class="mt-epoch">—</span>
+        <span id="mAge" class="mt-age">—</span>
+        <button id="mBell" class="mt-btn" title="起きた出来事">🔔<i id="mBellN">0</i></button>
+        <button id="mGear" class="mt-btn" title="設定">⚙</button>
+      </div>
+
+      <!-- ★下タブ。**開くものだけ**を並べる（介入と速度は常時出しているので入れない） -->
       <div id="mtabs" class="mtabs">
-        <button class="mtab" data-sheet="dash">状態</button>
-        <button class="mtab" data-sheet="chron">年代記</button>
-        <button class="mtab" data-sheet="rail">介入</button>
-        <button class="mtab" data-sheet="legend">レイヤ</button>
-        <button class="mtab" data-sheet="more">その他</button>
+        <button class="mtab on" data-sheet="">惑星</button>
+        <button class="mtab" data-sheet="phylo">系譜</button>
+        <button class="mtab" data-sheet="saves">記録</button>
+        <button class="mtab" data-sheet="civ" hidden>文明</button>
+        <button class="mtab" data-sheet="settings">設定</button>
       </div>
 
       <div id="loading" class="loading">惑星を生成しています…</div>
