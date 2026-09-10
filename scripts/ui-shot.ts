@@ -53,7 +53,7 @@ const SHOTS: Record<string, string> = {
       + '<button>このまま惑星を見る</button></div>';
   })()`,
   "title": `void 0`,
-  "title-new": `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+  "title-new": `document.querySelector('.ttl-item[data-go="new"]').click()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
   // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
   "creatures": `(() => {

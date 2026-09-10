@@ -1159,3 +1159,147 @@ button.primary:hover { background: #2c6288; }
 
 /* ★文明ごとの集落の絵（地図に置いているものと同じ）。★拡大でぼかさない */
 .civ-town { width: 26px; height: 26px; image-rendering: pixelated; margin: -4px 0; }
+
+/* ============================================================
+   ★★ タイトルと開始時代の画面（プレイヤーのモック 2026-09-10）
+   「惑星は円型で回転して、ちゃんとこのゲームの惑星」。
+   球は `titleGlobe.ts` が **配られた章そのもの** から焼いた絵を投影している。
+   ★`.titlescreen` は中央寄せの flex なので、ここは 1 枚で画面を使う
+   ============================================================ */
+.titlescreen:has(.ttl-screen), .titlescreen:has(.ttl-era) {
+  background: radial-gradient(120% 90% at 30% 40%, #0a1018 0%, #05070b 70%);
+  align-items: stretch; justify-content: stretch;
+}
+.ttl-screen {
+  position: relative; flex: 1 1 auto;
+  display: grid; grid-template-columns: 1fr 420px; align-items: center;
+  padding: 0 clamp(20px, 6vw, 90px) 46px;
+}
+/* --- 見出し --- */
+.ttl-title { position: absolute; top: clamp(18px, 5vh, 54px); left: clamp(20px, 6vw, 90px); }
+.ttl-name {
+  font-size: clamp(28px, 5.2vw, 56px); letter-spacing: 0.16em; font-weight: 700;
+  color: #b6c6d8; text-shadow: 0 0 24px rgba(120, 180, 240, 0.25);
+  border-bottom: 1px solid rgba(150, 180, 210, 0.35); padding-bottom: 6px;
+}
+.ttl-sub { margin-top: 8px; letter-spacing: 0.42em; font-size: 12px; color: var(--dim); }
+/* --- 惑星 --- */
+.ttl-stage { display: flex; align-items: center; justify-content: center; min-height: 0; }
+/* ★`image-rendering: pixelated` は必須。滑らかにすると地図と球で見た目が変わる */
+.ttl-globe {
+  width: min(60vh, 46vw); height: min(60vh, 46vw);
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 60px rgba(70, 130, 200, 0.28));
+}
+/* --- 選択肢 --- */
+.ttl-menu {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 22px; border: 1px solid rgba(120, 150, 180, 0.28);
+  background: rgba(10, 16, 24, 0.55);
+}
+.ttl-item {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 14px 18px; font-size: 15px; letter-spacing: 0.06em;
+  color: var(--fg); background: rgba(20, 30, 42, 0.6);
+  border: 1px solid rgba(120, 150, 180, 0.22); cursor: pointer;
+}
+.ttl-item:first-child { border-color: rgba(140, 200, 255, 0.6); background: rgba(30, 52, 74, 0.7); }
+.ttl-item:hover:not([disabled]) { background: rgba(40, 64, 90, 0.8); border-color: rgba(140, 200, 255, 0.7); }
+.ttl-item[disabled] { opacity: 0.4; cursor: default; }
+.ttl-item.small { font-size: 13px; padding: 11px 18px; }
+.ttl-ico { font-size: 17px; }
+.ttl-rule { height: 1px; background: rgba(120, 150, 180, 0.25); margin: 6px 2px; }
+/* --- 下の帯 --- */
+.ttl-bar {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: 18px;
+  padding: 10px clamp(20px, 6vw, 90px);
+  border-top: 1px solid rgba(120, 150, 180, 0.22);
+  font-size: 11px; color: var(--dim);
+}
+.ttl-spacer { flex: 1 1 auto; }
+.ttl-seed { font-family: var(--mono, monospace); color: #7f93a8; }
+.ttl-ver { opacity: 0.6; }
+
+/* ============================================================
+   開始時代（2 枚目のモック）
+   ============================================================ */
+.ttl-era {
+  flex: 1 1 auto; display: grid; gap: 14px 18px;
+  grid-template-columns: 1fr 300px;
+  grid-template-areas: "head side" "cards side" "time side" "adv adv" "btns btns";
+  grid-template-rows: auto auto auto 1fr auto;
+  padding: clamp(14px, 3vh, 28px) clamp(18px, 4vw, 46px);
+  overflow-y: auto;
+}
+.era-head { grid-area: head; border-left: 3px solid #8cc8d8; padding-left: 10px; }
+.era-head b { display: block; font-size: 20px; letter-spacing: 0.08em; }
+.era-head span { font-size: 11.5px; color: var(--dim); }
+.era-cards { grid-area: cards; display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px; align-items: start; }
+.ttl-card2 {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 12px; text-align: left; cursor: pointer;
+  background: rgba(12, 18, 26, 0.7); border: 1px solid rgba(120, 150, 180, 0.25);
+}
+.ttl-card2.on { border-color: #8cc8d8; box-shadow: 0 0 0 1px rgba(140, 200, 216, 0.5); }
+.ttl-card2:hover { background: rgba(22, 32, 44, 0.8); }
+.c2-head { display: flex; align-items: baseline; justify-content: space-between; }
+.c2-head b { font-size: 15px; }
+.c2-head i { font-style: normal; font-size: 10px; color: var(--dim);
+  border: 1px solid var(--line); padding: 0 4px; }
+.c2-ga { font-size: 10.5px; color: var(--dim); font-family: var(--mono, monospace); }
+/* ★球は正方形。`aspect-ratio` で潰れないようにする */
+.c2-globe { width: 100%; aspect-ratio: 1; image-rendering: pixelated; }
+.c2-note { font-size: 11px; color: var(--fg); border-top: 1px solid var(--line); padding-top: 6px; }
+.c2-diff { font-size: 11px; color: var(--dim); }
+.c2-diff b { font-size: 14px; }
+.c2-diff .d5 { color: #c4483c; } .c2-diff .d4 { color: #e08a3c; }
+.c2-diff .d3 { color: #e8c05c; } .c2-diff .d2 { color: #7fc06a; }
+.ttl-ready, .ttl-calc {
+  position: absolute; top: 10px; right: 40px; font-style: normal; font-size: 9.5px;
+  padding: 0 4px; border: 1px solid;
+}
+.ttl-ready { color: #7fc06a; border-color: rgba(127, 192, 106, 0.5); }
+.ttl-calc { color: var(--dim); border-color: var(--line); }
+/* --- 右の欄 --- */
+.era-side {
+  grid-area: side; padding: 14px 16px; align-self: start;
+  background: rgba(12, 18, 26, 0.7); border: 1px solid rgba(120, 150, 180, 0.25);
+}
+.es-head { font-size: 10.5px; color: var(--dim); border-bottom: 1px solid var(--line);
+  padding-bottom: 6px; margin-bottom: 8px; }
+.es-name { font-size: 20px; font-weight: 600; }
+.es-ga { font-size: 11px; color: var(--dim); font-family: var(--mono, monospace); }
+.es-tag { margin: 8px 0; padding: 4px 0; font-size: 11.5px; color: #8cc8d8;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.es-desc { font-size: 11.5px; line-height: 1.7; color: var(--fg); }
+.es-sec { margin: 12px 0 6px; font-size: 11px; color: var(--dim);
+  border-left: 2px solid #8cc8d8; padding-left: 7px; }
+.es-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0;
+  font-size: 11.5px; border-bottom: 1px dotted rgba(120, 150, 180, 0.18); }
+.es-row span { color: var(--dim); }
+.es-row b { font-family: var(--mono, monospace); }
+.es-foot { margin-top: 10px; font-size: 10.5px; line-height: 1.65; color: var(--dim); }
+/* --- 時間軸 --- */
+/* ★幅は時代の長さに比例（`flex` を JS が入れる）。等分にすると
+   「原生代は顕生代の 3.6 倍長い」という事実が画面から消える */
+.era-time { grid-area: time; display: flex; gap: 2px; }
+.et { padding: 5px 4px; text-align: center; font-size: 11px; color: var(--dim);
+  border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+  overflow: hidden; white-space: nowrap; }
+.et i { display: block; font-style: normal; font-size: 9px; opacity: 0.6; }
+.et.on { color: var(--fg); border-color: #8cc8d8; background: rgba(140, 200, 216, 0.12); }
+.era-adv { grid-area: adv; font-size: 11.5px; }
+.era-adv summary { cursor: pointer; color: var(--dim); padding: 4px 0; }
+.era-btns { grid-area: btns; display: flex; justify-content: space-between; gap: 10px; }
+.era-btns button { padding: 10px 26px; font-size: 13px; }
+
+/* 狭い画面では 1 列に落とす（罠 72: 入るかは撮ってから言う） */
+@media (max-width: 900px) {
+  .ttl-screen { grid-template-columns: 1fr; }
+  .ttl-stage { display: none; }
+  .ttl-era { grid-template-columns: 1fr;
+    grid-template-areas: "head" "cards" "side" "time" "adv" "btns"; }
+  .era-cards { grid-template-columns: repeat(2, 1fr); }
+}

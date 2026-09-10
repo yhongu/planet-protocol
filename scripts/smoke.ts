@@ -87,7 +87,9 @@ async function main() {
   // ★**最初の画面はどれかを選ぶまで先へ進まない。**
   //   通し確認も同じ道を通ること（ここが壊れるとゲームが始まらない）
   await send("Runtime.evaluate", {
-    expression: `document.querySelector('.ttl-btn[data-go="new"]').click()`,
+    // ★クラス名は `.ttl-item`（2026-09-10 にタイトルを作り直した）。
+    //   ここが古いと**ゲームが始まらないのに通し確認は静かに落ちる**
+    expression: `document.querySelector('.ttl-item[data-go="new"]').click()`,
   })
   await sleep(500)
   const titleOk = ((await send("Runtime.evaluate", {
@@ -95,6 +97,8 @@ async function main() {
     expression: `!!document.getElementById("ttStart")`,
   })).result.value) === true
   await send("Runtime.evaluate", {
+    // ★seed の欄は「詳しい設定」の中に畳んである。**開いてから触る**
+    //   （閉じていても DOM にはあるので値は入る）
     expression: `document.getElementById("ttSeed").value = "hadean-01";`
       + `document.getElementById("ttStart").click()`,
   })
