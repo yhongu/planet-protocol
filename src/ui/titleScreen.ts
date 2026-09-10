@@ -52,12 +52,34 @@ export class TitleScreen {
     this.onNew = h.onNew; this.onLoad = h.onLoad; this.onManual = h.onManual
   }
 
+  /**
+   * ★★**先に出して、後から埋める**（2026-09-11）。
+   *
+   * 前は `listSaves()` と `listChapters()` を**待ってから**板を出していた。
+   * どちらも fetch なので、その間 **ゲーム画面が素通しで見えてちらついた**
+   * （★プレイして報告された）。
+   *
+   * ★**再描画はしない。** 届いたデータで直すのは 2 か所だけ
+   * （ロードゲームの可否と、下の帯の seed）——
+   * `innerHTML` を入れ替えると**回っている球が作り直されて瞬く**。
+   */
   async show(): Promise<void> {
-    this.saves = await listSaves().catch(() => [])
-    this.chapters = await listChapters()
     this.root.innerHTML = this.menu()
     this.root.hidden = false
     this.wire()
+    this.saves = await listSaves().catch(() => [])
+    this.chapters = await listChapters()
+    const load = this.root.querySelector<HTMLButtonElement>('.ttl-item[data-go="load"]')
+    if (load) load.disabled = this.saves.length === 0
+    // ★★**球は作り直さない。** `wire()` で既に回り始めている
+    //   （絵は目録が無くても読める）。ここで `wireGlobe()` をもう一度呼ぶと
+    //   **止めて作り直すので一瞬消える**。直すのは下の帯の seed だけ
+    const ship = this.chapters.find((x) => x.id === "phanerozoic")
+    if (ship) {
+      this.globeSeed = ship.seed
+      const box = this.root.querySelector<HTMLElement>(".ttl-seed")
+      if (box) box.textContent = ship.seed
+    }
   }
 
   close(): void {

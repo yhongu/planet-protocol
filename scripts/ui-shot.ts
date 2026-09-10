@@ -53,6 +53,9 @@ const SHOTS: Record<string, string> = {
       + '<button>このまま惑星を見る</button></div>';
   })()`,
   "title": `void 0`,
+  // ★★**起動直後**。タイトルが出る前にゲーム画面が見えていないかを撮る
+  //   （2026-09-11 のちらつき報告。`WAIT_MS` を待たずに撮るのが肝）
+  "boot": `void 0`,
   "title-new": `document.querySelector('.ttl-item[data-go="new"]').click()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
   // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
@@ -117,7 +120,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "title-new", "chapter", "creatures", "inspect"])
+const TITLE_SHOTS = new Set(["title", "boot", "title-new", "chapter", "creatures", "inspect"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)
@@ -161,8 +164,10 @@ async function main(): Promise<void> {
   await send("Page.enable")
   await send("Runtime.enable")
   await send("Page.navigate", { url: URL_ })
-  // タイトルは起動直後に出る。それ以外は最初の画面を通してから撮る
-  await sleep(3000)
+  // タイトルは起動直後に出る。それ以外は最初の画面を通してから撮る。
+  // ★`boot` は**待たずに**撮る —— ちらつきは「待っている間」に出るので、
+  //   3 秒待ってから撮ると**直っていなくても直って見える**（罠 39 の形）
+  await sleep(name === "boot" ? Number(process.env.BOOT_MS ?? 120) : 3000)
   if (!TITLE_SHOTS.has(name)) {
     await send("Runtime.evaluate", {
       // ★クラス名は `.ttl-item`（2026-09-10 にタイトルを作り直した）。
@@ -177,8 +182,8 @@ async function main(): Promise<void> {
     await sleep(5000)
   }
   await send("Runtime.evaluate", { expression: expr })
-  await sleep(name === "chapter" || name === "creatures" || name === "inspect"
-    ? 25000 : 600)
+  await sleep(name === "boot" ? 0
+    : name === "chapter" || name === "creatures" || name === "inspect" ? 25000 : 600)
   if (name === "creatures") {
     // 優占クレードのレイヤにして、1 セルが十分大きくなるまで拡大する
     await send("Runtime.evaluate", {
