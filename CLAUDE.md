@@ -747,3 +747,4 @@ wait
 | `docs/05-roadmap.md` | マイルストーン。**いまどこかはここ** |
 | `docs/06-science-basis.md` | 科学的な根拠 |
 | `docs/07-art-spec.md` | ドット絵アイコンの発注仕様 |
+| `docs/08-illustration-brief.md` | **挿絵**の発注仕様（説明・科学の根拠・36 枚） |

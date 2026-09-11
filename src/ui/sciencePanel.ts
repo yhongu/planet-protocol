@@ -8,6 +8,16 @@
  * 画面のどこからでも `ⓘ` で飛べるようにする（レイヤの凡例・年代記の出来事）。
  */
 import { NOTES, NOTE_BY_ID, CONFIDENCE_LABEL, type Note } from "./science"
+import { attachIllust, illustTag } from "./illust"
+
+/**
+ * 分野 → 挿絵のファイル名（`docs/08` の B 群）。
+ * ★**日本語をファイル名にしない**（URL のエンコードで壊れる環境がある）
+ */
+const GROUP_ID: Record<string, string> = {
+  "気候": "climate", "固体地球": "solid", "海洋": "ocean",
+  "生命": "life", "このモデルについて": "model",
+}
 
 const GROUPS = ["気候", "固体地球", "海洋", "生命", "このモデルについて"] as const
 
@@ -36,6 +46,8 @@ export class SciencePanel {
   show(id?: string): void {
     this.current = id && NOTE_BY_ID.has(id) ? id : ""
     this.root.innerHTML = this.current ? this.detail(NOTE_BY_ID.get(this.current)!) : this.list()
+    // ★挿絵は後から差し込める（無ければ消える。`docs/08`）
+    attachIllust(this.root)
     this.root.hidden = false
     this.root.scrollTop = 0
   }
@@ -57,6 +69,7 @@ export class SciencePanel {
         const items = NOTES.filter((n) => n.group === g)
         if (!items.length) return ""
         return `<div class="section">${g}</div>`
+          + illustTag(`group-${GROUP_ID[g] ?? g}`, "sci-ill sm")
           + items.map((n) =>
             `<button class="sci-item" data-note="${n.id}">`
             + `<div class="sci-item-head">${badge(n)}<b>${n.title}</b></div>`
@@ -72,6 +85,7 @@ export class SciencePanel {
         : ""
     return head("科学の解説")
       + `<button class="sci-back" data-note="">← 一覧へ戻る</button>`
+      + illustTag(`note-${n.id}`, "sci-ill")
       + `<div class="sci-title">${badge(n)}<b>${n.title}</b></div>`
       + `<div class="sci-lead">${fmt(n.lead)}</div>`
       + sec("どういう話か", n.what)

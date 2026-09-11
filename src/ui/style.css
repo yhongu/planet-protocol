@@ -1505,3 +1505,21 @@ button.primary:hover { background: #2c6288; }
 @media (max-width: 760px) {
   .sci.over-title { width: 100vw; max-height: 92vh; }
 }
+
+/* ============================================================
+   ★ 挿絵（`docs/08-illustration-brief.md`）。16:9・差し込み式
+   ★絵が無ければ `illust.ts` が要素ごと消すので、ここは「有るとき」だけの見た目
+   ============================================================ */
+.ill { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+  image-rendering: pixelated; border: 1px solid var(--line); }
+/* ★★**挿絵が本文を押し出さないこと。** `max-width: 860px` と 16:9 だと
+   860x484 になり、**説明の 1 文字目が折り返しの下に沈んだ**（撮って気づいた）。
+   文章の【横】に回して、読みながら見られるようにする */
+.mn-ill { float: right; width: min(42%, 400px); margin: 0 0 14px 20px; }
+.sci-ill { float: right; width: min(48%, 240px); margin: 0 0 10px 12px; }
+/* 分野の見出しの絵は帯。横に回さず、節の頭に敷く */
+.sci-ill.sm { float: none; width: 100%; margin: 4px 0 8px; }
+@media (max-width: 760px) {
+  /* ★狭い画面で横に回すと、本文が 1 行 10 字になる。素直に上へ積む */
+  .mn-ill, .sci-ill { float: none; width: 100%; margin: 0 0 12px; }
+}

@@ -13,6 +13,7 @@ import { listSaves, whenLabel, type SaveInfo } from "./saves"
 import { CHAPTERS } from "./savesPanel"
 import { listChapters, type ChapterInfo } from "./chapters"
 import { TitleGlobe } from "./titleGlobe"
+import { attachIllust, illustTag } from "./illust"
 
 export interface NewGameOptions {
   seed: string
@@ -379,7 +380,12 @@ export class TitleScreen {
     const mn = (id: string) => {
       const body = q("#mnBody")
       const m = MANUAL.find((x) => x.id === id) ?? MANUAL[0]!
-      if (body) body.innerHTML = m.html
+      // ★挿絵は文章の【前】。無ければ `attachIllust` が消すので、
+      //   絵が来ていない節は文章だけが出る（`docs/08`）
+      if (body) {
+        body.innerHTML = illustTag(`manual-${m.id}`, "mn-ill") + m.html
+        attachIllust(body)
+      }
       for (const b of this.root.querySelectorAll<HTMLElement>(".mn-tab")) {
         b.classList.toggle("on", b.dataset.mn === id)
       }
