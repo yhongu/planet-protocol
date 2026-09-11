@@ -32,9 +32,6 @@ export class SciencePanel {
       const close = t.closest("#sciClose")
       if (close) {
         this.close()
-        // ★タイトルの上に出していたなら、重なりを元に戻す
-        //   （付けっぱなしだとゲーム中に全面を覆う）
-        this.root.classList.remove("over-title")
         return
       }
       const item = t.closest<HTMLElement>("[data-note]")
@@ -60,7 +57,10 @@ export class SciencePanel {
   }
 
   private list(): string {
+    // ★見出しは固定、中身だけ流す（`.sci-scroll`）。25 件を読むのに
+    //   毎回いちばん上へ戻らせない
     return head("手引き")
+      + `<div class="sci-scroll">`
       + MANUAL
       + `<div class="sci-intro">このシムの機構は 1 つ残らず論文に根拠があります。`
       + `<b>確からしさ</b>も一緒に出します —— <b>定説</b>と<b>まだ決着していない話</b>を`
@@ -68,13 +68,16 @@ export class SciencePanel {
       + GROUPS.map((g) => {
         const items = NOTES.filter((n) => n.group === g)
         if (!items.length) return ""
+        // ★**札を格子に並べる。** 1 列に積むと 25 件が縦に伸びて
+        //   「一覧」として使えない（全画面にした意味が無くなる）
         return `<div class="section">${g}</div>`
           + illustTag(`group-${GROUP_ID[g] ?? g}`, "sci-ill sm")
-          + items.map((n) =>
+          + `<div class="sci-grid">` + items.map((n) =>
             `<button class="sci-item" data-note="${n.id}">`
             + `<div class="sci-item-head">${badge(n)}<b>${n.title}</b></div>`
-            + `<span>${fmt(n.lead)}</span></button>`).join("")
+            + `<span>${fmt(n.lead)}</span></button>`).join("") + `</div>`
       }).join("")
+      + `</div>`
   }
 
   private detail(n: Note): string {
@@ -84,8 +87,12 @@ export class SciencePanel {
           + lines.map((l) => `<p class="sci-p">${fmt(l)}</p>`).join("")
         : ""
     return head("科学の解説")
+      + `<div class="sci-scroll">`
       + `<button class="sci-back" data-note="">← 一覧へ戻る</button>`
-      + illustTag(`note-${n.id}`, "sci-ill")
+      // ★絵と本文を別の箱に入れて 2 段組にする（説明の画面と同じ作り）。
+      //   `float` で回すと、幅の広い行が絵の下へ落ちて穴が空く
+      + `<div class="sci-detail">`
+      + `<div class="sci-text">`
       + `<div class="sci-title">${badge(n)}<b>${n.title}</b></div>`
       + `<div class="sci-lead">${fmt(n.lead)}</div>`
       + sec("どういう話か", n.what)
@@ -95,6 +102,10 @@ export class SciencePanel {
       + n.refs.map((r) => r.url
         ? `<a class="sci-ref" href="${r.url}" target="_blank" rel="noopener">${esc(r.label)} ↗</a>`
         : `<div class="sci-ref plain">${esc(r.label)}</div>`).join("")
+      + `</div>`                                   // /.sci-text
+      + illustTag(`note-${n.id}`, "sci-ill")       // ★絵は本文の【横】
+      + `</div>`                                   // /.sci-detail
+      + `</div>`                                   // /.sci-scroll
   }
 }
 
