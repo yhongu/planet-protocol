@@ -57,6 +57,13 @@ const SHOTS: Record<string, string> = {
   //   （2026-09-11 のちらつき報告。`WAIT_MS` を待たずに撮るのが肝）
   "boot": `void 0`,
   "title-new": `document.querySelector('.ttl-item[data-go="new"]').click()`,
+  // ★ゲーム説明（タイトルの中の画面）
+  "manual2": `document.querySelector('.ttl-item[data-go="manual"]').click()`,
+  // ★表のあるタブも撮る（1 列目の幅が本文を潰していないか）
+  "manual3": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.querySelector('.mn-tab[data-mn="act"]').click(), 150);
+  })()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
   // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
   "creatures": `(() => {
@@ -120,7 +127,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "boot", "title-new", "chapter", "creatures", "inspect"])
+const TITLE_SHOTS = new Set(["title", "boot", "title-new", "manual2", "manual3", "chapter", "creatures", "inspect"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)

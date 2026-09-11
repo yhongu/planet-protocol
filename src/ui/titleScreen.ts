@@ -230,6 +230,31 @@ export class TitleScreen {
           + `（数分〜1 時間）。上の数字は開始直後の推定です。</div>`)
   }
 
+
+  /**
+   * ★★**ゲーム説明**（2026-09-11。プレイヤーの要望）。
+   *
+   * ★**いま実装されているものだけを書く。** `docs/03` には Ω 経済や
+   * 勝敗条件のような**まだ無い設計**も書いてあるが、それを説明に載せると
+   * 「画面が機構の存在を保証してしまう」（罠 50 の文章版）。
+   * 無い物は書かない。
+   *
+   * ★科学の根拠は別（`science.ts`）。ここは**遊び方**だけにする。
+   */
+  private manual(): string {
+    return `<div class="ttl-era ttl-manual">
+      <div class="era-head"><b>ゲーム説明</b><span>45.4 億年を回す</span></div>
+      <div class="mn-nav">${MANUAL.map((m, i) =>
+        `<button class="mn-tab${i === 0 ? " on" : ""}" data-mn="${m.id}">`
+        + `<i>${m.icon}</i>${esc(m.label)}</button>`).join("")}</div>
+      <div class="mn-body" id="mnBody"></div>
+      <div class="era-btns">
+        <button id="ttBack"><i>‹</i> 戻る</button>
+        <button id="mnSci" class="primary">科学の根拠を見る <i>›</i></button>
+      </div>
+    </div>`
+  }
+
   private loadGame(): string {
     return `<div class="ttl-card">
       <div class="ttl-head"><div class="ttl-name">つづきから</div></div>
@@ -344,12 +369,27 @@ export class TitleScreen {
     for (const b of this.root.querySelectorAll<HTMLButtonElement>("[data-go]")) {
       b.addEventListener("click", () => {
         const go = b.dataset.go
-        if (go === "manual") { this.onManual(); return }
-        this.root.innerHTML = go === "new" ? this.newGame() : this.loadGame()
+        this.root.innerHTML = go === "new" ? this.newGame()
+          : go === "manual" ? this.manual() : this.loadGame()
         this.wire()
       })
     }
     q("#ttBack")?.addEventListener("click", () => { this.root.innerHTML = this.menu(); this.wire() })
+    // --- ゲーム説明 ---
+    const mn = (id: string) => {
+      const body = q("#mnBody")
+      const m = MANUAL.find((x) => x.id === id) ?? MANUAL[0]!
+      if (body) body.innerHTML = m.html
+      for (const b of this.root.querySelectorAll<HTMLElement>(".mn-tab")) {
+        b.classList.toggle("on", b.dataset.mn === id)
+      }
+    }
+    if (q("#mnBody")) mn(MANUAL[0]!.id)
+    for (const b of this.root.querySelectorAll<HTMLButtonElement>(".mn-tab")) {
+      b.addEventListener("click", () => mn(b.dataset.mn!))
+    }
+    // ★科学の根拠は別の部品（`science.ts`）。**遊び方と根拠を混ぜない**
+    q("#mnSci")?.addEventListener("click", () => this.onManual())
     q("#ttDice")?.addEventListener("click", () => {
       const box = q<HTMLInputElement>("#ttSeed")
       if (box) box.value = randomSeed()
@@ -388,6 +428,106 @@ export class TitleScreen {
   }
 }
 
+
+
+/**
+ * ★**説明の中身は 1 か所に**（罠 65）。
+ * ★**いま動いているものだけ。** 設計文書にある未実装（Ω 経済・勝敗条件）は
+ * 載せない —— 説明に書くと、そこに機構があると約束したことになる。
+ */
+const MANUAL: { id: string; icon: string; label: string; html: string }[] = [
+  {
+    id: "what", icon: "🌏", label: "これは何か",
+    html: `
+      <p><b>惑星を 45.4 億年ぶん、最初から最後まで回すシミュレータです。</b>
+      気候・炭素循環・水循環・プレートテクトニクス・海洋・生命・文明が
+      互いに結びついて動きます。</p>
+      <p class="mn-star">★<b>台本はありません。</b>
+      大酸化事変も、大量絶滅も、生命の誕生も、
+      <b>いつ起きるかはどこにも書かれていません</b>。
+      その惑星の物理から出てきた結果です。起きない惑星もあります。</p>
+      <p>★<b>同じ seed なら必ず同じ惑星になります</b>（決定論）。
+      友達と同じ惑星を遊べますし、誰でも結果を検証できます。</p>
+      <p>あなたは神ではなく、<b>惑星の恒常性の側</b>です。
+      結果を決めるのではなく、確率を傾けることしかできません。</p>`,
+  },
+  {
+    id: "time", icon: "⏱", label: "時間を進める",
+    html: `
+      <p>下の帯が時間の装置です。速度は<b>絶対値の段</b>で、
+      どの時代でも同じ年数/秒で進みます。</p>
+      <table class="mn-t">
+        <tr><td>×1</td><td>10 万年/秒</td></tr>
+        <tr><td>×5</td><td>50 万年/秒</td></tr>
+        <tr><td>×10</td><td>100 万年/秒</td></tr>
+        <tr><td>×20</td><td>200 万年/秒（物理の上限）</td></tr>
+      </table>
+      <p class="mn-star">★<b>「次の出来事まで」</b>が便利です。
+      45.4 億年のうち、何も起きない時代の方がずっと長い。
+      押すと最高速で飛ばして、<b>何か起きた瞬間に止まります</b>。</p>
+      <p>★気候が解けなくなると赤い帯が出て、速度が自動で落ちます。
+      黙って変な数字を出し続けることはありません。</p>`,
+  },
+  {
+    id: "act", icon: "✋", label: "介入する",
+    html: `
+      <p>左（スマホでは下）の札を<b>選んでから地図を押す</b>と、その場所に効きます。</p>
+      <table class="mn-t">
+        <tr><td>噴火</td><td>CO₂ とエアロゾル。その場に洪水玄武岩</td></tr>
+        <tr><td>隕石</td><td>クレーター、ダスト冬、大量絶滅</td></tr>
+        <tr><td>プレート</td><td>プレートの運動を押す。効くのは数千万年後</td></tr>
+        <tr><td>造山</td><td>隆起と侵食を増やす。風化のサーモスタットが回復する</td></tr>
+      </table>
+      <p><b>神の手</b>は生命への介入です（光合成・脳・好気呼吸・埋没・水平伝播）。</p>
+      <p class="mn-star">★<b>能力を与えるのではありません。</b>
+      押すのは<b>形質の傾向</b>だけで、
+      <b>不利な惑星では選択がすぐ押し戻します</b>。
+      たとえば酸素を増やしたいなら「埋没」を押しますが、
+      効くかどうかはその惑星の陸と海が決めます。</p>`,
+  },
+  {
+    id: "see", icon: "🔍", label: "画面の見方",
+    html: `
+      <table class="mn-t">
+        <tr><td>環境 / 生命 / 履歴</td><td>状態のタブ。気温の下の一言が「いま何が起きているか」</td></tr>
+        <tr><td>🔔</td><td>起きた出来事の件数。押すと履歴へ</td></tr>
+        <tr><td>時間軸</td><td>下端の帯。色の線が 1 件の出来事。乗せると中身が出ます</td></tr>
+        <tr><td>レイヤ</td><td>地図の色が何を意味するか。25 枚あります</td></tr>
+        <tr><td>地図を押す</td><td>虫眼鏡。そのマスに何がいるか（1 マスに 1 種ではありません）</td></tr>
+        <tr><td>系譜</td><td>誰から分かれ、いつ絶滅したか。遺伝子の由来まで見えます</td></tr>
+        <tr><td>文明</td><td>知性が生まれてから出ます。技術・失伝・時代</td></tr>
+      </table>
+      <p class="mn-star">★系譜では<b>同じ能力が「受け継いだ」のか「別々に発明した」のか</b>が
+      由来 id で分かります。機能は収斂しますが、系統は収斂しません。</p>`,
+  },
+  {
+    id: "civ", icon: "🏛", label: "文明と「降りる」",
+    html: `
+      <p>象徴を扱う系統（＝知性）が生まれると、文明が建ちます。
+      技術は 40 個あり、<b>勝手に発明され、勝手に失伝します</b>。</p>
+      <p class="mn-star">★文明は地質時間では一瞬です。
+      そこで<b>「降りる」</b>と時計が人間の尺度に替わります
+      （×1 = 10 年/秒 … ×20 = 20 万年/秒）。
+      「文明」タブからいつでも惑星に戻れます。</p>
+      <p>★<b>降りなくても文明は進みます。</b>
+      降りるのは必須でも裏技でもなく、<b>結果は同じ</b>です
+      （時間の刻みを変えても同じ惑星になるように作ってあります）。</p>
+      <p>★化石燃料の無い惑星に産業時代は永久に来ません。
+      小さく孤立した文明は、覚えた技術を失っていきます。</p>`,
+  },
+  {
+    id: "start", icon: "▶", label: "始め方",
+    html: `
+      <p>「ニューゲーム」で<b>どの時代から始めるか</b>を選びます。</p>
+      <p class="mn-star">★「配布ずみ」の章は<b>台本ではありません。</b>
+      こちらで冥王代から<b>本当に回した 1 つの惑星</b>を、
+      その時代に着いた時点で保存したものです。
+      決定論なので、同じ seed で回せば誰でも同じ物が出ます。</p>
+      <p>冥王代から始めると、海・生命・酸素・多細胞・知性の
+      <b>関門を全部自分で通す</b>ことになります。いちばん難しく、いちばん長い。</p>
+      <p>「記録」でいつでも保存・読み込みができます。</p>`,
+  },
+]
 
 /**
  * ★**時代の説明は 1 か所に**（罠 65: 同じ物を 2 か所に書くと片方だけ直る）。

@@ -1239,6 +1239,10 @@ button.primary:hover { background: #2c6288; }
      並び方で意味を変えるので、モバイル側で戻すこと（実測で欄が半分になった） */
   .era-side { align-self: stretch; }
   .era-side, .era-adv, .era-btns { margin: 0 14px; }
+  /* ★説明: 表の見出し列は狭い画面で折り返させる（132px 固定だと本文が潰れる） */
+  .mn-nav, .mn-body { margin: 0 14px; }
+  .mn-t td:first-child { width: 90px; white-space: normal; }
+  .mn-tab { flex: 1 1 44%; justify-content: center; padding: 10px 6px; font-size: 12px; }
   /* ★★**カードに出ている物を、下でもう一度出さない。**
      名前・年代・一行・難易度はカードにあるので、狭い画面では
      **パラメータだけ**にする。重複を削るだけで 150px 空いて、
@@ -1448,3 +1452,44 @@ button.primary:hover { background: #2c6288; }
   #app[data-fold="1"] #dash { max-height: none; }
   .st-fold { display: block; }
 }
+
+/* ============================================================
+   ★★ ゲーム説明（2026-09-11）。開始時代と同じ言葉づかいで組む
+   ============================================================ */
+/* ★★`.ttl-era` は「見出し/カード/右の欄」の grid なので、
+   その名前を持たない子（説明のタブと本文）は**暗黙のセルに飛ぶ**
+   —— タブが右に回り、本文が半分の幅になった（撮って気づいた）。
+   説明は縦 1 本なので grid ごと外す */
+.ttl-manual {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: clamp(14px, 3vh, 28px) clamp(18px, 4vw, 46px);
+}
+.ttl-manual > * { flex: 0 0 auto; }
+.ttl-manual .mn-body { flex: 1 1 auto; }
+.mn-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.mn-tab {
+  display: flex; align-items: center; gap: 7px; padding: 9px 14px;
+  font-size: 12.5px; color: var(--dim); cursor: pointer;
+  background: rgba(12, 18, 26, 0.7); border: 1px solid rgba(120, 150, 180, 0.25);
+}
+.mn-tab i { font-style: normal; font-size: 14px; }
+.mn-tab.on { color: var(--fg); border-color: #8cc8d8; background: rgba(140, 200, 216, 0.14); }
+.mn-body {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px 18px;
+  background: rgba(12, 18, 26, 0.7); border: 1px solid rgba(120, 150, 180, 0.25);
+  font-size: 13px; line-height: 1.85;
+}
+/* ★**行長を抑える。** 1500px 幅いっぱいに流すと目が行を見失う
+   （読みやすい 1 行は 40〜60 字） */
+.mn-body > * { max-width: 860px; }
+.mn-body p { margin: 0 0 12px; }
+.mn-body b { color: #d6e2ee; }
+/* ★「ここが肝」の段落。★印と左の線で、読み飛ばしても目に入るようにする */
+.mn-body .mn-star {
+  padding: 9px 12px; border-left: 2px solid #8cc8d8;
+  background: rgba(140, 200, 216, 0.07);
+}
+.mn-t { width: 100%; border-collapse: collapse; margin: 0 0 12px; }
+.mn-t td { padding: 5px 8px; border-bottom: 1px dotted rgba(120, 150, 180, 0.2);
+  vertical-align: top; }
+.mn-t td:first-child { width: 132px; color: #8cc8d8; white-space: nowrap; }
