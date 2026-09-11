@@ -36,6 +36,9 @@ for (const name of DROP) {
 }
 // 原画は残っていても害はないが、無駄に 260KB あるので落とす
 dropBySuffix(DIST, ".aseprite")
+// ★**`public/` の中の説明書きは本番に要らない**（罠 75: 開発用の物まで載る）。
+//   `public/illust/README.md` が配られていたので落とす
+dropBySuffix(DIST, ".md")
 const after = size(DIST)
 
 console.log(`dist を整理: ${(before / 1e6).toFixed(1)} MB -> ${(after / 1e6).toFixed(1)} MB`)

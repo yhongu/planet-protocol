@@ -1515,8 +1515,12 @@ button.primary:hover { background: #2c6288; }
 /* ★★**挿絵が本文を押し出さないこと。** `max-width: 860px` と 16:9 だと
    860x484 になり、**説明の 1 文字目が折り返しの下に沈んだ**（撮って気づいた）。
    文章の【横】に回して、読みながら見られるようにする */
-.mn-ill { float: right; width: min(42%, 400px); margin: 0 0 14px 20px; }
-.sci-ill { float: right; width: min(48%, 240px); margin: 0 0 10px 12px; }
+/* ★★**幅は素材のちょうど半分（512px）で止める。** 素材は 1024x576 なので、
+   512 なら 2:1 の整数倍で落ちて**ドットが崩れない**。
+   400px のような半端な幅だと 2.56:1 になり、格子が潰れて汚くなる
+   （撮って気づいた。罠 80 の「丸めが効かない」と同じ足元） */
+.mn-ill { float: right; width: min(46%, 512px); margin: 0 0 14px 20px; }
+.sci-ill { float: right; width: min(50%, 256px); margin: 0 0 10px 12px; }
 /* 分野の見出しの絵は帯。横に回さず、節の頭に敷く */
 .sci-ill.sm { float: none; width: 100%; margin: 4px 0 8px; }
 @media (max-width: 760px) {
