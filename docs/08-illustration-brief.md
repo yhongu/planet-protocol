@@ -198,3 +198,91 @@ Leave empty space on one side.
 ★**絵が無くても壊れない。** 読み込めなければ黙って落とし、
 説明の文章だけが出る（`creatures.ts` と同じ約束）。
 だから**1 枚ずつ差し込める**。全部揃うまで待つ必要はない。
+
+---
+
+## 9. ★ そのまま貼れるプロンプト（B 群・C 群の 30 本）
+
+**使い方**: 下の `[共通]` を**毎回いちばん上に貼り**、続けて 1 本ぶんの
+`Scene:` を貼る。1 回につき 1 枚。
+
+```
+[共通]
+Flat pixel-art style diagram, 16:9, dark navy background (#0A1018).
+Limited palette of at most 8 flat colors, banded shading, no gradients.
+Dark outlines (#1A1614) on major shapes. Light from upper left.
+Schematic cross-section or top-down diagram, NOT a photorealistic landscape.
+ABSOLUTELY NO text, no letters, no numbers, no arrows, no labels, no logos.
+No people. No lens flare, no depth of field. Leave empty space on one side.
+The planet must NOT resemble Earth: do not draw recognizable Earth continents.
+```
+
+### B 群 — 分野の見出し（5）
+
+| ファイル | Scene |
+|---|---|
+| `group-climate.png` | Cross-section of a planet's edge: layered atmosphere above a curved horizon, clouds, falling rain on one side, a white polar ice cap at the top. |
+| `group-solid.png` | Cross-section of a planet's interior: two large convection swirls in the mantle, two rigid plates riding on top, one plate bending down into the mantle. |
+| `group-ocean.png` | Cross-section of an ocean: bright shallow surface layer and dark deep layer, a closed loop of circulation connecting them, seafloor relief at the bottom. |
+| `group-life.png` | Cross-section from deep sea to dry land: single cells near hydrothermal seafloor, colonies in shallow water, simple multicellular forms on the shore. No animals with faces. |
+| `group-model.png` | A sphere split down the middle: the left half is smooth and naturally colored, the right half is divided into a coarse square grid of flat colored cells. |
+
+### C 群 — 個別の解説（25）
+
+**気候**
+
+| ファイル | Scene |
+|---|---|
+| `note-faint-young-sun.png` | A small, dim, deep-orange sun at the far left, and at the right a blue planet with liquid oceans and only small polar ice. The sun is clearly much smaller and dimmer than a present-day sun. |
+| `note-weathering-thermostat.png` | A closed loop drawn as a landscape cross-section: a volcano emitting a plume on the left, eroding mountains in the middle with rain, a river carrying sediment into the sea on the right, and pale carbonate layers settling on the seafloor. |
+| `note-ice-albedo.png` | Three identical planets in a row, front view. First has white only at the poles, second is white down to mid-latitudes, third is completely white. |
+| `note-carbon-cycle.png` | A cross-section split in two halves that balance like a scale: left half a volcano releasing a plume, right half weathered rock and pale layers of sediment on the seafloor. Equal visual weight on both sides. |
+| `note-hydrology.png` | Top-down view of a landmass: branching river networks flowing from mountains to the sea, with clouds over the ocean and rain over the highlands. |
+
+**固体地球**
+
+| ファイル | Scene |
+|---|---|
+| `note-when-plate-tectonics.png` | Two cross-sections side by side of the same planet's outer shell. Left: one continuous unbroken rigid lid. Right: the lid broken into plates, one bending down into the mantle. |
+| `note-tectonic-modes.png` | Three cross-sections in a row. First: a very hot thin shell pierced by many narrow lava conduits. Second: one thick immobile lid with convection trapped beneath. Third: plates with one subducting. |
+| `note-lip-llsvp.png` | Cross-section of a whole planet: two large dark blobs sitting on the core-mantle boundary, and a broad column rising from the edge of one blob, erupting as a wide flood of lava at the surface. |
+| `note-supercontinent.png` | Three identical planets in a row, front view. First: many scattered small landmasses. Second: one single large landmass. Third: the landmass split into several drifting pieces. |
+| `note-impacts.png` | A heavily cratered rocky surface under a dark dusty sky, with several rock fragments falling at different heights. |
+
+**海洋**
+
+| ファイル | Scene |
+|---|---|
+| `note-hydrothermal.png` | Deep seafloor cross-section: a rift in the crust with several tall chimneys emitting dark plumes, mounds of precipitate around their bases, glowing hot rock beneath. |
+| `note-upwelling.png` | Ocean cross-section: a current rising from the dark deep layer to the bright surface near a coast, with dense green algal growth at the surface above it. |
+| `note-phosphorus.png` | Ocean cross-section in two clear layers: a bright upper layer full of small green plankton shapes, and a dark lower layer where pale nutrient particles accumulate. |
+
+**生命**
+
+| ファイル | Scene |
+|---|---|
+| `note-gaia.png` | Two planets side by side, front view. Left: balanced, blue oceans and green land. Right: the same planet degraded by life — oceans choked with algae, land rust-colored and barren. |
+| `note-origin-of-life.png` | One image divided into three equal scenes: a deep-sea hydrothermal vent, a steaming hot spring on land, and a rocky tidal shore. All three given equal visual weight, none emphasized. |
+| `note-luca.png` | A single cell in cross-section: an outer membrane, an inner region with a few simple structures. Just one cell, centered. NOT a branching tree, NOT multiple cells. |
+| `note-goe.png` | A wide horizontal band of sky whose color changes in discrete steps from left to right, from hazy orange to clear blue. Below it, a shallow sea with layered microbial mats releasing small bubbles. |
+| `note-hard-steps.png` | A single narrow path crossing the image, interrupted by a few very narrow gates. The gates are small and tight, so passing through looks unlikely. Nothing else in the scene. |
+| `note-no-ladder.png` | A radial bush: many branches spreading outward in all directions from a single center point, all branches roughly the same thickness. ABSOLUTELY NOT a ladder, NOT a staircase, NOT a left-to-right progression, NOT a linear sequence. |
+| `note-mass-extinction.png` | A vast flood of glowing lava covering most of the land under a dark ash-filled sky, dominating the image. One very small meteor streak in a far corner only. |
+| `note-trophic.png` | A stack of three horizontal bands whose widths shrink sharply upward: a very wide bottom band densely filled with tiny algae shapes, a much narrower middle band with a few small creatures, and a very narrow top band with just one creature. |
+| `note-nitrogen.png` | Sky filled with many tightly bonded pairs of particles drawn as rigid linked shapes. At the ground, a few small microbial shapes are splitting one pair apart. |
+| `note-hadean-not-hell.png` | A planet surface with a liquid blue-grey ocean and several grey rocky continental islands, under a thick cloudy sky. Only small patches of lava. NOT an all-lava world. |
+
+**このモデルについて**
+
+| ファイル | Scene |
+|---|---|
+| `note-determinism.png` | Two lines made of square dots starting from the exact same point on the left, overlapping at first, then diverging widely toward the right. |
+| `note-resolution.png` | The same planet drawn twice, front view: left overlaid with a coarse square grid, right overlaid with a fine square grid. The continent outlines are identical in both. |
+
+★**受け取ったら必ず確認すること**
+
+1. **文字が 1 つも入っていないか**
+2. `note-no-ladder` が**はしごになっていないか**
+3. `note-mass-extinction` の**隕石が主役になっていないか**
+4. `note-hadean-not-hell` が**全面溶岩になっていないか**
+5. `note-luca` が**系統樹になっていないか**（1 個の細胞であること）
