@@ -1493,3 +1493,15 @@ button.primary:hover { background: #2c6288; }
 .mn-t td { padding: 5px 8px; border-bottom: 1px dotted rgba(120, 150, 180, 0.2);
   vertical-align: top; }
 .mn-t td:first-child { width: 132px; color: #8cc8d8; white-space: nowrap; }
+
+/* ★★タイトル（z-index 90）の上に出すときの札。
+   これが無いと **タイトルの裏で開いて、押しても何も出ない**ように見える
+   （2026-09-11 にプレイして報告された）。★閉じたら外すこと —— 付けっぱなしだと
+   ゲーム中にこのパネルが全面を覆う */
+.sci.over-title {
+  z-index: 95; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(720px, 92vw); max-height: 86vh;
+}
+@media (max-width: 760px) {
+  .sci.over-title { width: 100vw; max-height: 92vh; }
+}

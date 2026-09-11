@@ -1190,7 +1190,18 @@ const title = new TitleScreen($("title"), {
     pendingLoad = bytes
     boot()
   },
-  onManual: () => { science.show() },
+  /**
+   * ★★**タイトルの上に出す。**（2026-09-11 にプレイして報告された）
+   *
+   * `.sci` は z-index 47、タイトルの板は 90。そのまま `show()` すると
+   * **タイトルの裏で開いて、押しても何も出ない**ように見えた。
+   * ★閉じたら札を外す —— 付けっぱなしだと**ゲーム中に全面を覆う**。
+   * 閉じるは `#sciClose`（`sciencePanel` が既に配線している）。
+   */
+  onManual: () => {
+    science.show()
+    $("science").classList.add("over-title")
+  },
 })
 
 /** 生成が終わったら当てるセーブ / 早送りの行き先 */

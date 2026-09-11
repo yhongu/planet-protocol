@@ -64,6 +64,11 @@ const SHOTS: Record<string, string> = {
     document.querySelector('.ttl-item[data-go="manual"]').click();
     setTimeout(() => document.querySelector('.mn-tab[data-mn="act"]').click(), 150);
   })()`,
+  // ★タイトル → ゲーム説明 → 科学の根拠。**裏に隠れていないか**を撮る
+  "manual-sci": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.getElementById("mnSci").click(), 200);
+  })()`,
   // ★配られた章を実際に読み込む（読めているかは年代を見る）
   // ★生き物の絵を確かめる: 顕生代の章を読み、優占クレードのレイヤで拡大する
   "creatures": `(() => {
@@ -127,7 +132,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "boot", "title-new", "manual2", "manual3", "chapter", "creatures", "inspect"])
+const TITLE_SHOTS = new Set(["title", "boot", "title-new", "manual2", "manual3", "manual-sci", "chapter", "creatures", "inspect"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)

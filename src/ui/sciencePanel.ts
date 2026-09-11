@@ -20,7 +20,13 @@ export class SciencePanel {
     root.addEventListener("click", (e) => {
       const t = e.target as HTMLElement
       const close = t.closest("#sciClose")
-      if (close) { this.close(); return }
+      if (close) {
+        this.close()
+        // ★タイトルの上に出していたなら、重なりを元に戻す
+        //   （付けっぱなしだとゲーム中に全面を覆う）
+        this.root.classList.remove("over-title")
+        return
+      }
       const item = t.closest<HTMLElement>("[data-note]")
       if (item) this.show(item.dataset.note!)
     })
