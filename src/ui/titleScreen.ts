@@ -383,7 +383,12 @@ export class TitleScreen {
       // ★挿絵は文章の【前】。無ければ `attachIllust` が消すので、
       //   絵が来ていない節は文章だけが出る（`docs/08`）
       if (body) {
-        body.innerHTML = illustTag(`manual-${m.id}`, "mn-ill") + m.html
+        // ★★**`float` で回さない。** 絵の横に「最大 860px の表」が入らないと
+        //   表がまるごと下へ落ちて、**絵の左に大きな空白ができる**
+        //   （900px 幅で撮って気づいた）。文と絵を別の箱に入れて、
+        //   狭くなったら縦に積む（折り返しが予測できる形にする）
+        body.innerHTML = `<div class="mn-row"><div class="mn-text">${m.html}</div>`
+          + illustTag(`manual-${m.id}`, "mn-ill") + `</div>`
         attachIllust(body)
       }
       for (const b of this.root.querySelectorAll<HTMLElement>(".mn-tab")) {

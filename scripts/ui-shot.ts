@@ -64,6 +64,22 @@ const SHOTS: Record<string, string> = {
     document.querySelector('.ttl-item[data-go="manual"]').click();
     setTimeout(() => document.querySelector('.mn-tab[data-mn="act"]').click(), 150);
   })()`,
+  "mn-time": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.querySelector('.mn-tab[data-mn="time"]').click(), 150);
+  })()`,
+  "mn-see": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.querySelector('.mn-tab[data-mn="see"]').click(), 150);
+  })()`,
+  "mn-civ": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.querySelector('.mn-tab[data-mn="civ"]').click(), 150);
+  })()`,
+  "mn-start": `(() => {
+    document.querySelector('.ttl-item[data-go="manual"]').click();
+    setTimeout(() => document.querySelector('.mn-tab[data-mn="start"]').click(), 150);
+  })()`,
   // ★タイトル → ゲーム説明 → 科学の根拠。**裏に隠れていないか**を撮る
   "manual-sci": `(() => {
     document.querySelector('.ttl-item[data-go="manual"]').click();
@@ -132,7 +148,7 @@ const SHOTS: Record<string, string> = {
 }
 
 // ★タイトルは起動直後に出るので、押さずに撮る
-const TITLE_SHOTS = new Set(["title", "boot", "title-new", "manual2", "manual3", "manual-sci", "chapter", "creatures", "inspect"])
+const TITLE_SHOTS = new Set(["title", "boot", "title-new", "manual2", "manual3", "manual-sci", "mn-time", "mn-see", "mn-civ", "mn-start", "chapter", "creatures", "inspect"])
 const name = process.argv[2] ?? "layer-picker"
 /** ★画面の大きさを変えて撮れるようにする（スマホの検証用）。既定は 1600x900 */
 const SIZE = (process.argv[3] ?? "1600,900").split(",").map(Number)

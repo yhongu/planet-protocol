@@ -1481,7 +1481,8 @@ button.primary:hover { background: #2c6288; }
 }
 /* ★**行長を抑える。** 1500px 幅いっぱいに流すと目が行を見失う
    （読みやすい 1 行は 40〜60 字） */
-.mn-body > * { max-width: 860px; }
+.mn-text { flex: 1 1 auto; min-width: 0; max-width: 860px; }
+.mn-row { display: flex; align-items: flex-start; gap: 22px; }
 .mn-body p { margin: 0 0 12px; }
 .mn-body b { color: #d6e2ee; }
 /* ★「ここが肝」の段落。★印と左の線で、読み飛ばしても目に入るようにする */
@@ -1519,11 +1520,15 @@ button.primary:hover { background: #2c6288; }
    512 なら 2:1 の整数倍で落ちて**ドットが崩れない**。
    400px のような半端な幅だと 2.56:1 になり、格子が潰れて汚くなる
    （撮って気づいた。罠 80 の「丸めが効かない」と同じ足元） */
-.mn-ill { float: right; width: min(46%, 512px); margin: 0 0 14px 20px; }
-.sci-ill { float: right; width: min(50%, 256px); margin: 0 0 10px 12px; }
-/* 分野の見出しの絵は帯。横に回さず、節の頭に敷く */
-.sci-ill.sm { float: none; width: 100%; margin: 4px 0 8px; }
-@media (max-width: 760px) {
-  /* ★狭い画面で横に回すと、本文が 1 行 10 字になる。素直に上へ積む */
-  .mn-ill, .sci-ill { float: none; width: 100%; margin: 0 0 12px; }
+.mn-ill { flex: 0 0 auto; width: min(40vw, 512px); }
+/* ★科学のパネルは幅 460〜720px しかない。そこへ絵を横に回すと
+   **本文が 1 行 10 字**になる。素直に上へ積む */
+.sci-ill { width: 100%; max-width: 420px; margin: 6px 0 10px; }
+.sci-ill.sm { max-width: none; margin: 4px 0 8px; }
+/* ★★**縦に積む境目は 1000px。** 画面の折り返し（760px）とは別物 ——
+   ここは「絵 512 + 文 860 + 余白」が入るかで決まるので、
+   同じ数字を使い回してはいけない */
+@media (max-width: 1000px) {
+  .mn-row { flex-direction: column; }
+  .mn-ill { width: 100%; max-width: 512px; }
 }
