@@ -12,3 +12,9 @@ public/timelapse.json
 
 # 系統樹の確認用データ（probe-phylo.ts が生成する）
 public/phylo.json
+
+# ★挿絵の受け取り箱（ChatGPT の既定名のまま）。
+#   `scripts/art/install-illust.py` が 512x288 に落として
+#   `public/illust/` へ入れるので、**元は追跡しない**（1 枚 1.2MB・25 枚で 32MB）。
+#   ★`docs/images/` の他のファイル（README のスクショ）は追跡する
+docs/images/ChatGPT*

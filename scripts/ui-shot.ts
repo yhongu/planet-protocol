@@ -143,6 +143,11 @@ const SHOTS: Record<string, string> = {
   "god": `document.getElementById("godBtn").click()`,
   "saves": `document.getElementById("savesBtn").click()`,
   "science": `document.getElementById("legendSci").click()`,
+  // ★科学の解説 1 件（挿絵が入ったか・本文を潰していないか）
+  "sci-note": `(() => {
+    document.getElementById("legendSci").click();
+    setTimeout(() => document.querySelector('[data-note="no-ladder"]').click(), 200);
+  })()`,
   "manual": `document.getElementById("legendSci").click();`
     + `document.querySelector(".sci-back").click()`,
 }

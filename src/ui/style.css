@@ -1522,8 +1522,9 @@ button.primary:hover { background: #2c6288; }
    （撮って気づいた。罠 80 の「丸めが効かない」と同じ足元） */
 .mn-ill { flex: 0 0 auto; width: min(40vw, 512px); }
 /* ★科学のパネルは幅 460〜720px しかない。そこへ絵を横に回すと
-   **本文が 1 行 10 字**になる。素直に上へ積む */
-.sci-ill { width: 100%; max-width: 420px; margin: 6px 0 10px; }
+   **本文が 1 行 10 字**になる。素直に上へ積む。
+   ★素材は 512x288 なので、上限も 512 にして等倍で出す */
+.sci-ill { width: 100%; max-width: 512px; margin: 6px 0 10px; }
 .sci-ill.sm { max-width: none; margin: 4px 0 8px; }
 /* ★★**縦に積む境目は 1000px。** 画面の折り返し（760px）とは別物 ——
    ここは「絵 512 + 文 860 + 余白」が入るかで決まるので、
